@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { spawn, execFile } from "node:child_process";
 import { mkdir, readFile, writeFile, appendFile, access } from "node:fs/promises";
 import path from "node:path";
@@ -35,11 +35,46 @@ if (!BOT_TOKEN || ALLOWED_IDS.size === 0) {
 const bot = new Bot(BOT_TOKEN || "PLACEHOLDER_TOKEN_FOR_CHECK");
 const DATA_DIR = path.dirname(PROJECTS_FILE);
 const LOG_DIR = path.resolve("./logs");
+const CONTEXT_FILE = path.join(DATA_DIR, "context.json");
 
 await mkdir(DATA_DIR, { recursive: true });
 await mkdir(LOG_DIR, { recursive: true });
 
 let activeTask = null;
+
+async function loadContext() {
+  try {
+    const data = await readFile(CONTEXT_FILE, "utf8");
+    return JSON.parse(data);
+  } catch {
+    return {};
+  }
+}
+
+async function saveContext(context) {
+  await writeFile(
+    CONTEXT_FILE,
+    JSON.stringify(context, null, 2) + "\n",
+    { mode: 0o600 }
+  );
+}
+
+async function getUserActiveProject(userId) {
+  if (!userId) return null;
+  const context = await loadContext();
+  return context[String(userId)] || null;
+}
+
+async function setUserActiveProject(userId, projectName) {
+  if (!userId) return;
+  const context = await loadContext();
+  if (projectName) {
+    context[String(userId)] = projectName;
+  } else {
+    delete context[String(userId)];
+  }
+  await saveContext(context);
+}
 
 function authorized(ctx) {
   return ctx.from && ALLOWED_IDS.has(String(ctx.from.id));
@@ -354,26 +389,39 @@ bot.use(async (ctx, next) => {
 });
 
 bot.command("start", async (ctx) => {
+  const activeProj = await getUserActiveProject(ctx.from?.id);
+  const activeInfo = activeProj
+    ? `🎯 *Project Aktif:* \`${activeProj}\`\n💬 *Langsung ketik instruksi Anda di chat ini untuk mulai ngoding!*\n\n`
+    : `⚠️ *Belum ada project aktif.*\nKetik \`/projects\` untuk memilih project dari tombol.\n\n`;
+
   await ctx.reply(
-    "🤖 *Telegram AI Coding Agent aktif.*\n\n" +
-      "Perintah yang tersedia:\n" +
-      "• `/projects` - Daftar project terdaftar\n" +
-      "• `/code <project> <instruksi>` - Jalankan task coding\n" +
-      "• `/clone <nama> <URL-GitHub>` - Clone repository GitHub publik\n" +
-      "• `/status` - Lihat status task yang sedang aktif\n" +
-      "• `/cancel` - Hentikan task coding yang sedang berjalan\n" +
-      "• `/help` - Panduan penggunaan",
+    `🤖 *Telegram AI Coding Agent Aktif.*\n\n` +
+      activeInfo +
+      `Perintah yang tersedia:\n` +
+      `• \`/projects\` - Daftar & pilih project aktif\n` +
+      `• \`/use <nama>\` - Pilih project aktif secara manual\n` +
+      `• \`/unuse\` - Lepas pilihan project aktif\n` +
+      `• \`/clone <nama> <URL>\` - Clone repo GitHub & otomatis aktifkan\n` +
+      `• \`/code <project> <instruksi>\` - Jalankan coding pada project spesifik\n` +
+      `• \`/status\` - Lihat status task & project aktif\n` +
+      `• \`/cancel\` - Hentikan task aktif\n` +
+      `• \`/help\` - Panduan lengkap`,
     { parse_mode: "Markdown" }
   );
 });
 
 bot.command("help", async (ctx) => {
   await ctx.reply(
-    "📖 *Contoh Penggunaan:*\n\n" +
-      "`/code blog Buat halaman artikel responsif menggunakan komponen yang sudah ada.`\n\n" +
-      "📌 *Catatan:*\n" +
-      "Setiap task otomatis dibuatkan branch Git terpisah (`agent/task-...`).\n" +
-      "Selalu tinjau `git diff` sebelum melakukan merge atau deployment.",
+    "📖 *Cara Praktis Ngoding Lewat Telegram:*\n\n" +
+      "1. *Pilih Project Dulu:*\n" +
+      "   Ketik `/projects` lalu klik tombol project Anda (atau gunakan `/use nama-project`).\n\n" +
+      "2. *Langsung Chat:*\n" +
+      "   Setelah project dipilih, Anda **tidak perlu mengetik /code lagi**. Cukup ketik instruksi seperti chat biasa:\n" +
+      "   _\"Buatkan komponen Navbar responsif dengan logo dan tombol login\"_\n\n" +
+      "3. *Atau Clone Repo Baru:*\n" +
+      "   `/clone blog https://github.com/user/blog.git`\n" +
+      "   Repo yang baru di-clone otomatis langsung menjadi project aktif!\n\n" +
+      "📌 *Catatan:* Setiap task otomatis dibuatkan branch Git terpisah (`agent/task-...`).",
     { parse_mode: "Markdown" }
   );
 });
@@ -381,30 +429,119 @@ bot.command("help", async (ctx) => {
 bot.command("projects", async (ctx) => {
   const projects = await loadProjects();
   const entries = Object.entries(projects);
+  const activeProj = await getUserActiveProject(ctx.from?.id);
 
   if (!entries.length) {
     await ctx.reply(
-      "Belum ada project terdaftar.\nGunakan `/clone <nama> <url>` atau daftarkan di `data/projects.json`."
+      "Belum ada project terdaftar.\nGunakan `/clone <nama> <URL-GitHub>` untuk clone repo publik GitHub.",
+      { parse_mode: "Markdown" }
     );
     return;
   }
 
   const list = entries
-    .map(([name, p]) => `• *${name}*: ${p.description || p.path}`)
+    .map(([name, p]) => {
+      const isCurrent = name === activeProj ? " ✅ *(Aktif)*" : "";
+      return `• *${name}*${isCurrent}: ${p.description || p.path}`;
+    })
     .join("\n");
 
-  await ctx.reply(`📂 *Daftar Project:*\n${list}`, { parse_mode: "Markdown" });
+  const keyboard = new InlineKeyboard();
+  entries.forEach(([name], idx) => {
+    const label = name === activeProj ? `✅ ${name}` : `📂 ${name}`;
+    keyboard.text(label, `select_project:${name}`);
+    if ((idx + 1) % 2 === 0) keyboard.row();
+  });
+
+  if (activeProj) {
+    keyboard.row().text("❌ Lepas Pilihan Project", "deselect_project");
+  }
+
+  await ctx.reply(
+    `📂 *Daftar Project:*\n${list}\n\n👇 *Klik tombol di bawah untuk memilih project aktif:*`,
+    {
+      parse_mode: "Markdown",
+      reply_markup: keyboard,
+    }
+  );
+});
+
+bot.callbackQuery(/^select_project:(.+)$/, async (ctx) => {
+  const projectName = ctx.match[1];
+  const projects = await loadProjects();
+
+  if (!projects[projectName]) {
+    await ctx.answerCallbackQuery({
+      text: "Project tidak ditemukan!",
+      show_alert: true,
+    });
+    return;
+  }
+
+  await setUserActiveProject(ctx.from.id, projectName);
+  await ctx.answerCallbackQuery({ text: `Project aktif: ${projectName}` });
+
+  await ctx.reply(
+    `🎯 *Project aktif sekarang:* \`${projectName}\`\n\n` +
+      `💡 Sekarang Anda bisa **langsung kirim instruksi coding apa saja di chat ini** (tanpa perlu mengetik \`/code\`)!`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+bot.callbackQuery("deselect_project", async (ctx) => {
+  await setUserActiveProject(ctx.from.id, null);
+  await ctx.answerCallbackQuery({ text: "Pilihan project dilepas." });
+  await ctx.reply(
+    "Pilihan project aktif telah dilepas. Gunakan `/projects` untuk memilih kembali."
+  );
+});
+
+bot.command(["use", "select"], async (ctx) => {
+  const args = ctx.message.text.trim().split(/\s+/);
+  const projectName = args[1]?.trim();
+
+  if (!projectName) {
+    await ctx.reply("Format: `/use <nama-project>` atau gunakan tombol di `/projects`.", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  const projects = await loadProjects();
+  if (!projects[projectName]) {
+    await ctx.reply(`Project '${projectName}' tidak ditemukan. Cek daftar di /projects.`);
+    return;
+  }
+
+  await setUserActiveProject(ctx.from.id, projectName);
+  await ctx.reply(
+    `🎯 *Project aktif sekarang:* \`${projectName}\`\n\n` +
+      `💬 Silakan **langsung kirim instruksi coding Anda di chat ini**!`,
+    { parse_mode: "Markdown" }
+  );
+});
+
+bot.command(["unuse", "leave"], async (ctx) => {
+  await setUserActiveProject(ctx.from.id, null);
+  await ctx.reply(
+    "Project aktif telah dilepas. Gunakan `/projects` untuk memilih project baru."
+  );
 });
 
 bot.command("status", async (ctx) => {
+  const activeProj = await getUserActiveProject(ctx.from?.id);
+  const projectInfo = activeProj ? `\n🎯 Project Aktif Anda: *${activeProj}*` : "\n⚠️ Belum ada project aktif yang dipilih.";
+
   if (!activeTask) {
-    await ctx.reply("Tidak ada task aktif saat ini.");
+    await ctx.reply(`Tidak ada task coding yang sedang berjalan saat ini.${projectInfo}`, {
+      parse_mode: "Markdown",
+    });
     return;
   }
 
   const elapsed = Math.floor((Date.now() - activeTask.startedAt) / 1000);
   await ctx.reply(
-    `⏳ *Task Aktif:*\nID: \`${activeTask.id}\`\nProject: *${activeTask.project}*\nDurasi: ${elapsed} detik`,
+    `⏳ *Task Aktif Sedang Berjalan:*\nID: \`${activeTask.id}\`\nProject: *${activeTask.project}*\nDurasi: ${elapsed} detik${projectInfo}`,
     { parse_mode: "Markdown" }
   );
 });
@@ -505,25 +642,70 @@ bot.command("clone", async (ctx) => {
     };
 
     await saveProjects(projects);
-    await ctx.reply(`✅ Repository *${name}* berhasil di-clone dan didaftarkan!`, {
-      parse_mode: "Markdown",
-    });
+    // Otomatis aktifkan project yang baru di-clone untuk user ini
+    await setUserActiveProject(ctx.from.id, name);
+
+    await ctx.reply(
+      `✅ Repository *${name}* berhasil di-clone!\n\n` +
+        `🎯 Otomatis dijadikan **Project Aktif**.\n` +
+        `💬 Sekarang Anda bisa **langsung kirim instruksi coding apa saja di chat ini** tanpa perlu perintah tambahan!`,
+      { parse_mode: "Markdown" }
+    );
   } catch (error) {
     await ctx.reply(`❌ Clone gagal: ${truncate(error.message, 2000)}`);
   }
 });
 
 bot.on("message:text", async (ctx) => {
-  await ctx.reply(
-    "🤖 Perintah tidak dikenali.\n\nGunakan perintah berikut:\n" +
-      "• /start - Memulai bot\n" +
-      "• /projects - Lihat daftar project\n" +
-      "• /code <project> <instruksi> - Jalankan coding agent\n" +
-      "• /clone <nama> <URL-GitHub> - Clone repo\n" +
-      "• /status - Cek status task aktif\n" +
-      "• /cancel - Batalkan task aktif\n" +
-      "• /help - Panduan lengkap"
-  );
+  const text = ctx.message.text.trim();
+  if (text.startsWith("/")) return;
+
+  const activeProj = await getUserActiveProject(ctx.from.id);
+
+  if (activeProj) {
+    const projects = await loadProjects();
+    if (!projects[activeProj]) {
+      await setUserActiveProject(ctx.from.id, null);
+      await ctx.reply(
+        `Project '${activeProj}' tidak lagi ditemukan di daftar. Silakan pilih kembali dari /projects.`
+      );
+      return;
+    }
+
+    if (text.length > 4000) {
+      await ctx.reply("Instruksi maksimal 4000 karakter.");
+      return;
+    }
+
+    // Langsung jalankan coding agent di project aktif!
+    await runAgent(activeProj, text, ctx);
+    return;
+  }
+
+  // Jika belum ada project yang dipilih:
+  const projects = await loadProjects();
+  const entries = Object.entries(projects);
+
+  if (entries.length > 0) {
+    const keyboard = new InlineKeyboard();
+    entries.forEach(([name], idx) => {
+      keyboard.text(`📂 ${name}`, `select_project:${name}`);
+      if ((idx + 1) % 2 === 0) keyboard.row();
+    });
+
+    await ctx.reply(
+      "⚠️ *Belum ada project aktif yang dipilih.*\n\n" +
+        "Pilih project tujuan coding Anda dengan mengklik tombol di bawah:",
+      { parse_mode: "Markdown", reply_markup: keyboard }
+    );
+  } else {
+    await ctx.reply(
+      "Belum ada project terdaftar.\n" +
+        "Silakan clone repository terlebih dahulu dengan perintah:\n" +
+        "`/clone <nama> <URL-GitHub>`",
+      { parse_mode: "Markdown" }
+    );
+  }
 });
 
 bot.catch((error) => {
