@@ -1,0 +1,27 @@
+services:
+  telegram-coding-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-coding-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - AGY_BIN=/home/coder/.local/bin/agy
+      - PROJECTS_FILE=/app/data/projects.json
+      - TASK_TIMEOUT_MS=${TASK_TIMEOUT_MS:-900000}
+      - MAX_TASK_OUTPUT=${MAX_TASK_OUTPUT:-12000}
+      - AGY_AUTO_APPROVE_PERMISSIONS=${AGY_AUTO_APPROVE_PERMISSIONS:-true}
+    volumes:
+      # Data konfigurasi dan status project
+      - ./data:/app/data
+      # Log aktivitas task
+      - ./logs:/app/logs
+      # Folder kerja repositori di host (hasil coding AI langsung tersimpan di host)
+      - ./projects:/home/coder/projects
+      # Persistensi sesi login & setting Antigravity CLI
+      - ./gemini_auth:/home/coder/.gemini
+    security_opt:
+      - no-new-privileges:true
