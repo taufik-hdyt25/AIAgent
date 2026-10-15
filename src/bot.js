@@ -122,11 +122,15 @@ async function sendToAntigravity(userMessage, ctx) {
 
   const task = activeTask;
 
-  // Indikator "typing..." di Telegram
-  const typingInterval = setInterval(() => {
-    ctx.replyWithChatAction("typing").catch(() => {});
-  }, 4000);
-  ctx.replyWithChatAction("typing").catch(() => {});
+  // Indikator "sedang mengetik..." di Telegram secara berkala selama AI berpikir
+  const sendTyping = () => {
+    if (ctx.chat?.id) {
+      ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => {});
+    }
+  };
+
+  sendTyping();
+  const typingInterval = setInterval(sendTyping, 4000);
 
   try {
     const prompt = `
