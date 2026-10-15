@@ -71,7 +71,7 @@ if [ ! -f ".env" ]; then
     fi
     # Set default permission di Docker container
     sed -i.bak "s|AGY_AUTO_APPROVE_PERMISSIONS=.*|AGY_AUTO_APPROVE_PERMISSIONS=true|" .env && rm -f .env.bak
-    sed -i.bak "s|AGY_BIN=.*|AGY_BIN=/home/coder/.local/bin/agy|" .env && rm -f .env.bak
+    sed -i.bak "s|AGY_BIN=.*|AGY_BIN=/home/node/.local/bin/agy|" .env && rm -f .env.bak
 fi
 
 chmod 600 .env

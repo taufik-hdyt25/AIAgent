@@ -10,32 +10,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Buat user non-root 'coder' (UID 1000) demi keamanan
-RUN useradd -m -u 1000 -s /bin/bash coder
+# 2. Gunakan user non-root 'node' (UID 1000) bawaan image Node.js
+USER node
+ENV HOME=/home/node
+ENV PATH="/home/node/.local/bin:${PATH}"
 
-# 3. Setup environment untuk user 'coder'
-USER coder
-ENV HOME=/home/coder
-ENV PATH="/home/coder/.local/bin:${PATH}"
-
-# 4. Install Antigravity CLI (agy) untuk user coder
-RUN mkdir -p /home/coder/.local/bin /home/coder/projects /home/coder/.gemini \
-    && curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d /home/coder/.local/bin
+# 3. Install Antigravity CLI (agy) untuk user node
+RUN mkdir -p /home/node/.local/bin /home/node/projects /home/node/.gemini \
+    && curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d /home/node/.local/bin
 
 WORKDIR /app
 
-# 5. Salin package file dan install dependensi npm
-COPY --chown=coder:coder package*.json ./
+# 4. Salin package file dan install dependensi npm
+COPY --chown=node:node package*.json ./
 RUN npm ci --omit=dev || npm install --omit=dev
 
-# 6. Salin source code
-COPY --chown=coder:coder . .
+# 5. Salin source code
+COPY --chown=node:node . .
 
-# 7. Siapkan folder data, logs, dan projects
-RUN mkdir -p data logs /home/coder/projects
+# 6. Siapkan folder data, logs, dan projects
+RUN mkdir -p data logs /home/node/projects
 
 ENV NODE_ENV=production
-ENV AGY_BIN=/home/coder/.local/bin/agy
+ENV AGY_BIN=/home/node/.local/bin/agy
 ENV PROJECTS_FILE=/app/data/projects.json
 
 CMD ["node", "src/bot.js"]
