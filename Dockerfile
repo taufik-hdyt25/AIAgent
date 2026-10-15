@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     procps \
     openssh-client \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    docker.io \
+    docker-compose-plugin \
+    && rm -rf /var/lib/apt/lists/* \
+    && usermod -aG docker node
 
 # 2. Gunakan user non-root 'node' (UID 1000) bawaan image Node.js
 USER node

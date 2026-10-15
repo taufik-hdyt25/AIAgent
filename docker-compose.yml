@@ -23,5 +23,7 @@ services:
       - ./projects:/home/node/projects
       # Persistensi sesi login & setting Antigravity CLI
       - ./gemini_auth:/home/node/.gemini
+      # Akses Docker daemon host (DooD: kendalikan Docker host langsung dari bot)
+      - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
