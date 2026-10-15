@@ -76,6 +76,25 @@ async function setUserActiveProject(userId, projectName) {
   await saveContext(context);
 }
 
+async function getUserConversationId(userId) {
+  if (!userId) return randomUUID();
+  const context = await loadContext();
+  if (!context.conversations) context.conversations = {};
+  if (!context.conversations[String(userId)]) {
+    context.conversations[String(userId)] = randomUUID();
+    await saveContext(context);
+  }
+  return context.conversations[String(userId)];
+}
+
+async function resetUserConversation(userId) {
+  if (!userId) return;
+  const context = await loadContext();
+  if (!context.conversations) context.conversations = {};
+  context.conversations[String(userId)] = randomUUID();
+  await saveContext(context);
+}
+
 function authorized(ctx) {
   return ctx.from && ALLOWED_IDS.has(String(ctx.from.id));
 }
@@ -656,56 +675,171 @@ bot.command("clone", async (ctx) => {
   }
 });
 
+bot.command(["new", "reset"], async (ctx) => {
+  await resetUserConversation(ctx.from?.id);
+  await ctx.reply(
+    "🔄 *Sesi percakapan baru dimulai!*\nKonteks chat sebelumnya telah di-reset. Ada yang bisa saya bantu?",
+    { parse_mode: "Markdown" }
+  );
+});
+
+async function runChat(userMessage, ctx) {
+  if (activeTask) {
+    await ctx.reply(
+      `⏳ Masih ada proses yang sedang berjalan (${activeTask.id}). Tunggu sebentar atau gunakan /cancel.`
+    );
+    return;
+  }
+
+  const userId = ctx.from?.id;
+  const activeProj = await getUserActiveProject(userId);
+  let workingDir = process.cwd();
+  let projectContextDesc =
+    "Belum ada project yang dipilih. Anda berada di root environment bot Telegram.";
+
+  if (activeProj) {
+    const projects = await loadProjects();
+    const p = projects[activeProj];
+    if (p && (await fileExists(path.resolve(p.path)))) {
+      workingDir = path.resolve(p.path);
+      projectContextDesc = `Project aktif: "${activeProj}" di lokasi "${workingDir}".`;
+    }
+  }
+
+  const convId = await getUserConversationId(userId);
+  const taskId = randomUUID().slice(0, 8);
+
+  activeTask = {
+    id: taskId,
+    project: activeProj || "chat",
+    startedAt: Date.now(),
+    process: null,
+    cancelled: false,
+  };
+
+  const task = activeTask;
+
+  // Typing indicator terus berjalan selama AI merespons
+  const typingInterval = setInterval(() => {
+    ctx.replyWithChatAction("typing").catch(() => {});
+  }, 4000);
+  ctx.replyWithChatAction("typing").catch(() => {});
+
+  try {
+    const prompt = `
+Anda adalah Antigravity AI, asisten coding dan developer pintar yang berinteraksi langsung melalui chat Telegram.
+Konteks sistem saat ini: ${projectContextDesc}
+
+PANDUAN RESPONS:
+- Berbicaralah dengan nada santai, ramah, natural, dan cerdas dalam bahasa Indonesia (atau sesuaikan bahasa pengguna).
+- Jika pengguna bertanya umum atau berdiskusi (seperti "project disimpan di mana?", "bagaimana cara clone?", atau tanya teori programming), jawablah secara natural dan jelas layaknya percakapan AI biasa.
+  * Catatan sistem: Project yang terdaftar atau di-clone dari Telegram disimpan di direktori 'projects/' di server (atau path absolut di 'data/projects.json').
+- Jika pengguna meminta perubahan kode atau fitur pada project aktif, lakukan modifikasi pada file project ini secara mandiri dan laporkan ringkasan perubahannya.
+- Jangan pernah membocorkan isi file .env atau secret kredensial bot/server.
+- Format teks menggunakan Markdown yang rapi dan mudah dibaca di layar HP.
+
+Pesan pengguna:
+${userMessage}
+`.trim();
+
+    const agyArgs = [
+      "--conversation",
+      convId,
+      "-p",
+      prompt,
+      "--output-format",
+      "text",
+      "--print-timeout",
+      "5m",
+    ];
+
+    if (AUTO_APPROVE_PERMISSIONS) {
+      agyArgs.push("--dangerously-skip-permissions");
+    }
+
+    const sanitizedEnv = { ...process.env };
+    delete sanitizedEnv.BOT_TOKEN;
+    delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
+    delete sanitizedEnv.GEMINI_API_KEY;
+
+    const child = spawn(AGY_BIN, agyArgs, {
+      cwd: workingDir,
+      shell: false,
+      detached: true,
+      env: sanitizedEnv,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    task.process = child;
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const finish = async (error, code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearInterval(typingInterval);
+
+      if (activeTask?.id === taskId) activeTask = null;
+
+      if (task.cancelled) {
+        await ctx.reply("⚠️ Percakapan dihentikan.");
+        return;
+      }
+
+      if (error || (code !== 0 && !stdout.trim())) {
+        const errText = stderr.trim() || error?.message || `Exit code ${code}`;
+        await ctx.reply(
+          `❌ Terjadi kendala saat memproses: ${truncate(errText, 1000)}`
+        );
+        return;
+      }
+
+      const responseText = stdout.trim() || "Tidak ada respon dari AI.";
+
+      try {
+        await ctx.reply(truncate(responseText, 3800), {
+          parse_mode: "Markdown",
+        });
+      } catch {
+        // Fallback ke plain text jika Markdown parsing gagal
+        await ctx.reply(truncate(responseText, 3800));
+      }
+    };
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+      if (stdout.length > MAX_OUTPUT * 2) {
+        stdout = stdout.slice(-MAX_OUTPUT * 2);
+      }
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+      if (stderr.length > 5000) stderr = stderr.slice(-5000);
+    });
+
+    child.on("error", (error) => finish(error, null, null));
+    child.on("close", (code, signal) => finish(null, code, signal));
+  } catch (err) {
+    clearInterval(typingInterval);
+    if (activeTask?.id === taskId) activeTask = null;
+    await ctx.reply(`❌ Error: ${err.message}`);
+  }
+}
+
 bot.on("message:text", async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) return;
 
-  const activeProj = await getUserActiveProject(ctx.from.id);
-
-  if (activeProj) {
-    const projects = await loadProjects();
-    if (!projects[activeProj]) {
-      await setUserActiveProject(ctx.from.id, null);
-      await ctx.reply(
-        `Project '${activeProj}' tidak lagi ditemukan di daftar. Silakan pilih kembali dari /projects.`
-      );
-      return;
-    }
-
-    if (text.length > 4000) {
-      await ctx.reply("Instruksi maksimal 4000 karakter.");
-      return;
-    }
-
-    // Langsung jalankan coding agent di project aktif!
-    await runAgent(activeProj, text, ctx);
+  if (text.length > 4000) {
+    await ctx.reply("Pesan maksimal 4000 karakter.");
     return;
   }
 
-  // Jika belum ada project yang dipilih:
-  const projects = await loadProjects();
-  const entries = Object.entries(projects);
-
-  if (entries.length > 0) {
-    const keyboard = new InlineKeyboard();
-    entries.forEach(([name], idx) => {
-      keyboard.text(`📂 ${name}`, `select_project:${name}`);
-      if ((idx + 1) % 2 === 0) keyboard.row();
-    });
-
-    await ctx.reply(
-      "⚠️ *Belum ada project aktif yang dipilih.*\n\n" +
-        "Pilih project tujuan coding Anda dengan mengklik tombol di bawah:",
-      { parse_mode: "Markdown", reply_markup: keyboard }
-    );
-  } else {
-    await ctx.reply(
-      "Belum ada project terdaftar.\n" +
-        "Silakan clone repository terlebih dahulu dengan perintah:\n" +
-        "`/clone <nama> <URL-GitHub>`",
-      { parse_mode: "Markdown" }
-    );
-  }
+  // Setiap chat masuk langsung dijawab secara natural dan kontekstual oleh Antigravity AI!
+  await runChat(text, ctx);
 });
 
 bot.catch((error) => {
