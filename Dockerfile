@@ -9,9 +9,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     openssh-client \
     build-essential \
     docker.io \
-    docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/* \
+    && groupadd -f docker \
     && usermod -aG docker node
+
+# Pasang Docker Compose CLI (mendukung 'docker compose' dan 'docker-compose')
+RUN mkdir -p /usr/local/lib/docker/cli-plugins /usr/local/bin \
+    && curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose \
+    && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
+    && ln -s /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
+
 
 # 2. Gunakan user non-root 'node' (UID 1000) bawaan image Node.js
 USER node
