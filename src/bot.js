@@ -368,7 +368,8 @@ bot.use(async (ctx, next) => {
 });
 
 // Perintah ringkas
-bot.command("start", async (ctx) => {
+bot.command(["start", "help", "bantuan"], async (ctx) => {
+
   const userId = ctx.from?.id;
   const currentEngine = await getUserEngine(userId);
   const currentModel = await getUserModel(userId);
@@ -643,8 +644,23 @@ if (
   BOT_TOKEN !== "PLACEHOLDER_TOKEN_FOR_CHECK"
 ) {
   console.log("Memulai Telegram Coding Agent (Antigravity Direct Gateway)...");
+  bot.api
+    .setMyCommands([
+      { command: "start", description: "Sambutan & info bot" },
+      { command: "help", description: "Panduan lengkap perintah" },
+      { command: "status", description: "Cek status tugas, engine & model aktif" },
+      { command: "model", description: "Pilih model AI (Gemini, Claude, GPT)" },
+      { command: "engine", description: "Pilih engine CLI (Antigravity / Claude Code)" },
+      { command: "reset", description: "Mulai sesi percakapan baru" },
+      { command: "cancel", description: "Hentikan tugas yang sedang berjalan" },
+    ])
+    .catch((err) => {
+      console.warn("Gagal mendaftarkan menu commands ke Telegram:", err.message);
+    });
+
   bot.start();
 } else {
+
   console.log("Bot diinisialisasi dalam mode pengecekan / offline.");
 }
 
