@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { Bot, InlineKeyboard } from "grammy";
 import { spawn } from "node:child_process";
-import { mkdir, readFile, writeFile, appendFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, appendFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
@@ -47,11 +47,13 @@ const bot = new Bot(BOT_TOKEN || "PLACEHOLDER_TOKEN_FOR_CHECK");
 const DATA_DIR = path.resolve("./data");
 const LOG_DIR = path.resolve("./logs");
 const PROJECTS_DIR = path.resolve("./projects");
+const UPLOADS_DIR = path.resolve(process.env.UPLOADS_DIR || "./uploads");
 const CONTEXT_FILE = path.join(DATA_DIR, "context.json");
 
 await mkdir(DATA_DIR, { recursive: true });
 await mkdir(LOG_DIR, { recursive: true });
 await mkdir(PROJECTS_DIR, { recursive: true });
+await mkdir(UPLOADS_DIR, { recursive: true });
 
 let activeTask = null;
 
@@ -148,8 +150,99 @@ async function appendLog(taskId, content) {
   await appendFile(file, content, { mode: 0o600 });
 }
 
+function formatBytes(bytes) {
+  if (!bytes || bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+}
+
+async function downloadTelegramFile(
+  ctx,
+  fileId,
+  originalName,
+  isPhoto = false,
+  mimeType = null
+) {
+  const file = await ctx.api.getFile(fileId);
+  if (!file.file_path) {
+    throw new Error("Telegram tidak mengembalikan file_path.");
+  }
+
+  // Cek batas ukuran 20MB bot Telegram
+  if (file.file_size && file.file_size > 20 * 1024 * 1024) {
+    throw new Error(
+      `Ukuran file (${formatBytes(file.file_size)}) melebihi batas maksimum 20MB Telegram Bot API.`
+    );
+  }
+
+  const downloadUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
+  const response = await fetch(downloadUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Gagal mengunduh file dari server Telegram (${response.status} ${response.statusText})`
+    );
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  let ext = path.extname(originalName || file.file_path || "");
+  if (!ext && isPhoto) ext = ".jpg";
+
+  const rawBase = path.basename(originalName || `media_${Date.now()}`, ext);
+  const safeBase =
+    rawBase.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50) || "file";
+  const savedFileName = `${Date.now()}_${safeBase}${ext}`;
+  const targetPath = path.join(UPLOADS_DIR, savedFileName);
+  const relativePath = path.relative(process.cwd(), targetPath);
+
+  await writeFile(targetPath, buffer);
+
+  const effectiveMime =
+    mimeType ||
+    file.mime_type ||
+    (isPhoto ? "image/jpeg" : "application/octet-stream");
+  const isImage =
+    isPhoto || Boolean(effectiveMime && effectiveMime.startsWith("image/"));
+
+  // Periksa apakah file berupa skrip/teks/kode agar bisa di-preview di prompt AI
+  const isCodeOrText =
+    /\.(js|mjs|cjs|ts|tsx|jsx|py|sh|bash|zsh|php|rb|go|rs|c|cpp|h|hpp|java|kt|scala|html|htm|css|scss|sass|json|jsonc|yaml|yml|xml|sql|env|md|txt|csv|tsv|log|toml|ini|conf)$/i.test(
+      savedFileName
+    ) ||
+    Boolean(
+      effectiveMime &&
+        (effectiveMime.startsWith("text/") ||
+          effectiveMime.includes("json") ||
+          effectiveMime.includes("javascript"))
+    );
+
+  let textContent = null;
+  if (isCodeOrText && buffer.length <= 100 * 1024) {
+    try {
+      textContent = buffer.toString("utf8");
+    } catch {
+      textContent = null;
+    }
+  }
+
+  return {
+    fileName: originalName || savedFileName,
+    savedFileName,
+    relativePath,
+    absolutePath: path.resolve(targetPath),
+    fileSize: buffer.length,
+    fileSizeFormatted: formatBytes(buffer.length),
+    isPhoto: isImage,
+    mimeType: effectiveMime,
+    textContent,
+  };
+}
+
 // Handler utama: Mengirim pesan langsung ke Antigravity AI
-async function sendToAntigravity(userMessage, ctx) {
+async function sendToAntigravity(userMessage, ctx, fileInfo = null) {
   if (activeTask) {
     await ctx.reply(
       `⏳ Antigravity sedang memproses instruksi sebelumnya (${activeTask.id}). Tunggu sebentar atau kirim /cancel untuk membatalkan.`
@@ -181,21 +274,46 @@ async function sendToAntigravity(userMessage, ctx) {
   const typingInterval = setInterval(sendTyping, 4000);
 
   try {
+    let fileInfoPrompt = "";
+    if (fileInfo) {
+      fileInfoPrompt = `
+INFORMASI FILE / GAMBAR DARI PENGGUNA:
+- Nama File: ${fileInfo.fileName}
+- Tipe Media: ${fileInfo.isPhoto ? "Gambar / Foto" : "Dokumen / File"} (${fileInfo.mimeType || "tidak diketahui"})
+- Ukuran File: ${fileInfo.fileSizeFormatted}
+- Lokasi di Server:
+  * Path Relatif: ${fileInfo.relativePath}
+  * Path Absolut: ${fileInfo.absolutePath}
+${fileInfo.textContent ? `\n--- ISI DOKUMEN / KODE (${fileInfo.fileName}) ---\n${truncate(fileInfo.textContent, 15000)}\n--- AKHIR ISI DOKUMEN ---` : ""}
+
+PANDUAN EKSEKUSI & PENANGANAN FILE:
+1. File/gambar ini SUDAH berhasil diunduh dan tersimpan di server pada path di atas.
+2. JIKA PENGGUNA MEMINTA EKSEKUSI (contoh: "eksekusi file ini", "jalankan script ini", "run file python ini", "test script ini"):
+   - Gunakan terminal tool untuk mengeksekusi langsung file tersebut (contoh: python3 "${fileInfo.relativePath}", node "${fileInfo.relativePath}", atau bash "${fileInfo.relativePath}").
+   - Tampilkan laporan dan hasil keluaran terminal (stdout/stderr) secara rapi dan jelas ke chat Telegram.
+3. JIKA BERUPA PROYEK / FILE KODE:
+   - Kamu dapat memindahkan/menyalin file ini ke subfolder './projects' jika diminta, atau memeriksa dan mengeditnya.
+4. JIKA BERUPA GAMBAR:
+   - Analisis informasi visual / teks error / rancangan diagram yang ada pada gambar tersebut untuk membantu menjawab atau menyelesaikan error koding pengguna.
+`.trim();
+    }
+
     const prompt = `
 Kamu adalah Antigravity AI, asisten software engineer otonom yang berkomunikasi langsung dengan developer melalui chat Telegram ini.
 
 LINGKUNGAN & SISTEM:
 - Kamu berada di lingkungan server developer.
 - Folder './projects' adalah tempat menyimpan repository/project coding yang dikelola.
+- Folder './uploads' adalah tempat menyimpan file, dokumen, script, dan gambar yang diunggah pengguna via chat Telegram.
 - Kamu memiliki akses tools mandiri: menjalankan perintah terminal, git clone, membuat branch, membaca kode, mengedit file, dan memeriksa file.
 
 PANDUAN INTERAKSI:
 1. Respon Natural & Cerdas: Mengobrollah dengan ramah, santai, dan profesional dalam bahasa Indonesia layaknya rekan programmer senior.
 2. Percakapan / Pertanyaan: Jika pengguna bertanya umum, berdiskusi teknis, atau menanyakan seputar sistem/project (contoh: "project disimpan di mana?", "arsitektur project ini bagaimana?", "jelaskan cara pakai Docker"), jawablah secara langsung, natural, dan akurat.
-3. Eksekusi Perintah: Jika pengguna memberi instruksi kerja (contoh: "clone repo https://github.com/...", "buatkan fitur login di project blog", "perbaiki error di index.js"), jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
+3. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja (contoh: "clone repo https://github.com/...", "buatkan fitur login di project blog", "perbaiki error di index.js") atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
 4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
 5. Format: Gunakan format Markdown yang rapi agar enak dibaca di Telegram.
-
+${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}
 Pesan dari pengguna:
 ${userMessage}
 `.trim();
@@ -342,9 +460,17 @@ ${userMessage}
 
 // Middleware otorisasi
 bot.use(async (ctx, next) => {
-  if (ctx.from && ctx.message?.text) {
+  if (ctx.from) {
+    const summary =
+      ctx.message?.text ||
+      (ctx.message?.caption ? `[Caption] ${ctx.message.caption}` : "") ||
+      (ctx.message?.photo ? "[Foto/Gambar]" : "") ||
+      (ctx.message?.document
+        ? `[Dokumen: ${ctx.message.document.file_name || "file"}]`
+        : "") ||
+      "[Pesan Lain]";
     console.log(
-      `[Pesan Masuk] Dari ID: ${ctx.from.id} (@${ctx.from.username || "tanpa_username"}): "${ctx.message.text}"`
+      `[Pesan Masuk] Dari ID: ${ctx.from.id} (@${ctx.from.username || "tanpa_username"}): "${summary}"`
     );
   }
 
@@ -369,14 +495,15 @@ bot.use(async (ctx, next) => {
 
 // Perintah ringkas
 bot.command(["start", "help", "bantuan"], async (ctx) => {
-
   const userId = ctx.from?.id;
   const currentEngine = await getUserEngine(userId);
   const currentModel = await getUserModel(userId);
   const activeModelName =
     AVAILABLE_MODELS.find((m) => m.id === currentModel)?.name || currentModel;
   const activeEngineLabel =
-    currentEngine === "claude" ? "Claude Code CLI (`claude`)" : "Antigravity CLI (`agy`)";
+    currentEngine === "claude"
+      ? "Claude Code CLI (`claude`)"
+      : "Antigravity CLI (`agy`)";
 
   const activeModelDisplay =
     currentEngine === "claude"
@@ -385,15 +512,19 @@ bot.command(["start", "help", "bantuan"], async (ctx) => {
 
   await ctx.reply(
     "👋 *Halo! Saya AI Coding Agent.*\n\n" +
-      "Saya terhubung langsung dengan Anda di Telegram ini. Anda bisa langsung mengobrol, bertanya seputar coding, atau memberikan perintah kerja apa pun.\n\n" +
+      "Saya terhubung langsung dengan Anda di Telegram ini. Anda bisa langsung mengobrol, mengirim file koding/skrip, mengirim screenshot error/gambar, atau memberikan perintah kerja apa pun.\n\n" +
       `⚙️ Engine aktif: *${activeEngineLabel}*\n` +
       `🤖 Model aktif: ${activeModelDisplay}\n\n` +
-
-      "Contoh yang bisa Anda ketik:\n" +
+      "📁 *Fitur File & Gambar:*\n" +
+      "• *Kirim Dokumen / Skrip:* Kirim file `.py`, `.js`, `.sh`, `.json`, `.zip` dll. dengan caption instruksi (contoh: _\"jalankan script ini\"_, _\"analisis kodingan ini\"_).\n" +
+      "• *Kirim Gambar / Foto:* Kirim screenshot error terminal, mockup UI, atau diagram untuk dianalisis oleh AI.\n\n" +
+      "Contoh pesan teks yang bisa Anda ketik:\n" +
       "• _\"project yang ada disimpan di mana?\"_\n" +
       "• _\"tolong clone repo https://github.com/user/repo ke folder myapp\"_\n" +
       "• _\"buatkan REST API login di project myapp\"_\n\n" +
       "Perintah bantuan:\n" +
+      "• `/files` - Lihat daftar file dan gambar yang telah diunggah\n" +
+      "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server (misal: `/exec python3 uploads/...`)\n" +
       "• `/engine` atau `/cli` - Ganti engine (Antigravity CLI / Claude Code CLI)\n" +
       "• `/model` - Ganti model AI untuk Antigravity (Claude Sonnet/Opus, Gemini, GPT)\n" +
       "• `/reset` atau `/new` - Mulai sesi obrolan baru dari awal\n" +
@@ -610,6 +741,151 @@ bot.command("status", async (ctx) => {
 });
 
 
+bot.command(["exec", "run", "sh"], async (ctx) => {
+  const cmd = ctx.match?.trim();
+  if (!cmd) {
+    await ctx.reply(
+      "ℹ️ *Cara penggunaan /exec:*\n\nKetik `/exec <perintah_shell>`\n\nContoh:\n• `/exec ls -la uploads`\n• `/exec python3 uploads/nama_file.py`\n• `/exec node uploads/nama_file.js`",
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
+  if (activeTask) {
+    await ctx.reply(
+      `⏳ Ada proses lain yang sedang berjalan (${activeTask.id}). Tunggu selesai atau kirim /cancel.`
+    );
+    return;
+  }
+
+  const taskId = randomUUID().slice(0, 8);
+  activeTask = {
+    id: taskId,
+    startedAt: Date.now(),
+    process: null,
+    cancelled: false,
+  };
+  const task = activeTask;
+
+  await ctx.reply(`⚡ *Menjalankan perintah:*\n\`${truncate(cmd, 250)}\`...`, {
+    parse_mode: "Markdown",
+  });
+
+  const sanitizedEnv = { ...process.env };
+  delete sanitizedEnv.BOT_TOKEN;
+  delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
+  delete sanitizedEnv.GEMINI_API_KEY;
+
+  const child = spawn(cmd, {
+    cwd: process.cwd(),
+    shell: true,
+    detached: true,
+    env: sanitizedEnv,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  task.process = child;
+  let stdout = "";
+  let stderr = "";
+  let settled = false;
+
+  const finishExec = async (code, signal, error) => {
+    if (settled) return;
+    settled = true;
+    if (activeTask?.id === taskId) activeTask = null;
+
+    if (task.cancelled) {
+      await ctx.reply("⚠️ Eksekusi dibatalkan.");
+      return;
+    }
+
+    const output = stdout.trim();
+    const errOutput = stderr.trim();
+    let msg = "";
+
+    if (code === 0 && !error) {
+      msg = `✅ *Eksekusi Selesai (Exit 0):*\n\`\`\`\n${truncate(output || "(Tidak ada output)", 3500)}\n\`\`\``;
+    } else {
+      const detail =
+        errOutput || output || error?.message || `Exit code ${code}`;
+      msg = `❌ *Eksekusi Gagal (Exit ${code ?? "err"}):*\n\`\`\`\n${truncate(detail, 3500)}\n\`\`\``;
+    }
+
+    try {
+      await ctx.reply(msg, { parse_mode: "Markdown" });
+    } catch {
+      await ctx.reply(truncate(msg.replace(/[`*]/g, ""), 3500));
+    }
+  };
+
+  const timer = setTimeout(() => {
+    task.cancelled = true;
+    killProcessTree(child, "SIGTERM");
+    setTimeout(() => {
+      if (activeTask?.id === taskId) killProcessTree(child, "SIGKILL");
+    }, 3000).unref();
+  }, 120000); // 2 menit timeout untuk direct exec
+
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk.toString();
+    if (stdout.length > MAX_OUTPUT) stdout = stdout.slice(-MAX_OUTPUT);
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString();
+    if (stderr.length > 5000) stderr = stderr.slice(-5000);
+  });
+  child.on("error", (err) => {
+    clearTimeout(timer);
+    finishExec(null, null, err);
+  });
+  child.on("close", (code, signal) => {
+    clearTimeout(timer);
+    finishExec(code, signal, null);
+  });
+});
+
+bot.command("files", async (ctx) => {
+  try {
+    const entries = await readdir(UPLOADS_DIR, { withFileTypes: true });
+    const files = entries.filter((e) => e.isFile());
+    if (files.length === 0) {
+      await ctx.reply(
+        "📁 Belum ada file atau gambar yang diunggah di folder `uploads/`.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const fileList = await Promise.all(
+      files.map(async (f) => {
+        const fullPath = path.join(UPLOADS_DIR, f.name);
+        const st = await stat(fullPath).catch(() => null);
+        return {
+          name: f.name,
+          size: st ? formatBytes(st.size) : "-",
+          mtime: st ? st.mtimeMs : 0,
+        };
+      })
+    );
+
+    fileList.sort((a, b) => b.mtime - a.mtime);
+    const recent = fileList.slice(0, 15);
+
+    let text = `📁 *Daftar File di \`uploads/\` (Total: ${fileList.length})*\n\n`;
+    for (const item of recent) {
+      text += `• \`${item.name}\` (${item.size})\n  _Path:_ \`uploads/${item.name}\`\n`;
+    }
+    if (fileList.length > 15) {
+      text += `\n_...dan ${fileList.length - 15} file lainnya._\n`;
+    }
+    text += `\n💡 _Kirim file/foto baru kapan saja atau gunakan \`/exec\` untuk menjalankan script._`;
+
+    await ctx.reply(text, { parse_mode: "Markdown" });
+  } catch (err) {
+    await ctx.reply(`❌ Gagal membaca folder uploads: ${err.message}`);
+  }
+});
+
 bot.command("cancel", async (ctx) => {
   if (!activeTask?.process) {
     await ctx.reply("Tidak ada proses Antigravity yang sedang aktif.");
@@ -620,6 +896,98 @@ bot.command("cancel", async (ctx) => {
   await ctx.reply("🛑 Permintaan pembatalan telah dikirim.");
 });
 
+// Handler untuk menerima dokumen/file dari Telegram chat
+bot.on("message:document", async (ctx) => {
+  const doc = ctx.message.document;
+  if (!doc) return;
+
+  const caption = (ctx.message.caption || "").trim();
+  if (caption.startsWith("/")) return;
+
+  let statusMsg = null;
+  try {
+    statusMsg = await ctx.reply(
+      `📥 *Mengunduh file: \`${doc.file_name || "dokumen"}\`*...`,
+      { parse_mode: "Markdown" }
+    );
+
+    const fileInfo = await downloadTelegramFile(
+      ctx,
+      doc.file_id,
+      doc.file_name,
+      false,
+      doc.mime_type
+    );
+
+    try {
+      if (statusMsg) {
+        await ctx.api.editMessageText(
+          ctx.chat.id,
+          statusMsg.message_id,
+          `📥 *File tersimpan:* \`${fileInfo.savedFileName}\` (${fileInfo.fileSizeFormatted})\n📂 Lokasi: \`${fileInfo.relativePath}\`\n⏳ *Mengirim instruksi ke AI Agent...*`,
+          { parse_mode: "Markdown" }
+        );
+      }
+    } catch {
+      // Abaikan jika tidak bisa edit pesan
+    }
+
+    const defaultInstruction = `Pengguna mengirim file "${fileInfo.fileName}". Analisis file ini, jelaskan isi atau fungsinya, dan jika diminta dieksekusi atau berupa skrip/program, jalankan perintah eksekusinya dan laporkan hasilnya.`;
+    const promptMessage = caption || defaultInstruction;
+
+    await sendToAntigravity(promptMessage, ctx, fileInfo);
+  } catch (err) {
+    console.error("Gagal memproses dokumen:", err);
+    await ctx.reply(`❌ Gagal memproses file: ${err.message}`);
+  }
+});
+
+// Handler untuk menerima gambar / foto dari Telegram chat
+bot.on("message:photo", async (ctx) => {
+  const photos = ctx.message.photo;
+  if (!photos || photos.length === 0) return;
+
+  const caption = (ctx.message.caption || "").trim();
+  if (caption.startsWith("/")) return;
+
+  const highestPhoto = photos[photos.length - 1];
+
+  let statusMsg = null;
+  try {
+    statusMsg = await ctx.reply(`📸 *Mengunduh gambar...*`, {
+      parse_mode: "Markdown",
+    });
+
+    const fileInfo = await downloadTelegramFile(
+      ctx,
+      highestPhoto.file_id,
+      `image_${highestPhoto.file_unique_id}.jpg`,
+      true,
+      "image/jpeg"
+    );
+
+    try {
+      if (statusMsg) {
+        await ctx.api.editMessageText(
+          ctx.chat.id,
+          statusMsg.message_id,
+          `📸 *Gambar tersimpan:* \`${fileInfo.savedFileName}\` (${fileInfo.fileSizeFormatted})\n📂 Lokasi: \`${fileInfo.relativePath}\`\n⏳ *Menganalisis bersama AI Agent...*`,
+          { parse_mode: "Markdown" }
+        );
+      }
+    } catch {
+      // Abaikan jika tidak bisa edit pesan
+    }
+
+    const defaultInstruction = `Pengguna mengirim gambar ini tanpa pesan teks tambahan. Analisis gambar ini (misalnya jika berupa screenshot error koding, diagram sistem, UI mockup, atau log terminal), jelaskan temuanmu, dan berikan solusi atau langkah konkrit untuk menindaklanjutinya.`;
+    const promptMessage = caption || defaultInstruction;
+
+    await sendToAntigravity(promptMessage, ctx, fileInfo);
+  } catch (err) {
+    console.error("Gagal memproses gambar:", err);
+    await ctx.reply(`❌ Gagal memproses gambar: ${err.message}`);
+  }
+});
 
 // Setiap chat yang masuk langsung diteruskan 100% ke Antigravity AI!
 bot.on("message:text", async (ctx) => {
@@ -648,6 +1016,8 @@ if (
     .setMyCommands([
       { command: "start", description: "Sambutan & info bot" },
       { command: "help", description: "Panduan lengkap perintah" },
+      { command: "files", description: "Daftar file & gambar yang diunggah" },
+      { command: "exec", description: "Eksekusi perintah terminal langsung di server" },
       { command: "status", description: "Cek status tugas, engine & model aktif" },
       { command: "model", description: "Pilih model AI (Gemini, Claude, GPT)" },
       { command: "engine", description: "Pilih engine CLI (Antigravity / Claude Code)" },

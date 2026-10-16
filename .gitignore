@@ -6,5 +6,7 @@ data/*.tmp
 gemini_auth/
 projects/*
 !projects/.gitkeep
+uploads/*
+!uploads/.gitkeep
 .DS_Store
 

@@ -41,8 +41,8 @@ RUN npm ci --omit=dev || npm install --omit=dev
 # 5. Salin source code
 COPY --chown=node:node . .
 
-# 6. Siapkan folder data, logs, dan projects
-RUN mkdir -p data logs /home/node/projects
+# 6. Siapkan folder data, logs, uploads, dan projects
+RUN mkdir -p data logs uploads /home/node/projects
 
 ENV NODE_ENV=production
 ENV AGY_BIN=/home/node/.local/bin/agy

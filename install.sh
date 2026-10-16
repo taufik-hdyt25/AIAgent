@@ -43,7 +43,7 @@ echo -e "${GREEN}✓ Docker Compose terdeteksi.${NC}"
 
 # 2. Persiapan Folder
 echo -e "\n${BLUE}[1/4] Mempersiapkan direktori...${NC}"
-mkdir -p data logs projects gemini_auth
+mkdir -p data logs projects uploads gemini_auth
 
 # Jika di host sudah ada login ~/.gemini, salin ke ./gemini_auth agar langsung bisa dipakai
 if [ -d "$HOME/.gemini" ] && [ ! -f "gemini_auth/settings.json" ]; then
@@ -52,7 +52,7 @@ if [ -d "$HOME/.gemini" ] && [ ! -f "gemini_auth/settings.json" ]; then
 fi
 
 # Pastikan permission aman
-chmod 777 data logs projects gemini_auth 2>/dev/null || true
+chmod 777 data logs projects uploads gemini_auth 2>/dev/null || true
 
 # 3. Konfigurasi .env
 echo -e "\n${BLUE}[2/4] Memeriksa konfigurasi .env...${NC}"

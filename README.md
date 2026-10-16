@@ -138,12 +138,41 @@ pm2 logs telegram-coding-agent
 
 | Perintah | Deskripsi |
 | :--- | :--- |
-| `/start` | Menampilkan pesan selamat datang, status engine, model, dan bantuan |
+| `/start` | Menampilkan pesan selamat datang, status engine, model, dan panduan fitur |
+| `/files` | Melihat daftar file dan gambar yang pernah diunggah ke server (`uploads/`) |
+| `/exec <cmd>` | Menjalankan perintah terminal langsung di server (misal: `/exec python3 uploads/...`) |
 | `/engine` / `/cli` | Memilih engine CLI yang digunakan (**Antigravity CLI** `agy` atau **Claude Code CLI** `claude`) |
 | `/model` | Membuka menu pemilihan model AI untuk Antigravity (Claude Sonnet/Opus, Gemini, GPT) |
 | `/status` | Melihat status task yang sedang berlangsung, engine, & model yang aktif |
 | `/reset` / `/new` | Memulai sesi obrolan baru dari awal (reset memori percakapan) |
 | `/cancel` | Menghentikan task yang sedang diproses |
+
+---
+
+## 📂 Penerimaan File & Gambar Serta Eksekusi
+
+Bot mendukung penerimaan file kode, skrip, data, dan gambar secara langsung dari chat Telegram:
+
+### 1. Mengirim & Mengeksekusi File/Skrip
+- Kirim file skrip seperti `.py`, `.js`, `.sh`, `.php`, `.json`, `.csv`, `.zip` dll. ke chat bot Telegram.
+- **Dengan Caption:** Beri caption instruksi seperti:
+  * _"jalankan script ini"_
+  * _"eksekusi file ini dengan python3 dan cek outputnya"_
+  * _"analisis file ini dan perbaiki bug di dalamnya"_
+- File otomatis diunduh dan disimpan di folder `./uploads/`.
+- Agent AI (`agy` / `claude`) akan menerima path file beserta cuplikan isinya, lalu mengeksekusi langsung di terminal server dan mengembalikan hasil outputnya ke Telegram!
+
+### 2. Mengirim Gambar / Screenshot Error
+- Kirim foto/screenshot terminal error, diagram alur, atau desain UI.
+- Agent AI akan menganalisis gambar/teks error tersebut dan memberikan solusi atau perbaikan kode pada project terkait.
+
+### 3. Eksekusi Cepat Shell (`/exec`)
+- Jika ingin menjalankan perintah shell langsung tanpa melalui AI:
+  ```bash
+  /exec python3 uploads/nama_file.py
+  /exec ls -la uploads
+  /exec node uploads/app.js
+  ```
 
 
 

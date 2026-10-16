@@ -23,6 +23,8 @@ services:
       - ./logs:/app/logs
       # Folder kerja repositori di host (hasil coding AI langsung tersimpan di host)
       - ./projects:/home/node/projects
+      # File dan gambar yang diunggah dari chat Telegram
+      - ./uploads:/app/uploads
       # Persistensi sesi login & setting Antigravity CLI
       - ./gemini_auth:/home/node/.gemini
       # Persistensi sesi login & config Claude Code CLI
