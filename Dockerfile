@@ -48,4 +48,6 @@ ENV NODE_ENV=production
 ENV AGY_BIN=/home/node/.local/bin/agy
 ENV PROJECTS_FILE=/app/data/projects.json
 
+ENTRYPOINT []
 CMD ["node", "src/bot.js"]
+
