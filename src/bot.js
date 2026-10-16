@@ -1,18 +1,34 @@
 import "dotenv/config";
-import { Bot } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile, appendFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 
+const AVAILABLE_MODELS = [
+  { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)" },
+  { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)" },
+  { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)" },
+  { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)" },
+  { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)" },
+  { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)" },
+];
+const DEFAULT_AGY_MODEL = process.env.AGY_MODEL || "gemini-3.8-flash-medium";
+const DEFAULT_CLAUDE_MODEL = process.env.CLAUDE_MODEL || "sonnet";
+
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const AGY_BIN =
   process.env.AGY_BIN || path.join(os.homedir(), ".local/bin/agy");
+const CLAUDE_BIN =
+  process.env.CLAUDE_BIN || path.join(os.homedir(), ".local/bin/claude");
+const DEFAULT_ENGINE = process.env.CLI_ENGINE || "agy"; // 'agy' atau 'claude'
+
 const TIMEOUT_MS = Number(process.env.TASK_TIMEOUT_MS || 900000);
 const MAX_OUTPUT = Number(process.env.MAX_TASK_OUTPUT || 12000);
 const AUTO_APPROVE_PERMISSIONS =
   process.env.AGY_AUTO_APPROVE_PERMISSIONS !== "false"; // default true untuk interaksi otonom langsung
+
 const ALLOWED_IDS = new Set(
   (process.env.ALLOWED_TELEGRAM_IDS || "")
     .split(",")
@@ -25,6 +41,7 @@ if (!BOT_TOKEN || ALLOWED_IDS.size === 0) {
     "[PERINGATAN] BOT_TOKEN atau ALLOWED_TELEGRAM_IDS belum diisi di .env."
   );
 }
+
 
 const bot = new Bot(BOT_TOKEN || "PLACEHOLDER_TOKEN_FOR_CHECK");
 const DATA_DIR = path.resolve("./data");
@@ -77,6 +94,37 @@ async function resetUserConversation(userId) {
   context.conversations[String(userId)] = randomUUID();
   await saveContext(context);
 }
+
+async function getUserModel(userId) {
+  if (!userId) return DEFAULT_AGY_MODEL;
+  const context = await loadContext();
+  return context.models?.[String(userId)] || DEFAULT_AGY_MODEL;
+}
+
+
+async function setUserModel(userId, modelId) {
+  if (!userId) return;
+  const context = await loadContext();
+  if (!context.models) context.models = {};
+  context.models[String(userId)] = modelId;
+  await saveContext(context);
+}
+
+async function getUserEngine(userId) {
+  if (!userId) return DEFAULT_ENGINE;
+  const context = await loadContext();
+  return context.engines?.[String(userId)] || DEFAULT_ENGINE;
+}
+
+async function setUserEngine(userId, engine) {
+  if (!userId) return;
+  const context = await loadContext();
+  if (!context.engines) context.engines = {};
+  context.engines[String(userId)] = engine;
+  await saveContext(context);
+}
+
+
 
 function truncate(text, max = 3500) {
   if (!text) return "";
@@ -152,19 +200,43 @@ Pesan dari pengguna:
 ${userMessage}
 `.trim();
 
-    const agyArgs = [
-      "--conversation",
-      convId,
-      "-p",
-      prompt,
-      "--output-format",
-      "text",
-      "--print-timeout",
-      "10m",
-    ];
+    const engine = await getUserEngine(userId);
+    let binToRun = AGY_BIN;
+    let cliArgs = [];
 
-    if (AUTO_APPROVE_PERMISSIONS) {
-      agyArgs.push("--dangerously-skip-permissions");
+    if (engine === "claude") {
+      binToRun = CLAUDE_BIN;
+      cliArgs = [
+        "--session-id",
+        convId,
+        "--model",
+        DEFAULT_CLAUDE_MODEL,
+        "-p",
+        prompt,
+        "--output-format",
+        "text",
+      ];
+      if (AUTO_APPROVE_PERMISSIONS) {
+        cliArgs.push("--dangerously-skip-permissions");
+      }
+    } else {
+      binToRun = AGY_BIN;
+      const userModel = await getUserModel(userId);
+      cliArgs = [
+        "--conversation",
+        convId,
+        "--model",
+        userModel,
+        "-p",
+        prompt,
+        "--output-format",
+        "text",
+        "--print-timeout",
+        "10m",
+      ];
+      if (AUTO_APPROVE_PERMISSIONS) {
+        cliArgs.push("--dangerously-skip-permissions");
+      }
     }
 
     const sanitizedEnv = { ...process.env };
@@ -172,13 +244,14 @@ ${userMessage}
     delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
     delete sanitizedEnv.GEMINI_API_KEY;
 
-    const child = spawn(AGY_BIN, agyArgs, {
+    const child = spawn(binToRun, cliArgs, {
       cwd: process.cwd(),
       shell: false,
       detached: true,
       env: sanitizedEnv,
       stdio: ["ignore", "pipe", "pipe"],
     });
+
 
     task.process = child;
 
@@ -214,15 +287,18 @@ ${userMessage}
         return;
       }
 
+      const engineLabel = engine === "claude" ? "Claude Code" : "Antigravity";
+
       if (error || (code !== 0 && !stdout.trim())) {
         const errText = stderr.trim() || error?.message || `Exit code ${code}`;
         await ctx.reply(
-          `❌ Maaf, Antigravity mengalami kendala:\n${truncate(errText, 1000)}`
+          `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`
         );
         return;
       }
 
-      const responseText = stdout.trim() || "Antigravity tidak mengembalikan pesan balasan.";
+      const responseText = stdout.trim() || `${engineLabel} tidak mengembalikan pesan balasan.`;
+
 
       try {
         await ctx.reply(truncate(responseText, 3800), {
@@ -293,19 +369,202 @@ bot.use(async (ctx, next) => {
 
 // Perintah ringkas
 bot.command("start", async (ctx) => {
+  const userId = ctx.from?.id;
+  const currentEngine = await getUserEngine(userId);
+  const currentModel = await getUserModel(userId);
+  const activeModelName =
+    AVAILABLE_MODELS.find((m) => m.id === currentModel)?.name || currentModel;
+  const activeEngineLabel =
+    currentEngine === "claude" ? "Claude Code CLI (`claude`)" : "Antigravity CLI (`agy`)";
+
+  const activeModelDisplay =
+    currentEngine === "claude"
+      ? `Claude Sonnet (\`${DEFAULT_CLAUDE_MODEL}\`)`
+      : `*${activeModelName}* (\`${currentModel}\`)`;
+
   await ctx.reply(
-    "👋 *Halo! Saya Antigravity AI.*\n\n" +
+    "👋 *Halo! Saya AI Coding Agent.*\n\n" +
       "Saya terhubung langsung dengan Anda di Telegram ini. Anda bisa langsung mengobrol, bertanya seputar coding, atau memberikan perintah kerja apa pun.\n\n" +
+      `⚙️ Engine aktif: *${activeEngineLabel}*\n` +
+      `🤖 Model aktif: ${activeModelDisplay}\n\n` +
+
       "Contoh yang bisa Anda ketik:\n" +
       "• _\"project yang ada disimpan di mana?\"_\n" +
       "• _\"tolong clone repo https://github.com/user/repo ke folder myapp\"_\n" +
       "• _\"buatkan REST API login di project myapp\"_\n\n" +
       "Perintah bantuan:\n" +
+      "• `/engine` atau `/cli` - Ganti engine (Antigravity CLI / Claude Code CLI)\n" +
+      "• `/model` - Ganti model AI untuk Antigravity (Claude Sonnet/Opus, Gemini, GPT)\n" +
       "• `/reset` atau `/new` - Mulai sesi obrolan baru dari awal\n" +
-      "• `/status` - Cek apakah saya sedang memproses tugas\n" +
+      "• `/status` - Cek status bot, engine & model aktif\n" +
       "• `/cancel` - Hentikan tugas yang sedang berjalan",
     { parse_mode: "Markdown" }
   );
+});
+
+bot.command(["engine", "cli"], async (ctx) => {
+  const arg = ctx.match?.trim().toLowerCase();
+  const userId = ctx.from?.id;
+  const currentEngine = await getUserEngine(userId);
+
+  if (arg === "agy" || arg === "antigravity") {
+    await setUserEngine(userId, "agy");
+    await ctx.reply("✅ Engine berhasil diubah ke: *Antigravity CLI* (`agy`)", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+  if (arg === "claude" || arg === "claudecode") {
+    await setUserEngine(userId, "claude");
+    await ctx.reply("✅ Engine berhasil diubah ke: *Claude Code CLI* (`claude`)", {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  const keyboard = new InlineKeyboard()
+    .text(
+      `${currentEngine === "agy" ? "🔘 " : "⚪ "}Antigravity CLI (agy)`,
+      "set_engine:agy"
+    )
+    .row()
+    .text(
+      `${currentEngine === "claude" ? "🔘 " : "⚪ "}Claude Code CLI (claude)`,
+      "set_engine:claude"
+    );
+
+  const engineLabel =
+    currentEngine === "claude" ? "Claude Code CLI (claude)" : "Antigravity CLI (agy)";
+
+  await ctx.reply(
+    `⚙️ *Pilihan Engine CLI*\n\nEngine aktif saat ini:\n👉 *${engineLabel}*\n\nSilakan pilih engine eksekusi yang ingin digunakan:`,
+    {
+      reply_markup: keyboard,
+      parse_mode: "Markdown",
+    }
+  );
+});
+
+bot.callbackQuery(/^set_engine:(.+)$/, async (ctx) => {
+  const engineId = ctx.match[1];
+  const userId = ctx.from?.id;
+
+  if (engineId !== "agy" && engineId !== "claude") {
+    await ctx.answerCallbackQuery({ text: "Engine tidak valid!" });
+    return;
+  }
+
+  await setUserEngine(userId, engineId);
+  const engineLabel =
+    engineId === "claude" ? "Claude Code CLI (claude)" : "Antigravity CLI (agy)";
+
+  await ctx.answerCallbackQuery({
+    text: `Engine diubah ke ${engineLabel}`,
+  });
+
+  const keyboard = new InlineKeyboard()
+    .text(
+      `${engineId === "agy" ? "🔘 " : "⚪ "}Antigravity CLI (agy)`,
+      "set_engine:agy"
+    )
+    .row()
+    .text(
+      `${engineId === "claude" ? "🔘 " : "⚪ "}Claude Code CLI (claude)`,
+      "set_engine:claude"
+    );
+
+  try {
+    await ctx.editMessageText(
+      `⚙️ *Pilihan Engine CLI*\n\n✅ Engine aktif sekarang:\n👉 *${engineLabel}*\n\nSilakan pilih jika ingin mengganti lagi:`,
+      {
+        reply_markup: keyboard,
+        parse_mode: "Markdown",
+      }
+    );
+  } catch {
+    // Abaikan jika pesan tidak berubah
+  }
+});
+
+bot.command("model", async (ctx) => {
+  const arg = ctx.match?.trim();
+  const userId = ctx.from?.id;
+  const currentModel = await getUserModel(userId);
+
+  if (arg) {
+    const matched = AVAILABLE_MODELS.find(
+      (m) => m.id.toLowerCase() === arg.toLowerCase()
+    );
+    if (!matched) {
+      const listStr = AVAILABLE_MODELS.map(
+        (m) => `• \`${m.id}\` (${m.name})`
+      ).join("\n");
+      await ctx.reply(
+        `❌ Model \`${arg}\` tidak dikenali.\n\nPilihan yang tersedia:\n${listStr}`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+    await setUserModel(userId, matched.id);
+    await ctx.reply(
+      `✅ Model berhasil diubah ke: *${matched.name}*\nID: \`${matched.id}\``,
+      { parse_mode: "Markdown" }
+    );
+    return;
+  }
+
+  const keyboard = new InlineKeyboard();
+  for (const model of AVAILABLE_MODELS) {
+    const isCurrent = model.id === currentModel;
+    const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;
+    keyboard.text(label, `set_model:${model.id}`).row();
+  }
+
+  const activeName =
+    AVAILABLE_MODELS.find((m) => m.id === currentModel)?.name || currentModel;
+
+  await ctx.reply(
+    `🤖 *Pilihan Model AI*\n\nModel aktif saat ini:\n👉 *${activeName}* (\`${currentModel}\`)\n\nSilakan klik tombol di bawah untuk memilih model:`,
+    {
+      reply_markup: keyboard,
+      parse_mode: "Markdown",
+    }
+  );
+});
+
+bot.callbackQuery(/^set_model:(.+)$/, async (ctx) => {
+  const modelId = ctx.match[1];
+  const userId = ctx.from?.id;
+  const matched = AVAILABLE_MODELS.find((m) => m.id === modelId);
+
+  if (!matched) {
+    await ctx.answerCallbackQuery({ text: "Model tidak dikenali!" });
+    return;
+  }
+
+  await setUserModel(userId, matched.id);
+  await ctx.answerCallbackQuery({
+    text: `Model diubah ke ${matched.name}`,
+  });
+
+  const keyboard = new InlineKeyboard();
+  for (const model of AVAILABLE_MODELS) {
+    const isCurrent = model.id === matched.id;
+    const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;
+    keyboard.text(label, `set_model:${model.id}`).row();
+  }
+
+  try {
+    await ctx.editMessageText(
+      `🤖 *Pilihan Model AI*\n\n✅ Model aktif sekarang:\n👉 *${matched.name}* (\`${matched.id}\`)\n\nSilakan klik tombol di bawah jika ingin mengganti ke model lain:`,
+      {
+        reply_markup: keyboard,
+        parse_mode: "Markdown",
+      }
+    );
+  } catch {
+    // Abaikan jika tidak ada perubahan tampilan
+  }
 });
 
 bot.command(["new", "reset"], async (ctx) => {
@@ -317,16 +576,38 @@ bot.command(["new", "reset"], async (ctx) => {
 });
 
 bot.command("status", async (ctx) => {
+  const userId = ctx.from?.id;
+  const currentEngine = await getUserEngine(userId);
+  const currentModel = await getUserModel(userId);
+  const activeModelName =
+    AVAILABLE_MODELS.find((m) => m.id === currentModel)?.name || currentModel;
+  const engineLabel =
+    currentEngine === "claude" ? "Claude Code CLI (`claude`)" : "Antigravity CLI (`agy`)";
+
+  const activeModelDisplay =
+    currentEngine === "claude"
+      ? `Claude Sonnet (\`${DEFAULT_CLAUDE_MODEL}\`)`
+      : `*${activeModelName}* (\`${currentModel}\`)`;
+
   if (!activeTask) {
-    await ctx.reply("🟢 Antigravity sedang idle (siap menerima instruksi).");
+    await ctx.reply(
+      `🟢 AI Agent sedang idle (siap menerima instruksi).\n` +
+      `⚙️ Engine aktif: *${engineLabel}*\n` +
+      `🤖 Model aktif: ${activeModelDisplay}`,
+      { parse_mode: "Markdown" }
+    );
     return;
   }
   const elapsed = Math.floor((Date.now() - activeTask.startedAt) / 1000);
   await ctx.reply(
-    `⏳ Antigravity sedang menjalankan tugas:\nID: \`${activeTask.id}\`\nDurasi: ${elapsed} detik.`,
+    `⏳ AI Agent sedang menjalankan tugas:\nID: \`${activeTask.id}\`\nDurasi: ${elapsed} detik.\n` +
+    `⚙️ Engine: *${engineLabel}*\n` +
+    `🤖 Model: ${activeModelDisplay}`,
     { parse_mode: "Markdown" }
   );
+
 });
+
 
 bot.command("cancel", async (ctx) => {
   if (!activeTask?.process) {
@@ -337,6 +618,7 @@ bot.command("cancel", async (ctx) => {
   killProcessTree(activeTask.process, "SIGTERM");
   await ctx.reply("🛑 Permintaan pembatalan telah dikirim.");
 });
+
 
 // Setiap chat yang masuk langsung diteruskan 100% ke Antigravity AI!
 bot.on("message:text", async (ctx) => {

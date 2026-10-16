@@ -10,6 +10,8 @@ services:
     environment:
       - NODE_ENV=production
       - AGY_BIN=/home/node/.local/bin/agy
+      - CLAUDE_BIN=/usr/local/bin/claude
+      - CLI_ENGINE=${CLI_ENGINE:-agy}
       - PROJECTS_FILE=/app/data/projects.json
       - TASK_TIMEOUT_MS=${TASK_TIMEOUT_MS:-900000}
       - MAX_TASK_OUTPUT=${MAX_TASK_OUTPUT:-12000}
@@ -23,7 +25,10 @@ services:
       - ./projects:/home/node/projects
       # Persistensi sesi login & setting Antigravity CLI
       - ./gemini_auth:/home/node/.gemini
+      # Persistensi sesi login & config Claude Code CLI
+      - ./claude_auth:/home/node/.claude
       # Akses Docker daemon host (DooD: kendalikan Docker host langsung dari bot)
       - /var/run/docker.sock:/var/run/docker.sock
+
     security_opt:
       - no-new-privileges:true

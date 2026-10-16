@@ -138,13 +138,14 @@ pm2 logs telegram-coding-agent
 
 | Perintah | Deskripsi |
 | :--- | :--- |
-| `/start` | Menampilkan pesan selamat datang dan ringkasan perintah |
-| `/help` | Menampilkan panduan dan contoh pemakaian |
-| `/projects` | Menampilkan daftar repository yang telah didaftarkan |
-| `/code <project> <instruksi>` | Menjalankan task coding pada project yang dipilih |
-| `/clone <nama> <URL-GitHub>` | Meng-clone repository publik GitHub ke folder project |
-| `/status` | Melihat status task yang sedang berlangsung |
-| `/cancel` | Menghentikan paksa task yang sedang berjalan |
+| `/start` | Menampilkan pesan selamat datang, status engine, model, dan bantuan |
+| `/engine` / `/cli` | Memilih engine CLI yang digunakan (**Antigravity CLI** `agy` atau **Claude Code CLI** `claude`) |
+| `/model` | Membuka menu pemilihan model AI untuk Antigravity (Claude Sonnet/Opus, Gemini, GPT) |
+| `/status` | Melihat status task yang sedang berlangsung, engine, & model yang aktif |
+| `/reset` / `/new` | Memulai sesi obrolan baru dari awal (reset memori percakapan) |
+| `/cancel` | Menghentikan task yang sedang diproses |
+
+
 
 ---
 

@@ -19,9 +19,12 @@ RUN mkdir -p /usr/local/lib/docker/cli-plugins /usr/local/bin \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
     && ln -s /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
 
+# Pasang Claude Code CLI secara global
+RUN npm install -g @anthropic-ai/claude-code
 
 # 2. Gunakan user non-root 'node' (UID 1000) bawaan image Node.js
 USER node
+
 ENV HOME=/home/node
 ENV PATH="/home/node/.local/bin:${PATH}"
 
