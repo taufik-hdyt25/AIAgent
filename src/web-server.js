@@ -31,12 +31,16 @@ const AVAILABLE_CLAUDE_MODELS = [
 ];
 
 const AVAILABLE_UNIVERSAL_MODELS = [
-  { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (Sangat Cerdas & Hemat - Rekomendasi)" },
-  { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (Penalaran Ekstrem / Thinking)" },
-  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)" },
-  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cepat & Ringkas)" },
-  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (Super Cepat)" },
-  { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B (Spesialis Koding)" },
+  { id: "deepseek/deepseek-v4", name: "DeepSeek V4 (Generasi Terbaru - Flagship)", badge: "Terbaru" },
+  { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (Sangat Cerdas & Hemat - Rekomendasi)", badge: "Rekomendasi" },
+  { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (Penalaran Ekstrem / Thinking)", badge: "Thinking" },
+  { id: "deepseek/deepseek-coder", name: "DeepSeek Coder (Spesialis Koding)", badge: "Koding" },
+  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
+  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
+  { id: "openai/gpt-4o", name: "GPT-4o (Omni Flagship)", badge: "Flagship" },
+  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cepat & Ringkas)", badge: "Cepat" },
+  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (Super Cepat)", badge: "Kilat" },
+  { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B (Spesialis Koding)", badge: "Open" },
 ];
 
 // Helper membaca dan parse file .env

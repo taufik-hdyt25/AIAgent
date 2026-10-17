@@ -227,7 +227,7 @@ async function loadSettings() {
       for (const m of (availableOptions.universalModels || [])) {
         const opt = document.createElement("option");
         opt.value = m.id;
-        opt.textContent = m.name;
+        opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
         opt.selected = m.id === (currentSettings.UNIVERSAL_MODEL || "deepseek/deepseek-chat");
         universalModelSelect.appendChild(opt);
       }
