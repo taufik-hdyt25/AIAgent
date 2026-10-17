@@ -301,11 +301,11 @@ async function downloadTelegramFile(
   };
 }
 
-// Handler utama: Mengirim pesan langsung ke Antigravity AI
+// Handler utama: Mengirim pesan langsung ke TH Agent
 async function sendToAntigravity(userMessage, ctx, fileInfo = null) {
   if (activeTask) {
     await ctx.reply(
-      `⏳ Antigravity sedang memproses instruksi sebelumnya (${activeTask.id}). Tunggu sebentar atau kirim /cancel untuk membatalkan.`
+      `⏳ TH Agent sedang memproses instruksi sebelumnya (${activeTask.id}). Tunggu sebentar atau kirim /cancel untuk membatalkan.`
     );
     return;
   }
@@ -359,7 +359,7 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     }
 
     const prompt = `
-Kamu adalah Antigravity AI, asisten software engineer otonom yang berkomunikasi langsung dengan developer melalui chat Telegram ini.
+Kamu adalah TH Agent, asisten software engineer otonom yang berkomunikasi langsung dengan developer melalui chat Telegram ini.
 
 LINGKUNGAN & SISTEM:
 - Kamu berada di lingkungan server developer.
@@ -600,7 +600,7 @@ bot.command(["start", "help", "bantuan"], async (ctx) => {
   }
 
   await ctx.reply(
-    "👋 *Halo! Saya AI Coding Agent.*\n\n" +
+    "👋 *Halo! Saya TH Agent (AI Coding Agent).*\n\n" +
       "Saya terhubung langsung dengan Anda di Telegram ini. Anda bisa langsung mengobrol, mengirim file koding/skrip, mengirim screenshot error/gambar, atau memberikan perintah kerja apa pun.\n\n" +
       `⚙️ Engine aktif: *${activeEngineLabel}*\n` +
       `🤖 Model aktif: ${activeModelDisplay}\n\n` +
@@ -857,7 +857,7 @@ bot.command("status", async (ctx) => {
 
   if (!activeTask) {
     await ctx.reply(
-      `🟢 AI Agent sedang idle (siap menerima instruksi).\n` +
+      `🟢 TH Agent sedang idle (siap menerima instruksi).\n` +
       `⚙️ Engine aktif: *${engineLabel}*\n` +
       `🤖 Model aktif: ${activeModelDisplay}`,
       { parse_mode: "Markdown" }
@@ -866,7 +866,7 @@ bot.command("status", async (ctx) => {
   }
   const elapsed = Math.floor((Date.now() - activeTask.startedAt) / 1000);
   await ctx.reply(
-    `⏳ AI Agent sedang menjalankan tugas:\nID: \`${activeTask.id}\`\nDurasi: ${elapsed} detik.\n` +
+    `⏳ TH Agent sedang menjalankan tugas:\nID: \`${activeTask.id}\`\nDurasi: ${elapsed} detik.\n` +
     `⚙️ Engine: *${engineLabel}*\n` +
     `🤖 Model: ${activeModelDisplay}`,
     { parse_mode: "Markdown" }
@@ -1123,7 +1123,7 @@ bot.on("message:photo", async (ctx) => {
   }
 });
 
-// Setiap chat yang masuk langsung diteruskan 100% ke Antigravity AI!
+// Setiap chat yang masuk langsung diteruskan 100% ke TH Agent!
 bot.on("message:text", async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith("/")) return;
@@ -1145,7 +1145,7 @@ if (
   BOT_TOKEN &&
   BOT_TOKEN !== "PLACEHOLDER_TOKEN_FOR_CHECK"
 ) {
-  console.log("Memulai Telegram Coding Agent (Antigravity Direct Gateway)...");
+  console.log("Memulai Telegram Coding Agent (TH Agent Gateway)...");
   bot.api
     .setMyCommands([
       { command: "start", description: "Sambutan & info bot" },
