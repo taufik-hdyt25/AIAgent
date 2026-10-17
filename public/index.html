@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telegram AI Agent - Control Panel & Settings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="bg-glow bg-glow-1"></div>
+  <div class="bg-glow bg-glow-2"></div>
+
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-logo">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+            <line x1="12" y1="22.08" x2="12" y2="12"></line>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">Telegram AI Coding Agent</h1>
+          <p class="brand-subtitle">Control Panel & Pengaturan Lingkungan</p>
+        </div>
+      </div>
+
+      <div class="header-status">
+        <div class="status-pill" id="statusPill">
+          <span class="status-dot"></span>
+          <span id="statusText">Memeriksa sistem...</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Quick Stat Bar -->
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <span class="metric-label">Engine CLI</span>
+        <div class="metric-value" id="badgeEngine">--</div>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Model Default</span>
+        <div class="metric-value font-mono" id="badgeModel">--</div>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Status Token</span>
+        <div class="metric-value" id="badgeToken">--</div>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Host OS</span>
+        <div class="metric-value font-mono" id="badgeHost">--</div>
+      </div>
+    </section>
+
+    <!-- Main Settings Form -->
+    <main class="main-content">
+      <form id="settingsForm" class="settings-form" novalidate>
+        
+        <!-- SECTION 1: Telegram Configuration -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon blue">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2L2 9.5l7 3 3 7 9.5-17.5z"></path>
+                <path d="M9 12.5L21.5 2"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">Kredensial Telegram Bot</h2>
+              <p class="card-description">Token bot dari @BotFather dan daftar ID user yang diizinkan mengakses bot.</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- BOT_TOKEN -->
+            <div class="form-group">
+              <div class="label-row">
+                <label for="botToken" class="form-label">BOT TOKEN</label>
+                <span class="label-hint">Wajib</span>
+              </div>
+              <div class="input-action-wrapper">
+                <input 
+                  type="password" 
+                  id="botToken" 
+                  name="BOT_TOKEN" 
+                  class="form-input font-mono" 
+                  placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxyz"
+                  autocomplete="off"
+                  spellcheck="false"
+                  required
+                >
+                <button type="button" class="btn-icon" id="toggleTokenVisibility" title="Tampilkan / Sembunyikan Token" aria-label="Toggle token visibility">
+                  <svg id="eyeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+                <button type="button" class="btn btn-secondary" id="btnTestToken">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  <span>Test Bot</span>
+                </button>
+              </div>
+
+              <!-- Info Hasil Test Token -->
+              <div id="tokenTestResult" class="token-result-box hidden">
+                <div class="token-result-content">
+                  <span class="token-result-icon">🤖</span>
+                  <div class="token-result-details">
+                    <strong id="botResultName">-</strong>
+                    <span id="botResultUser" class="font-mono">-</span>
+                  </div>
+                </div>
+                <a id="botTelegramLink" href="#" target="_blank" rel="noopener" class="btn btn-sm btn-outline">Buka di Telegram ↗</a>
+              </div>
+            </div>
+
+            <!-- ALLOWED_TELEGRAM_IDS -->
+            <div class="form-group">
+              <div class="label-row">
+                <label for="allowedIds" class="form-label">ALLOWED TELEGRAM IDS</label>
+                <span class="label-hint">Keamanan Utama</span>
+              </div>
+              <input 
+                type="text" 
+                id="allowedIds" 
+                name="ALLOWED_TELEGRAM_IDS" 
+                class="form-input font-mono" 
+                placeholder="7582829091, 123456789"
+                autocomplete="off"
+                required
+              >
+              <div class="form-help">
+                Masukkan ID Telegram Anda (angka). Jika lebih dari satu, pisahkan dengan koma. Dapatkan ID akun Telegram Anda via bot resmi <a href="https://t.me/userinfobot" target="_blank" rel="noopener">@userinfobot</a>.
+              </div>
+              <div class="id-chips" id="idChipsContainer"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 2: Model & Engine AI -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon purple">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a10 10 0 1 0 10 10H12V2z"></path>
+                <path d="M12 12L2.1 12a10.1 10.1 0 0 0 9.9 9.9V12z"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">Engine & Model AI</h2>
+              <p class="card-description">Pilih CLI engine utama dan model AI default saat bot merespons instruksi koding.</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- CLI Engine Selector -->
+            <div class="form-group">
+              <label class="form-label">CLI ENGINE</label>
+              <div class="engine-selector">
+                <label class="engine-option" id="optAgy">
+                  <input type="radio" name="CLI_ENGINE" value="agy" checked>
+                  <div class="engine-card">
+                    <div class="engine-header">
+                      <span class="engine-name">Antigravity CLI (agy)</span>
+                      <span class="badge badge-primary">Default</span>
+                    </div>
+                    <p class="engine-desc">Ditenagai oleh Gemini 3.8 Flash & Claude dengan kapabilitas agentic DeepMind.</p>
+                  </div>
+                </label>
+
+                <label class="engine-option" id="optClaude">
+                  <input type="radio" name="CLI_ENGINE" value="claude">
+                  <div class="engine-card">
+                    <div class="engine-header">
+                      <span class="engine-name">Claude Code (claude)</span>
+                      <span class="badge badge-purple">Anthropic</span>
+                    </div>
+                    <p class="engine-desc">Ditenagai oleh Claude Code CLI resmi dengan arsitektur Sonnet / Opus.</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <!-- Model Default untuk AGY -->
+            <div class="form-group" id="groupAgyModel">
+              <div class="label-row">
+                <label for="agyModel" class="form-label">DEFAULT MODEL (ANTIGRAVITY / AGY)</label>
+                <span class="label-hint">Dapat diganti per chat via /model</span>
+              </div>
+              <div class="select-wrapper">
+                <select id="agyModel" name="AGY_MODEL" class="form-select font-mono"></select>
+              </div>
+            </div>
+
+            <!-- Model Default untuk Claude Code -->
+            <div class="form-group" id="groupClaudeModel">
+              <div class="label-row">
+                <label for="claudeModel" class="form-label">DEFAULT MODEL (CLAUDE CODE)</label>
+              </div>
+              <div class="select-wrapper">
+                <select id="claudeModel" name="CLAUDE_MODEL" class="form-select font-mono"></select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 3: Keamanan & Timeout Runtime -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon emerald">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">Izin & Batas Waktu Eksekusi</h2>
+              <p class="card-description">Konfigurasi batasan runtime dan izin eksekusi otomatis.</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- AGY_AUTO_APPROVE_PERMISSIONS -->
+            <div class="form-group">
+              <div class="toggle-card">
+                <div class="toggle-info">
+                  <span class="toggle-title">Auto-Approve Permissions (Otonom)</span>
+                  <span class="toggle-desc">
+                    Menambahkan flag <code>--dangerously-skip-permissions</code> agar agen AI dapat membaca, menulis file, dan menjalankan perintah di background tanpa konfirmasi terminal manual.
+                  </span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="autoApprove" name="AGY_AUTO_APPROVE_PERMISSIONS">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- TASK_TIMEOUT_MS -->
+            <div class="form-group">
+              <div class="label-row">
+                <label for="timeoutMs" class="form-label">TASK TIMEOUT (MILIDETIK)</label>
+                <span class="label-hint" id="timeoutFormatted">15 Menit</span>
+              </div>
+              <input 
+                type="number" 
+                id="timeoutMs" 
+                name="TASK_TIMEOUT_MS" 
+                class="form-input font-mono" 
+                min="60000" 
+                step="60000"
+                value="900000"
+              >
+              <div class="preset-buttons">
+                <button type="button" class="btn-preset" data-ms="300000">5 Menit</button>
+                <button type="button" class="btn-preset" data-ms="900000">15 Menit (Default)</button>
+                <button type="button" class="btn-preset" data-ms="1800000">30 Menit</button>
+                <button type="button" class="btn-preset" data-ms="3600000">1 Jam</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sticky Bottom Bar -->
+        <div class="actions-bar">
+          <div class="actions-info">
+            <span id="saveHint">Perubahan akan langsung disimpan ke file <code>.env</code>.</span>
+          </div>
+          <div class="actions-buttons">
+            <button type="button" id="btnReload" class="btn btn-secondary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="1 4 1 10 7 10"></polyline>
+                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+              </svg>
+              <span>Refresh</span>
+            </button>
+            <button type="submit" id="btnSubmit" class="btn btn-primary">
+              <svg id="saveSpinner" class="spinner hidden" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+              <span id="saveBtnText">Simpan Pengaturan</span>
+            </button>
+          </div>
+        </div>
+      </form>
+    </main>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

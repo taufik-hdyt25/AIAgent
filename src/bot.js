@@ -5,6 +5,7 @@ import { mkdir, readFile, writeFile, appendFile, readdir, stat } from "node:fs/p
 import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
+import { startWebServer } from "./web-server.js";
 
 const AVAILABLE_MODELS = [
   { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)" },
@@ -1028,10 +1029,28 @@ if (
       console.warn("Gagal mendaftarkan menu commands ke Telegram:", err.message);
     });
 
-  bot.start();
+  bot.start({
+    drop_pending_updates: true,
+    onStart: (botInfo) => {
+      console.log(`🤖 Bot @${botInfo.username} berhasil terhubung dan siap menerima pesan di Telegram!`);
+    },
+  }).catch((err) => {
+    console.error("❌ Gagal memulai bot Telegram:", err.message);
+    if (err.error_code === 409 || err.description?.includes("Conflict") || String(err).includes("409")) {
+      console.warn("\n⚠️  [409 CONFLICT DETECTED]");
+      console.warn("   Token bot ini sedang aktif dijalankan di server/tempat lain (misal: di VPS atau terminal lain).");
+      console.warn("   Telegram melarang 2 aplikasi berjalan bersamaan menggunakan 1 token bot yang sama.");
+      console.warn("   👉 Solusi: Hentikan instance bot di server lain, atau gunakan token bot baru dari @BotFather untuk lokal.");
+      console.warn("   🌐 Web UI tetap aktif di http://localhost:3000 untuk mengubah konfigurasi token Anda.\n");
+    }
+  });
 } else {
+  console.log("\nℹ️  BOT_TOKEN belum diisi atau masih kosong.");
+  console.log("👉 Silakan buka Web UI di http://localhost:3000 untuk memasukkan token bot & ID Telegram Anda.\n");
+}
 
-  console.log("Bot diinisialisasi dalam mode pengecekan / offline.");
+if (process.env.NODE_ENV !== "test" && process.env.ENABLE_WEB_UI !== "false") {
+  startWebServer(process.env.WEB_PORT || 3000);
 }
 
 export { bot, sendToAntigravity };

@@ -1,0 +1,324 @@
+// State aplikasi
+let currentSettings = {};
+let availableOptions = { agyModels: [], claudeModels: [] };
+
+// DOM Elements
+const form = document.getElementById("settingsForm");
+const botTokenInput = document.getElementById("botToken");
+const toggleTokenBtn = document.getElementById("toggleTokenVisibility");
+const eyeIcon = document.getElementById("eyeIcon");
+const btnTestToken = document.getElementById("btnTestToken");
+const tokenTestResult = document.getElementById("tokenTestResult");
+const botResultName = document.getElementById("botResultName");
+const botResultUser = document.getElementById("botResultUser");
+const botTelegramLink = document.getElementById("botTelegramLink");
+
+const allowedIdsInput = document.getElementById("allowedIds");
+const idChipsContainer = document.getElementById("idChipsContainer");
+
+const engineRadios = document.querySelectorAll('input[name="CLI_ENGINE"]');
+const agyModelSelect = document.getElementById("agyModel");
+const claudeModelSelect = document.getElementById("claudeModel");
+const autoApproveCheckbox = document.getElementById("autoApprove");
+const timeoutInput = document.getElementById("timeoutMs");
+const timeoutFormatted = document.getElementById("timeoutFormatted");
+
+const badgeEngine = document.getElementById("badgeEngine");
+const badgeModel = document.getElementById("badgeModel");
+const badgeToken = document.getElementById("badgeToken");
+const badgeHost = document.getElementById("badgeHost");
+
+const statusPill = document.getElementById("statusPill");
+const statusText = document.getElementById("statusText");
+const btnReload = document.getElementById("btnReload");
+const btnSubmit = document.getElementById("btnSubmit");
+const saveSpinner = document.getElementById("saveSpinner");
+const saveBtnText = document.getElementById("saveBtnText");
+const toastContainer = document.getElementById("toastContainer");
+
+// Toast Notification
+function showToast(message, type = "success", duration = 4000) {
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+
+  const icon = type === "success" ? "✓" : type === "error" ? "✕" : "ℹ";
+  toast.innerHTML = `<span><strong>${icon}</strong></span><span>${message}</span>`;
+
+  toastContainer.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateX(20px)";
+    toast.style.transition = "all 0.3s ease";
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
+// Format milliseconds to human readable
+function formatMs(ms) {
+  const minutes = Math.round(Number(ms) / 60000);
+  if (minutes >= 60) {
+    const hours = (minutes / 60).toFixed(1);
+    return `${hours} Jam (${ms} ms)`;
+  }
+  return `${minutes} Menit (${ms} ms)`;
+}
+
+// Render User ID Chips
+function renderIdChips(rawString) {
+  idChipsContainer.innerHTML = "";
+  if (!rawString) return;
+
+  const ids = rawString
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  for (const id of ids) {
+    const chip = document.createElement("span");
+    chip.className = "id-chip";
+    chip.innerHTML = `👤 ID: ${id}`;
+    idChipsContainer.appendChild(chip);
+  }
+}
+
+// Toggle Token Visibility
+toggleTokenBtn.addEventListener("click", () => {
+  const isPassword = botTokenInput.type === "password";
+  botTokenInput.type = isPassword ? "text" : "password";
+  eyeIcon.innerHTML = isPassword
+    ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
+    : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+});
+
+// Update Live Badges
+function updateBadges(settings, system) {
+  badgeEngine.textContent = settings.CLI_ENGINE === "claude" ? "Claude Code" : "Antigravity (agy)";
+  badgeModel.textContent =
+    settings.CLI_ENGINE === "claude" ? settings.CLAUDE_MODEL : settings.AGY_MODEL;
+  
+  if (settings.BOT_TOKEN && settings.BOT_TOKEN.length > 20) {
+    badgeToken.innerHTML = `<span style="color: #34d399;">✓ Terkonfigurasi</span>`;
+  } else {
+    badgeToken.innerHTML = `<span style="color: #f87171;">Belum Diisi</span>`;
+  }
+
+  if (system) {
+    badgeHost.textContent = `${system.platform} (${system.nodeVersion})`;
+  }
+
+  statusPill.className = "status-pill online";
+  statusText.textContent = "Server Online & Siap";
+}
+
+// Load Settings from API
+async function loadSettings() {
+  statusPill.className = "status-pill";
+  statusText.textContent = "Memuat data...";
+
+  try {
+    const res = await fetch("/api/settings");
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    const data = await res.json();
+
+    if (!data.ok) throw new Error(data.error || "Gagal memuat");
+
+    currentSettings = data.settings;
+    availableOptions = data.options;
+
+    // Populate inputs
+    botTokenInput.value = currentSettings.BOT_TOKEN || "";
+    allowedIdsInput.value = currentSettings.ALLOWED_TELEGRAM_IDS || "";
+    renderIdChips(currentSettings.ALLOWED_TELEGRAM_IDS);
+
+    // Populate Engine Radio
+    const activeEngine = currentSettings.CLI_ENGINE || "agy";
+    for (const r of engineRadios) {
+      r.checked = r.value === activeEngine;
+    }
+
+    // Populate AGY Models Select
+    agyModelSelect.innerHTML = "";
+    for (const m of availableOptions.agyModels) {
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
+      opt.selected = m.id === currentSettings.AGY_MODEL;
+      agyModelSelect.appendChild(opt);
+    }
+
+    // Populate Claude Models Select
+    claudeModelSelect.innerHTML = "";
+    for (const m of availableOptions.claudeModels) {
+      const opt = document.createElement("option");
+      opt.value = m.id;
+      opt.textContent = m.name;
+      opt.selected = m.id === currentSettings.CLAUDE_MODEL;
+      claudeModelSelect.appendChild(opt);
+    }
+
+    // Populate Auto Approve
+    autoApproveCheckbox.checked =
+      currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === "true" ||
+      currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === true;
+
+    // Populate Timeout
+    timeoutInput.value = currentSettings.TASK_TIMEOUT_MS || "900000";
+    timeoutFormatted.textContent = formatMs(timeoutInput.value);
+
+    // Update Badges
+    updateBadges(currentSettings, data.system);
+
+    // Otomatis test token jika sudah ada
+    if (currentSettings.BOT_TOKEN && currentSettings.BOT_TOKEN.length > 25) {
+      testBotToken(currentSettings.BOT_TOKEN, true);
+    }
+  } catch (err) {
+    statusPill.className = "status-pill offline";
+    statusText.textContent = "Koneksi Terputus";
+    showToast(`Gagal memuat pengaturan: ${err.message}`, "error");
+  }
+}
+
+// Test Bot Token via Telegram API
+async function testBotToken(token, silent = false) {
+  if (!token) {
+    if (!silent) showToast("Silakan masukkan token bot terlebih dahulu.", "error");
+    return;
+  }
+
+  btnTestToken.disabled = true;
+  const originalHtml = btnTestToken.innerHTML;
+  btnTestToken.innerHTML = `<span>Memeriksa...</span>`;
+
+  try {
+    const res = await fetch("/api/test-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+
+    const data = await res.json();
+    if (data.ok && data.bot) {
+      tokenTestResult.classList.remove("hidden");
+      botResultName.textContent = `${data.bot.name} (ID: ${data.bot.id})`;
+      botResultUser.textContent = `@${data.bot.username}`;
+      botTelegramLink.href = `https://t.me/${data.bot.username}`;
+      botTelegramLink.style.display = "inline-flex";
+
+      if (!silent) {
+        showToast(`Token Valid! Terhubung ke bot @${data.bot.username}`, "success");
+      }
+    } else {
+      tokenTestResult.classList.remove("hidden");
+      botResultName.textContent = "Token Tidak Valid";
+      botResultUser.textContent = data.error || "Gagal verifikasi ke Telegram";
+      botTelegramLink.style.display = "none";
+      if (!silent) {
+        showToast(data.error || "Token bot tidak valid", "error");
+      }
+    }
+  } catch (err) {
+    if (!silent) {
+      showToast(`Gagal menghubungkan ke Telegram: ${err.message}`, "error");
+    }
+  } finally {
+    btnTestToken.disabled = false;
+    btnTestToken.innerHTML = originalHtml;
+  }
+}
+
+// Event Listeners
+btnTestToken.addEventListener("click", () => {
+  testBotToken(botTokenInput.value.trim());
+});
+
+allowedIdsInput.addEventListener("input", (e) => {
+  renderIdChips(e.target.value);
+});
+
+timeoutInput.addEventListener("input", (e) => {
+  timeoutFormatted.textContent = formatMs(e.target.value);
+});
+
+// Preset buttons
+document.querySelectorAll(".btn-preset").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const ms = btn.getAttribute("data-ms");
+    timeoutInput.value = ms;
+    timeoutFormatted.textContent = formatMs(ms);
+  });
+});
+
+// Radio change
+engineRadios.forEach((r) => {
+  r.addEventListener("change", () => {
+    badgeEngine.textContent = r.value === "claude" ? "Claude Code" : "Antigravity (agy)";
+    badgeModel.textContent =
+      r.value === "claude" ? claudeModelSelect.value : agyModelSelect.value;
+  });
+});
+
+agyModelSelect.addEventListener("change", () => {
+  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;
+  if (selectedEngine === "agy") {
+    badgeModel.textContent = agyModelSelect.value;
+  }
+});
+
+claudeModelSelect.addEventListener("change", () => {
+  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;
+  if (selectedEngine === "claude") {
+    badgeModel.textContent = claudeModelSelect.value;
+  }
+});
+
+btnReload.addEventListener("click", () => {
+  loadSettings();
+  showToast("Pengaturan disegarkan.", "info");
+});
+
+// Submit Form
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "agy";
+  const payload = {
+    BOT_TOKEN: botTokenInput.value.trim(),
+    ALLOWED_TELEGRAM_IDS: allowedIdsInput.value.trim(),
+    CLI_ENGINE: selectedEngine,
+    AGY_MODEL: agyModelSelect.value,
+    CLAUDE_MODEL: claudeModelSelect.value,
+    AGY_AUTO_APPROVE_PERMISSIONS: autoApproveCheckbox.checked ? "true" : "false",
+    TASK_TIMEOUT_MS: timeoutInput.value.trim(),
+  };
+
+  btnSubmit.disabled = true;
+  saveSpinner.classList.remove("hidden");
+  saveBtnText.textContent = "Menyimpan...";
+
+  try {
+    const res = await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || "Gagal menyimpan");
+    }
+
+    currentSettings = { ...currentSettings, ...payload };
+    updateBadges(currentSettings);
+    showToast("Pengaturan berhasil disimpan ke .env!", "success");
+  } catch (err) {
+    showToast(`Error: ${err.message}`, "error");
+  } finally {
+    btnSubmit.disabled = false;
+    saveSpinner.classList.add("hidden");
+    saveBtnText.textContent = "Simpan Pengaturan";
+  }
+});
+
+// Initialize on page load
+loadSettings();

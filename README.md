@@ -6,6 +6,7 @@ Bot Telegram cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (
 
 ## 📋 Fitur Utama
 
+- **Web UI Settings Control Panel:** Dashboard web modern di `http://localhost:3000` untuk mengatur `BOT_TOKEN`, `ALLOWED_TELEGRAM_IDS`, pilihan default model AI, dan menguji token secara instan tanpa mengedit file secara manual.
 - **Otorisasi Ketat:** Hanya Telegram User ID yang terdaftar dalam `ALLOWED_TELEGRAM_IDS` yang dapat berinteraksi dengan bot.
 - **Isolasi Branch Git:** Setiap tugas coding dieksekusi di branch terpisah (`agent/task-<timestamp>`), menjaga branch utama tetap bersih.
 - **Pembersihan Lingkungan (Environment Sanitization):** Token bot Telegram dan secret tidak pernah diteruskan ke subprocess agent.
@@ -53,26 +54,34 @@ Ini akan otomatis menambahkan flag `--dangerously-skip-permissions` saat memangg
 
 ---
 
-## 🐳 Cara Termudah: Sekali Install dengan Docker (Rekomendasi untuk VPS)
+---
 
-Cukup jalankan satu perintah ini di folder project (di Ubuntu VPS maupun macOS):
+## ⚡ Instalasi Cepat Sekali Jalan (One-Line Installer)
 
+Cukup salin dan jalankan satu perintah ini di terminal **macOS** atau **Linux VPS**:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh)"
+```
+
+Atau jika sudah melakukan git clone:
 ```bash
 ./install.sh
 ```
 
-Skrip ini akan secara otomatis:
-1. Memeriksa dan menginstall Docker & Docker Compose (jika belum ada).
-2. Menyiapkan folder data, logs, workspace projects, dan volume autentikasi.
-3. Memandu pembuatan `.env`.
-4. Mem-build image terisolasi (Node.js 22 + Antigravity CLI) dan menjalankannya di background.
+### Apa yang Dilakukan Installer Ini Secara Otomatis?
+1. Mengunduh repository ke folder `telegram-ai-agent` (jika belum di-clone).
+2. Memeriksa & memasang runtime **Node.js**, **Antigravity CLI (`agy`)**, dan **Claude Code CLI (`claude`)**.
+3. Menyiapkan folder kerja, file `.env`, dan model AI default.
+4. Di Linux VPS: Memberikan opsi instalasi **Native PM2** (ringan untuk VPS 1GB) atau **Docker Container**.
+5. Mengaktifkan **Web UI Control Panel** di `http://localhost:3000` (atau IP VPS Anda).
 
-### Autentikasi `agy` dalam Docker:
-Cukup jalankan sekali:
+### Autentikasi / Login CLI:
+Cukup jalankan:
 ```bash
 ./auth.sh
 ```
-Sesi login Anda akan tersimpan secara persisten di host (`./gemini_auth`) sehingga tidak akan hilang meskipun container di-restart atau di-update.
+Sesi login Anda akan tersimpan secara persisten sehingga tidak perlu login berulang kali.
 
 ---
 
@@ -116,9 +125,15 @@ Atau gunakan perintah Telegram `/clone nama https://github.com/owner/repo.git`.
 
 ### 4. Jalankan Bot
 
-#### Mode Development:
+#### Mode Development / Bot & Web UI:
 ```bash
 npm start
+```
+Saat dijalankan, Web UI Control Panel otomatis dapat diakses di browser: `http://localhost:3000`.
+
+#### Hanya Menjalankan Web UI Settings (Tanpa Bot):
+```bash
+npm run ui
 ```
 
 #### Mode Produksi dengan PM2:
