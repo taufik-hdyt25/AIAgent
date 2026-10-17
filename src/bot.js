@@ -7,14 +7,22 @@ import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { startWebServer } from "./web-server.js";
 
-const AVAILABLE_MODELS = [
+const AVAILABLE_AGY_MODELS = [
+  { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium Thinking)" },
+  { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High Thinking)" },
+  { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low Thinking)" },
   { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)" },
   { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)" },
-  { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)" },
-  { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)" },
-  { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low)" },
   { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)" },
 ];
+
+const AVAILABLE_CLAUDE_MODELS = [
+  { id: "sonnet", name: "Claude Sonnet (Cepat & Pintar - Default)" },
+  { id: "opus", name: "Claude Opus (Analisis Kompleks & Mendalam)" },
+  { id: "haiku", name: "Claude Haiku (Ultra Cepat & Ringan)" },
+];
+
+const AVAILABLE_MODELS = AVAILABLE_AGY_MODELS;
 const DEFAULT_AGY_MODEL = process.env.AGY_MODEL || "gemini-3.8-flash-medium";
 const DEFAULT_CLAUDE_MODEL = process.env.CLAUDE_MODEL || "sonnet";
 
@@ -121,19 +129,47 @@ async function markClaudeSessionStarted(convId, started = true) {
   await saveContext(context);
 }
 
-async function getUserModel(userId) {
+async function getUserAgyModel(userId) {
   if (!userId) return DEFAULT_AGY_MODEL;
   const context = await loadContext();
-  return context.models?.[String(userId)] || DEFAULT_AGY_MODEL;
+  return context.agyModels?.[String(userId)] || context.models?.[String(userId)] || DEFAULT_AGY_MODEL;
 }
 
-
-async function setUserModel(userId, modelId) {
+async function setUserAgyModel(userId, modelId) {
   if (!userId) return;
   const context = await loadContext();
+  if (!context.agyModels) context.agyModels = {};
+  context.agyModels[String(userId)] = modelId;
   if (!context.models) context.models = {};
   context.models[String(userId)] = modelId;
   await saveContext(context);
+}
+
+async function getUserClaudeModel(userId) {
+  if (!userId) return DEFAULT_CLAUDE_MODEL;
+  const context = await loadContext();
+  return context.claudeModels?.[String(userId)] || DEFAULT_CLAUDE_MODEL;
+}
+
+async function setUserClaudeModel(userId, modelId) {
+  if (!userId) return;
+  const context = await loadContext();
+  if (!context.claudeModels) context.claudeModels = {};
+  context.claudeModels[String(userId)] = modelId;
+  await saveContext(context);
+}
+
+async function getUserModel(userId) {
+  const engine = await getUserEngine(userId);
+  return engine === "claude" ? getUserClaudeModel(userId) : getUserAgyModel(userId);
+}
+
+async function setUserModel(userId, modelId) {
+  const engine = await getUserEngine(userId);
+  if (engine === "claude") {
+    return setUserClaudeModel(userId, modelId);
+  }
+  return setUserAgyModel(userId, modelId);
 }
 
 async function getUserEngine(userId) {
@@ -353,11 +389,12 @@ ${userMessage}
         binToRun = CLAUDE_BIN;
         const isStarted = await isClaudeSessionStarted(convId);
         const sessionFlag = sessionFlagOverride || (isStarted ? "--resume" : "--session-id");
+        const claudeModel = await getUserClaudeModel(userId);
         cliArgs = [
           sessionFlag,
           convId,
           "--model",
-          DEFAULT_CLAUDE_MODEL,
+          claudeModel,
           "-p",
           prompt,
           "--output-format",
@@ -368,7 +405,7 @@ ${userMessage}
         }
       } else {
         binToRun = AGY_BIN;
-        const userModel = await getUserModel(userId);
+        const userModel = await getUserAgyModel(userId);
         cliArgs = [
           "--conversation",
           convId,
@@ -546,18 +583,21 @@ bot.use(async (ctx, next) => {
 bot.command(["start", "help", "bantuan"], async (ctx) => {
   const userId = ctx.from?.id;
   const currentEngine = await getUserEngine(userId);
-  const currentModel = await getUserModel(userId);
-  const activeModelName =
-    AVAILABLE_MODELS.find((m) => m.id === currentModel)?.name || currentModel;
-  const activeEngineLabel =
-    currentEngine === "claude"
-      ? "Claude Code CLI (`claude`)"
-      : "Antigravity CLI (`agy`)";
+  const isClaude = currentEngine === "claude";
+  const activeEngineLabel = isClaude
+    ? "Claude Code CLI (`claude`)"
+    : "Antigravity CLI (`agy`)";
 
-  const activeModelDisplay =
-    currentEngine === "claude"
-      ? `Claude Sonnet (\`${DEFAULT_CLAUDE_MODEL}\`)`
-      : `*${activeModelName}* (\`${currentModel}\`)`;
+  let activeModelDisplay = "";
+  if (isClaude) {
+    const claudeModel = await getUserClaudeModel(userId);
+    const matched = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === claudeModel);
+    activeModelDisplay = `*${matched?.name || claudeModel}* (\`${claudeModel}\`)`;
+  } else {
+    const agyModel = await getUserAgyModel(userId);
+    const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);
+    activeModelDisplay = `*${matched?.name || agyModel}* (\`${agyModel}\`)`;
+  }
 
   await ctx.reply(
     "👋 *Halo! Saya AI Coding Agent.*\n\n" +
@@ -654,9 +694,21 @@ bot.callbackQuery(/^set_engine:(.+)$/, async (ctx) => {
       "set_engine:claude"
     );
 
+  const engineModel =
+    engineId === "claude"
+      ? await getUserClaudeModel(userId)
+      : await getUserAgyModel(userId);
+  const matchedModel =
+    (engineId === "claude" ? AVAILABLE_CLAUDE_MODELS : AVAILABLE_AGY_MODELS).find(
+      (m) => m.id === engineModel
+    )?.name || engineModel;
+
   try {
     await ctx.editMessageText(
-      `⚙️ *Pilihan Engine CLI*\n\n✅ Engine aktif sekarang:\n👉 *${engineLabel}*\n\nSilakan pilih jika ingin mengganti lagi:`,
+      `⚙️ *Pilihan Engine CLI*\n\n` +
+      `✅ Engine aktif sekarang:\n👉 *${engineLabel}*\n\n` +
+      `🤖 Model aktif untuk engine ini:\n👉 *${matchedModel}* (\`${engineModel}\`)\n\n` +
+      `💡 _Ketik /model untuk memilih daftar model khusus ${engineId === "claude" ? "Claude" : "Antigravity"}._`,
       {
         reply_markup: keyboard,
         parse_mode: "Markdown",
@@ -670,42 +722,55 @@ bot.callbackQuery(/^set_engine:(.+)$/, async (ctx) => {
 bot.command("model", async (ctx) => {
   const arg = ctx.match?.trim();
   const userId = ctx.from?.id;
-  const currentModel = await getUserModel(userId);
+  const currentEngine = await getUserEngine(userId);
+  const isClaude = currentEngine === "claude";
+  const modelList = isClaude ? AVAILABLE_CLAUDE_MODELS : AVAILABLE_AGY_MODELS;
+  const currentModel = isClaude
+    ? await getUserClaudeModel(userId)
+    : await getUserAgyModel(userId);
+  const engineLabel = isClaude ? "Claude Code CLI" : "Antigravity CLI";
 
   if (arg) {
-    const matched = AVAILABLE_MODELS.find(
+    const matched = modelList.find(
       (m) => m.id.toLowerCase() === arg.toLowerCase()
     );
     if (!matched) {
-      const listStr = AVAILABLE_MODELS.map(
-        (m) => `• \`${m.id}\` (${m.name})`
-      ).join("\n");
+      const listStr = modelList
+        .map((m) => `• \`${m.id}\` (${m.name})`)
+        .join("\n");
       await ctx.reply(
-        `❌ Model \`${arg}\` tidak dikenali.\n\nPilihan yang tersedia:\n${listStr}`,
+        `❌ Model \`${arg}\` tidak dikenali untuk engine *${engineLabel}*.\n\nPilihan yang tersedia:\n${listStr}`,
         { parse_mode: "Markdown" }
       );
       return;
     }
-    await setUserModel(userId, matched.id);
+    if (isClaude) {
+      await setUserClaudeModel(userId, matched.id);
+    } else {
+      await setUserAgyModel(userId, matched.id);
+    }
     await ctx.reply(
-      `✅ Model berhasil diubah ke: *${matched.name}*\nID: \`${matched.id}\``,
+      `✅ Model untuk *${engineLabel}* berhasil diubah ke: *${matched.name}*\nID: \`${matched.id}\``,
       { parse_mode: "Markdown" }
     );
     return;
   }
 
   const keyboard = new InlineKeyboard();
-  for (const model of AVAILABLE_MODELS) {
+  for (const model of modelList) {
     const isCurrent = model.id === currentModel;
     const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;
     keyboard.text(label, `set_model:${model.id}`).row();
   }
 
   const activeName =
-    AVAILABLE_MODELS.find((m) => m.id === currentModel)?.name || currentModel;
+    modelList.find((m) => m.id === currentModel)?.name || currentModel;
 
   await ctx.reply(
-    `🤖 *Pilihan Model AI*\n\nModel aktif saat ini:\n👉 *${activeName}* (\`${currentModel}\`)\n\nSilakan klik tombol di bawah untuk memilih model:`,
+    `🤖 *Pilihan Model AI*\n\n` +
+      `⚙️ Engine aktif: *${engineLabel}*\n` +
+      `👉 Model aktif saat ini:\n*${activeName}* (\`${currentModel}\`)\n\n` +
+      `Silakan pilih model khusus *${engineLabel}* di bawah ini:`,
     {
       reply_markup: keyboard,
       parse_mode: "Markdown",
@@ -716,20 +781,32 @@ bot.command("model", async (ctx) => {
 bot.callbackQuery(/^set_model:(.+)$/, async (ctx) => {
   const modelId = ctx.match[1];
   const userId = ctx.from?.id;
-  const matched = AVAILABLE_MODELS.find((m) => m.id === modelId);
+  const currentEngine = await getUserEngine(userId);
+  const isClaude = currentEngine === "claude";
+  const modelList = isClaude ? AVAILABLE_CLAUDE_MODELS : AVAILABLE_AGY_MODELS;
+  const engineLabel = isClaude ? "Claude Code CLI" : "Antigravity CLI";
+
+  const matched = modelList.find((m) => m.id === modelId);
 
   if (!matched) {
-    await ctx.answerCallbackQuery({ text: "Model tidak dikenali!" });
+    await ctx.answerCallbackQuery({
+      text: "Model tidak dikenali untuk engine ini!",
+    });
     return;
   }
 
-  await setUserModel(userId, matched.id);
+  if (isClaude) {
+    await setUserClaudeModel(userId, matched.id);
+  } else {
+    await setUserAgyModel(userId, matched.id);
+  }
+
   await ctx.answerCallbackQuery({
     text: `Model diubah ke ${matched.name}`,
   });
 
   const keyboard = new InlineKeyboard();
-  for (const model of AVAILABLE_MODELS) {
+  for (const model of modelList) {
     const isCurrent = model.id === matched.id;
     const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;
     keyboard.text(label, `set_model:${model.id}`).row();
@@ -737,7 +814,10 @@ bot.callbackQuery(/^set_model:(.+)$/, async (ctx) => {
 
   try {
     await ctx.editMessageText(
-      `🤖 *Pilihan Model AI*\n\n✅ Model aktif sekarang:\n👉 *${matched.name}* (\`${matched.id}\`)\n\nSilakan klik tombol di bawah jika ingin mengganti ke model lain:`,
+      `🤖 *Pilihan Model AI*\n\n` +
+        `⚙️ Engine aktif: *${engineLabel}*\n` +
+        `✅ Model aktif sekarang:\n👉 *${matched.name}* (\`${matched.id}\`)\n\n` +
+        `Silakan klik tombol di bawah jika ingin mengganti ke model lain:`,
       {
         reply_markup: keyboard,
         parse_mode: "Markdown",
@@ -759,16 +839,21 @@ bot.command(["new", "reset"], async (ctx) => {
 bot.command("status", async (ctx) => {
   const userId = ctx.from?.id;
   const currentEngine = await getUserEngine(userId);
-  const currentModel = await getUserModel(userId);
-  const activeModelName =
-    AVAILABLE_MODELS.find((m) => m.id === currentModel)?.name || currentModel;
-  const engineLabel =
-    currentEngine === "claude" ? "Claude Code CLI (`claude`)" : "Antigravity CLI (`agy`)";
+  const isClaude = currentEngine === "claude";
+  const engineLabel = isClaude
+    ? "Claude Code CLI (`claude`)"
+    : "Antigravity CLI (`agy`)";
 
-  const activeModelDisplay =
-    currentEngine === "claude"
-      ? `Claude Sonnet (\`${DEFAULT_CLAUDE_MODEL}\`)`
-      : `*${activeModelName}* (\`${currentModel}\`)`;
+  let activeModelDisplay = "";
+  if (isClaude) {
+    const claudeModel = await getUserClaudeModel(userId);
+    const matched = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === claudeModel);
+    activeModelDisplay = `*${matched?.name || claudeModel}* (\`${claudeModel}\`)`;
+  } else {
+    const agyModel = await getUserAgyModel(userId);
+    const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);
+    activeModelDisplay = `*${matched?.name || agyModel}* (\`${agyModel}\`)`;
+  }
 
   if (!activeTask) {
     await ctx.reply(
