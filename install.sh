@@ -246,7 +246,9 @@ if [ "$OS" = "Darwin" ]; then
     echo -e "\n${GREEN}======================================================${NC}"
     echo -e "${GREEN}🎉 INSTALASI DI MAC BERHASIL SELESAI!                  ${NC}"
     echo -e "${GREEN}======================================================${NC}"
-    echo -e "${CYAN}Web UI Control Panel siap di:${NC} ${BLUE}http://localhost:3000${NC}"
+    WEB_PORT_VAL="$(grep -E "^WEB_PORT=" .env | cut -d '=' -f2- | tr -d ' ' || echo "3030")"
+    WEB_PORT_VAL="${WEB_PORT_VAL:-3030}"
+    echo -e "${CYAN}Web UI Control Panel siap di:${NC} ${BLUE}http://localhost:${WEB_PORT_VAL}${NC}"
     echo -e "Anda dapat mengatur Token, ID, dan Model langsung lewat browser."
     echo ""
     if command -v pm2 &>/dev/null && pm2 list | grep -q "telegram-coding-agent"; then
@@ -357,7 +359,9 @@ elif [ "$OS" = "Linux" ]; then
         echo -e "Status Process:"
         pm2 status
         echo ""
-        echo -e "${CYAN}Web UI Control Panel:${NC} ${BLUE}http://IP_VPS_ANDA:3000${NC}"
+        WEB_PORT_VAL="$(grep -E "^WEB_PORT=" .env | cut -d '=' -f2- | tr -d ' ' || echo "3030")"
+        WEB_PORT_VAL="${WEB_PORT_VAL:-3030}"
+        echo -e "${CYAN}Web UI Control Panel:${NC} ${BLUE}http://IP_VPS_ANDA:${WEB_PORT_VAL}${NC}"
         echo -e "• Cek log live:   ${BLUE}pm2 logs telegram-coding-agent${NC}"
         echo -e "• Restart bot:    ${BLUE}pm2 restart telegram-coding-agent${NC}"
         echo -e "• Hentikan bot:   ${BLUE}pm2 stop telegram-coding-agent${NC}"

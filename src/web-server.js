@@ -156,6 +156,7 @@ export function createWebServer() {
             AGY_AUTO_APPROVE_PERMISSIONS:
               parsed.AGY_AUTO_APPROVE_PERMISSIONS ?? process.env.AGY_AUTO_APPROVE_PERMISSIONS ?? "true",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
+            WEB_PORT: parsed.WEB_PORT || process.env.WEB_PORT || "3030",
           },
           options: {
             agyModels: AVAILABLE_AGY_MODELS,
@@ -293,7 +294,7 @@ export function createWebServer() {
   return server;
 }
 
-export function startWebServer(port = process.env.WEB_PORT || 3000) {
+export function startWebServer(port = process.env.WEB_PORT || 3030) {
   const server = createWebServer();
   const PORT = Number(port);
 
@@ -315,5 +316,5 @@ export function startWebServer(port = process.env.WEB_PORT || 3000) {
 
 // Jika dijalankan langsung via node src/web-server.js
 if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
-  startWebServer(process.env.WEB_PORT || 3000);
+  startWebServer(process.env.WEB_PORT || 3030);
 }

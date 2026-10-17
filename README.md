@@ -6,7 +6,7 @@ Bot Telegram cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (
 
 ## 📋 Fitur Utama
 
-- **Web UI Settings Control Panel:** Dashboard web modern di `http://localhost:3000` untuk mengatur `BOT_TOKEN`, `ALLOWED_TELEGRAM_IDS`, pilihan default model AI, dan menguji token secara instan tanpa mengedit file secara manual.
+- **Web UI Settings Control Panel:** Dashboard web modern di `http://localhost:3030` untuk mengatur `BOT_TOKEN`, `ALLOWED_TELEGRAM_IDS`, pilihan default model AI, dan menguji token secara instan tanpa mengedit file secara manual.
 - **Otorisasi Ketat:** Hanya Telegram User ID yang terdaftar dalam `ALLOWED_TELEGRAM_IDS` yang dapat berinteraksi dengan bot.
 - **Isolasi Branch Git:** Setiap tugas coding dieksekusi di branch terpisah (`agent/task-<timestamp>`), menjaga branch utama tetap bersih.
 - **Pembersihan Lingkungan (Environment Sanitization):** Token bot Telegram dan secret tidak pernah diteruskan ke subprocess agent.
@@ -75,7 +75,7 @@ Atau jika sudah melakukan git clone:
 3. Menyiapkan folder kerja, file `.env`, dan model AI default.
 4. **Auto-Start & Background Service:** Mengonfigurasi bot agar langsung berjalan di latar belakang dan otomatis aktif kembali saat komputer/VPS menyala (*auto-start on boot*).
 5. Di Linux VPS: Memberikan opsi instalasi **Native PM2** (ringan untuk VPS 1GB) atau **Docker Container**.
-6. Mengaktifkan **Web UI Control Panel** di `http://localhost:3000` (atau IP VPS Anda).
+6. Mengaktifkan **Web UI Control Panel** di `http://localhost:3030` (atau IP VPS Anda).
 
 ### Autentikasi / Login CLI:
 Cukup jalankan:
@@ -130,7 +130,7 @@ Atau gunakan perintah Telegram `/clone nama https://github.com/owner/repo.git`.
 ```bash
 npm start
 ```
-Saat dijalankan, Web UI Control Panel otomatis dapat diakses di browser: `http://localhost:3000`.
+Saat dijalankan, Web UI Control Panel otomatis dapat diakses di browser: `http://localhost:3030`.
 
 #### Hanya Menjalankan Web UI Settings (Tanpa Bot):
 ```bash

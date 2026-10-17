@@ -6,11 +6,12 @@ services:
     container_name: telegram-coding-agent
     restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "${WEB_PORT:-3030}:${WEB_PORT:-3030}"
     env_file:
       - .env
     environment:
       - NODE_ENV=production
+      - WEB_PORT=${WEB_PORT:-3030}
       - AGY_BIN=/home/node/.local/bin/agy
       - CLAUDE_BIN=/usr/local/bin/claude
       - CLI_ENGINE=${CLI_ENGINE:-agy}

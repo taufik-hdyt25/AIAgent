@@ -1041,16 +1041,18 @@ if (
       console.warn("   Token bot ini sedang aktif dijalankan di server/tempat lain (misal: di VPS atau terminal lain).");
       console.warn("   Telegram melarang 2 aplikasi berjalan bersamaan menggunakan 1 token bot yang sama.");
       console.warn("   👉 Solusi: Hentikan instance bot di server lain, atau gunakan token bot baru dari @BotFather untuk lokal.");
-      console.warn("   🌐 Web UI tetap aktif di http://localhost:3000 untuk mengubah konfigurasi token Anda.\n");
+      const webPort = process.env.WEB_PORT || 3030;
+      console.warn(`   🌐 Web UI tetap aktif di http://localhost:${webPort} untuk mengubah konfigurasi token Anda.\n`);
     }
   });
 } else {
+  const webPort = process.env.WEB_PORT || 3030;
   console.log("\nℹ️  BOT_TOKEN belum diisi atau masih kosong.");
-  console.log("👉 Silakan buka Web UI di http://localhost:3000 untuk memasukkan token bot & ID Telegram Anda.\n");
+  console.log(`👉 Silakan buka Web UI di http://localhost:${webPort} untuk memasukkan token bot & ID Telegram Anda.\n`);
 }
 
 if (process.env.NODE_ENV !== "test" && process.env.ENABLE_WEB_UI !== "false") {
-  startWebServer(process.env.WEB_PORT || 3000);
+  startWebServer(process.env.WEB_PORT || 3030);
 }
 
 export { bot, sendToAntigravity };
