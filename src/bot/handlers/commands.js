@@ -23,7 +23,13 @@ import {
 } from "../../services/cli-runner.js";
 import { formatBytes, truncate } from "../../services/telegram-files.js";
 import { sendToAgent } from "../dispatcher.js";
-import { isGhAvailable } from "../../services/github-service.js";
+import {
+  isGhAvailable,
+  loadWatchConfig,
+  addWatchedRepo,
+  removeWatchedRepo,
+} from "../../services/github-service.js";
+import { triggerManualCheck } from "../../services/github-watcher.js";
 
 export function registerBasicCommands(bot) {
   // /start, /help
@@ -64,6 +70,9 @@ export function registerBasicCommands(bot) {
         "Perintah bantuan:\n" +
         "• `/files` - Lihat daftar file dan gambar yang telah diunggah\n" +
         "• `/issue <url>` - Baca & selesaikan GitHub Issue secara otomatis\n" +
+        "• `/checkissues` - Cek issue baru di GitHub sekarang (manual trigger)\n" +
+        "• `/watched` - Lihat repository yang sedang dipantau secara berkala\n" +
+        "• `/watchrepo <repo>` - Pantau repo baru (contoh: owner/repo)\n" +
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
@@ -314,5 +323,85 @@ export function registerBasicCommands(bot) {
       `Tolong pelajari GitHub issue ini secara mendalam, jelaskan masalahnya, dan berikan solusi atau lakukan perbaikan kode jika diperlukan:\n${arg}`,
       ctx
     );
+  });
+
+  // /checkissues, /cekissue (Manual Trigger)
+  bot.command(["checkissues", "cekissue"], async (ctx) => {
+    await triggerManualCheck(bot, ctx);
+  });
+
+  // /watchrepo <owner/repo>
+  bot.command("watchrepo", async (ctx) => {
+    const repo = ctx.match?.trim();
+    if (!repo) {
+      await ctx.reply(
+        "ℹ️ *Cara penggunaan /watchrepo:*\n\nKetik `/watchrepo <owner/repo>`\n\n*Contoh:*\n• `/watchrepo taufik-hdyt25/AIAgent`\n• `/watchrepo https://github.com/facebook/react`",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    try {
+      const cfg = await addWatchedRepo(repo);
+      await ctx.reply(
+        `✅ *Repositori Berhasil Ditambahkan ke Pantauan!*\n\n` +
+          `📦 Repo: \`${repo}\`\n` +
+          `⏱ Interval cek: setiap ${cfg.pollIntervalMinutes} menit\n\n` +
+          `Bot akan otomatis mengirim notifikasi setiap ada issue baru yang terbuka. Ketik \`/checkissues\` untuk cek manual sekarang.`,
+        { parse_mode: "Markdown" }
+      );
+    } catch (err) {
+      await ctx.reply(`❌ Gagal menambahkan repo: ${err.message}`);
+    }
+  });
+
+  // /unwatchrepo <owner/repo>
+  bot.command("unwatchrepo", async (ctx) => {
+    const repo = ctx.match?.trim();
+    if (!repo) {
+      await ctx.reply(
+        "ℹ️ Ketik `/unwatchrepo <owner/repo>` untuk berhenti memantau repositori tersebut.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    try {
+      await removeWatchedRepo(repo);
+      await ctx.reply(`✅ Berhasil menghapus \`${repo}\` dari daftar pantauan.`, {
+        parse_mode: "Markdown",
+      });
+    } catch (err) {
+      await ctx.reply(`❌ Gagal menghapus repo: ${err.message}`);
+    }
+  });
+
+  // /watched, /watchlist
+  bot.command(["watched", "watchlist"], async (ctx) => {
+    try {
+      const cfg = await loadWatchConfig();
+      const repos = cfg.watchedRepos || [];
+      const ghReady = await isGhAvailable();
+
+      let text = `🐙 *Status GitHub Issue Automation*\n\n`;
+      text += `• Status GitHub CLI: ${ghReady ? "✅ Aktif" : "⚠️ Belum siap / belum login"}\n`;
+      text += `• Interval Pengecekan: *setiap ${cfg.pollIntervalMinutes} menit*\n`;
+      text += `• Terakhir dicek: ${cfg.lastChecked ? new Date(cfg.lastChecked).toLocaleTimeString("id-ID") : "Belum pernah"}\n\n`;
+
+      if (repos.length === 0) {
+        text += `_Belum ada repository yang dipantau._\nTambahkan dengan: \`/watchrepo <owner/repo>\``;
+      } else {
+        text += `📦 *Repositori yang Dipantau (${repos.length}):*\n`;
+        for (const r of repos) {
+          const seenCount = (cfg.seenIssues?.[r] || []).length;
+          text += `• \`${r}\` (${seenCount} issue tercatat)\n`;
+        }
+        text += `\n💡 _Gunakan \`/checkissues\` untuk cek manual sekarang juga._`;
+      }
+
+      await ctx.reply(text, { parse_mode: "Markdown" });
+    } catch (err) {
+      await ctx.reply(`❌ Gagal membaca status pantauan: ${err.message}`);
+    }
   });
 }

@@ -8,6 +8,7 @@ import { registerBasicCommands } from "./bot/handlers/commands.js";
 import { registerEngineHandlers } from "./bot/handlers/engine.js";
 import { registerModelHandlers } from "./bot/handlers/model.js";
 import { registerMessageHandlers } from "./bot/handlers/messages.js";
+import { initGithubWatcher } from "./services/github-watcher.js";
 
 // Pastikan semua direktori kerja lokal siap
 await ensureDirectories();
@@ -55,6 +56,8 @@ if (
       { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
       { command: "engine", description: "Pilih engine (Antigravity / Claude / Universal)" },
       { command: "reset", description: "Mulai sesi percakapan baru" },
+      { command: "checkissues", description: "Cek issue GitHub baru sekarang" },
+      { command: "watched", description: "Daftar repo yang dipantau" },
       { command: "cancel", description: "Hentikan tugas yang sedang berjalan" },
     ])
     .catch((err) => {
@@ -65,6 +68,10 @@ if (
     drop_pending_updates: true,
     onStart: (botInfo) => {
       console.log(`🤖 Bot @${botInfo.username} berhasil terhubung dan siap menerima pesan di Telegram!`);
+      // Mulai background watcher untuk issue GitHub (cek tiap 5 menit)
+      initGithubWatcher(bot).catch((err) => {
+        console.warn("Gagal memulai GitHub Issue Watcher:", err.message);
+      });
     },
   }).catch((err) => {
     console.error("❌ Gagal memulai bot Telegram:", err.message);
