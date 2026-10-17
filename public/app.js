@@ -216,7 +216,7 @@ async function loadSettings() {
     for (const m of (availableOptions.claudeModels || [])) {
       const opt = document.createElement("option");
       opt.value = m.id;
-      opt.textContent = m.name;
+      opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
       opt.selected = m.id === currentSettings.CLAUDE_MODEL;
       claudeModelSelect.appendChild(opt);
     }

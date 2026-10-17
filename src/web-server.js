@@ -20,9 +20,14 @@ const AVAILABLE_AGY_MODELS = [
 ];
 
 const AVAILABLE_CLAUDE_MODELS = [
-  { id: "sonnet", name: "Claude Sonnet (Default)" },
-  { id: "opus", name: "Claude Opus (Deep Analysis)" },
-  { id: "haiku", name: "Claude Haiku (Ultra Fast)" },
+  { id: "sonnet", name: "Claude Sonnet (Default - Cepat & Cerdas)", badge: "Default" },
+  { id: "opus", name: "Claude Opus (Penalaran Kompleks & Mendalam)", badge: "Kuat" },
+  { id: "haiku", name: "Claude Haiku (Ultra Cepat & Ringan)", badge: "Cepat" },
+  { id: "fable", name: "Claude Fable (Experimental Creative Agent)", badge: "Eksperimental" },
+  { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
+  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
+  { id: "claude-3-5-haiku", name: "Claude 3.5 Haiku (Fast & Cost Efficient)", badge: "Hemat" },
+  { id: "claude-3-opus", name: "Claude 3 Opus (Deep Analysis)", badge: "Maksimal" },
 ];
 
 const AVAILABLE_UNIVERSAL_MODELS = [

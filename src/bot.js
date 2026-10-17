@@ -18,9 +18,14 @@ const AVAILABLE_AGY_MODELS = [
 ];
 
 const AVAILABLE_CLAUDE_MODELS = [
-  { id: "sonnet", name: "Claude Sonnet (Cepat & Pintar - Default)" },
-  { id: "opus", name: "Claude Opus (Analisis Kompleks & Mendalam)" },
-  { id: "haiku", name: "Claude Haiku (Ultra Cepat & Ringan)" },
+  { id: "sonnet", name: "Claude Sonnet (Default - Cepat & Cerdas)", badge: "Default" },
+  { id: "opus", name: "Claude Opus (Penalaran Kompleks & Mendalam)", badge: "Kuat" },
+  { id: "haiku", name: "Claude Haiku (Ultra Cepat & Ringan)", badge: "Cepat" },
+  { id: "fable", name: "Claude Fable (Experimental Creative Agent)", badge: "Eksperimental" },
+  { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
+  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
+  { id: "claude-3-5-haiku", name: "Claude 3.5 Haiku (Fast & Cost Efficient)", badge: "Hemat" },
+  { id: "claude-3-opus", name: "Claude 3 Opus (Deep Analysis)", badge: "Maksimal" },
 ];
 
 const AVAILABLE_UNIVERSAL_MODELS = [
@@ -866,7 +871,7 @@ bot.command("model", async (ctx) => {
     const matched = modelList.find(
       (m) => m.id.toLowerCase() === arg.toLowerCase()
     );
-    const chosenId = matched ? matched.id : isUniversal ? arg : null;
+    const chosenId = matched ? matched.id : (isUniversal || isClaude) ? arg : null;
 
     if (!chosenId) {
       const listStr = modelList
@@ -936,7 +941,7 @@ bot.callbackQuery(/^set_model:(.+)$/, async (ctx) => {
 
   const matched = modelList.find((m) => m.id === modelId);
 
-  if (!matched && !isUniversal) {
+  if (!matched && !isUniversal && !isClaude) {
     await ctx.answerCallbackQuery({
       text: "Model tidak dikenali untuk engine ini!",
     });
