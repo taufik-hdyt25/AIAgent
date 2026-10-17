@@ -94,7 +94,30 @@ async function resetUserConversation(userId) {
   if (!userId) return;
   const context = await loadContext();
   if (!context.conversations) context.conversations = {};
-  context.conversations[String(userId)] = randomUUID();
+  const oldConvId = context.conversations[String(userId)];
+  const newConvId = randomUUID();
+  context.conversations[String(userId)] = newConvId;
+  if (context.claudeSessions && oldConvId) {
+    delete context.claudeSessions[oldConvId];
+  }
+  await saveContext(context);
+}
+
+async function isClaudeSessionStarted(convId) {
+  if (!convId) return false;
+  const context = await loadContext();
+  return Boolean(context.claudeSessions?.[convId]);
+}
+
+async function markClaudeSessionStarted(convId, started = true) {
+  if (!convId) return;
+  const context = await loadContext();
+  if (!context.claudeSessions) context.claudeSessions = {};
+  if (started) {
+    context.claudeSessions[convId] = true;
+  } else {
+    delete context.claudeSessions[convId];
+  }
   await saveContext(context);
 }
 
@@ -320,138 +343,163 @@ ${userMessage}
 `.trim();
 
     const engine = await getUserEngine(userId);
-    let binToRun = AGY_BIN;
-    let cliArgs = [];
+    const isClaude = engine === "claude";
 
-    if (engine === "claude") {
-      binToRun = CLAUDE_BIN;
-      cliArgs = [
-        "--session-id",
-        convId,
-        "--model",
-        DEFAULT_CLAUDE_MODEL,
-        "-p",
-        prompt,
-        "--output-format",
-        "text",
-      ];
-      if (AUTO_APPROVE_PERMISSIONS) {
-        cliArgs.push("--dangerously-skip-permissions");
+    const executeCli = async (sessionFlagOverride = null) => {
+      let binToRun = AGY_BIN;
+      let cliArgs = [];
+
+      if (isClaude) {
+        binToRun = CLAUDE_BIN;
+        const isStarted = await isClaudeSessionStarted(convId);
+        const sessionFlag = sessionFlagOverride || (isStarted ? "--resume" : "--session-id");
+        cliArgs = [
+          sessionFlag,
+          convId,
+          "--model",
+          DEFAULT_CLAUDE_MODEL,
+          "-p",
+          prompt,
+          "--output-format",
+          "text",
+        ];
+        if (AUTO_APPROVE_PERMISSIONS) {
+          cliArgs.push("--dangerously-skip-permissions");
+        }
+      } else {
+        binToRun = AGY_BIN;
+        const userModel = await getUserModel(userId);
+        cliArgs = [
+          "--conversation",
+          convId,
+          "--model",
+          userModel,
+          "-p",
+          prompt,
+          "--output-format",
+          "text",
+          "--print-timeout",
+          "10m",
+        ];
+        if (AUTO_APPROVE_PERMISSIONS) {
+          cliArgs.push("--dangerously-skip-permissions");
+        }
       }
-    } else {
-      binToRun = AGY_BIN;
-      const userModel = await getUserModel(userId);
-      cliArgs = [
-        "--conversation",
-        convId,
-        "--model",
-        userModel,
-        "-p",
-        prompt,
-        "--output-format",
-        "text",
-        "--print-timeout",
-        "10m",
-      ];
-      if (AUTO_APPROVE_PERMISSIONS) {
-        cliArgs.push("--dangerously-skip-permissions");
-      }
-    }
 
-    const sanitizedEnv = { ...process.env };
-    delete sanitizedEnv.BOT_TOKEN;
-    delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
-    delete sanitizedEnv.GEMINI_API_KEY;
+      const sanitizedEnv = { ...process.env };
+      delete sanitizedEnv.BOT_TOKEN;
+      delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
+      delete sanitizedEnv.GEMINI_API_KEY;
 
-    const child = spawn(binToRun, cliArgs, {
-      cwd: process.cwd(),
-      shell: false,
-      detached: true,
-      env: sanitizedEnv,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+      const child = spawn(binToRun, cliArgs, {
+        cwd: process.cwd(),
+        shell: false,
+        detached: true,
+        env: sanitizedEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
 
+      task.process = child;
 
-    task.process = child;
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+      let timer;
+      let killTimer;
 
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    let timer;
-    let killTimer;
+      const finish = async (error, code, signal) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(killTimer);
 
-    const finish = async (error, code, signal) => {
-      if (settled) return;
-      settled = true;
-      clearInterval(typingInterval);
-      clearTimeout(timer);
-      clearTimeout(killTimer);
+        // Auto-recovery jika Claude session sudah ada (--session-id bentrok) atau belum ada (--resume missing)
+        if (isClaude && !task.cancelled) {
+          const fullErr = (stderr + "\n" + stdout).toLowerCase();
+          if (fullErr.includes("already in use") && sessionFlagOverride !== "--resume") {
+            console.log(`[Claude Session] Sesi ${convId} sudah ada di Claude, beralih ke --resume...`);
+            await markClaudeSessionStarted(convId, true);
+            return executeCli("--resume");
+          }
+          if (fullErr.includes("no conversation found") && sessionFlagOverride !== "--session-id") {
+            console.log(`[Claude Session] Sesi ${convId} belum terdaftar, beralih ke --session-id...`);
+            await markClaudeSessionStarted(convId, false);
+            return executeCli("--session-id");
+          }
+          if (code === 0) {
+            await markClaudeSessionStarted(convId, true);
+          }
+        }
 
-      const result = {
-        taskId,
-        userId,
-        cancelled: task.cancelled,
-        exitCode: code,
-        signal,
-        error: error?.message || null,
-        output: truncate(stdout.trim(), MAX_OUTPUT),
-        stderr: truncate(stderr.trim(), 2500),
+        clearInterval(typingInterval);
+
+        const result = {
+          taskId,
+          userId,
+          cancelled: task.cancelled,
+          exitCode: code,
+          signal,
+          error: error?.message || null,
+          output: truncate(stdout.trim(), MAX_OUTPUT),
+          stderr: truncate(stderr.trim(), 2500),
+        };
+
+        await appendLog(taskId, JSON.stringify(result, null, 2) + "\n");
+        if (activeTask?.id === taskId) activeTask = null;
+
+        if (task.cancelled) {
+          await ctx.reply("⚠️ Proses dihentikan.");
+          return;
+        }
+
+        const engineLabel = isClaude ? "Claude Code" : "Antigravity";
+
+        if (error || (code !== 0 && !stdout.trim())) {
+          const errText = stderr.trim() || error?.message || `Exit code ${code}`;
+          await ctx.reply(
+            `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`
+          );
+          return;
+        }
+
+        const responseText = stdout.trim() || `${engineLabel} tidak mengembalikan pesan balasan.`;
+
+        try {
+          await ctx.reply(truncate(responseText, 3800), {
+            parse_mode: "Markdown",
+          });
+        } catch {
+          // Fallback ke plain text jika parsing Markdown Telegram error
+          await ctx.reply(truncate(responseText, 3800));
+        }
       };
 
-      await appendLog(taskId, JSON.stringify(result, null, 2) + "\n");
-      if (activeTask?.id === taskId) activeTask = null;
+      timer = setTimeout(() => {
+        task.cancelled = true;
+        killProcessTree(child, "SIGTERM");
+        killTimer = setTimeout(() => {
+          if (activeTask?.id === taskId) killProcessTree(child, "SIGKILL");
+        }, 5000);
+        killTimer.unref();
+      }, TIMEOUT_MS);
 
-      if (task.cancelled) {
-        await ctx.reply("⚠️ Proses dihentikan.");
-        return;
-      }
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk.toString();
+        if (stdout.length > MAX_OUTPUT * 2) {
+          stdout = stdout.slice(-MAX_OUTPUT * 2);
+        }
+      });
 
-      const engineLabel = engine === "claude" ? "Claude Code" : "Antigravity";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString();
+        if (stderr.length > 5000) stderr = stderr.slice(-5000);
+      });
 
-      if (error || (code !== 0 && !stdout.trim())) {
-        const errText = stderr.trim() || error?.message || `Exit code ${code}`;
-        await ctx.reply(
-          `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`
-        );
-        return;
-      }
-
-      const responseText = stdout.trim() || `${engineLabel} tidak mengembalikan pesan balasan.`;
-
-
-      try {
-        await ctx.reply(truncate(responseText, 3800), {
-          parse_mode: "Markdown",
-        });
-      } catch {
-        // Fallback ke plain text jika parsing Markdown Telegram error
-        await ctx.reply(truncate(responseText, 3800));
-      }
+      child.on("error", (error) => finish(error, null, null));
+      child.on("close", (code, signal) => finish(null, code, signal));
     };
 
-    timer = setTimeout(() => {
-      task.cancelled = true;
-      killProcessTree(child, "SIGTERM");
-      killTimer = setTimeout(() => {
-        if (activeTask?.id === taskId) killProcessTree(child, "SIGKILL");
-      }, 5000);
-      killTimer.unref();
-    }, TIMEOUT_MS);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-      if (stdout.length > MAX_OUTPUT * 2) {
-        stdout = stdout.slice(-MAX_OUTPUT * 2);
-      }
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-      if (stderr.length > 5000) stderr = stderr.slice(-5000);
-    });
-
-    child.on("error", (error) => finish(error, null, null));
-    child.on("close", (code, signal) => finish(null, code, signal));
+    await executeCli();
   } catch (err) {
     clearInterval(typingInterval);
     if (activeTask?.id === taskId) activeTask = null;
