@@ -426,7 +426,16 @@ ${userMessage}
       const sanitizedEnv = { ...process.env };
       delete sanitizedEnv.BOT_TOKEN;
       delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
-      delete sanitizedEnv.GEMINI_API_KEY;
+
+      // Konfigurasi mode autentikasi Claude Code (OAuth / Browser vs API Key)
+      if (process.env.CLAUDE_AUTH_TYPE === "oauth") {
+        delete sanitizedEnv.ANTHROPIC_API_KEY;
+      }
+
+      // Konfigurasi mode autentikasi Antigravity (Google Session vs API Key)
+      if (process.env.AGY_AUTH_TYPE === "oauth") {
+        delete sanitizedEnv.GEMINI_API_KEY;
+      }
 
       const child = spawn(binToRun, cliArgs, {
         cwd: process.cwd(),

@@ -28,6 +28,17 @@ const badgeModel = document.getElementById("badgeModel");
 const badgeToken = document.getElementById("badgeToken");
 const badgeHost = document.getElementById("badgeHost");
 
+const claudeAuthRadios = document.querySelectorAll('input[name="CLAUDE_AUTH_TYPE"]');
+const agyAuthRadios = document.querySelectorAll('input[name="AGY_AUTH_TYPE"]');
+const anthropicApiKeyInput = document.getElementById("anthropicApiKey");
+const geminiApiKeyInput = document.getElementById("geminiApiKey");
+const toggleAnthropicKeyBtn = document.getElementById("toggleAnthropicKey");
+const toggleGeminiKeyBtn = document.getElementById("toggleGeminiKey");
+const eyeAnthropicIcon = document.getElementById("eyeAnthropicIcon");
+const eyeGeminiIcon = document.getElementById("eyeGeminiIcon");
+const badgeClaudeSession = document.getElementById("badgeClaudeSession");
+const badgeAgySession = document.getElementById("badgeAgySession");
+
 const statusPill = document.getElementById("statusPill");
 const statusText = document.getElementById("statusText");
 const btnReload = document.getElementById("btnReload");
@@ -89,6 +100,26 @@ toggleTokenBtn.addEventListener("click", () => {
     ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
     : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
 });
+
+if (toggleAnthropicKeyBtn && anthropicApiKeyInput) {
+  toggleAnthropicKeyBtn.addEventListener("click", () => {
+    const isPass = anthropicApiKeyInput.type === "password";
+    anthropicApiKeyInput.type = isPass ? "text" : "password";
+    eyeAnthropicIcon.innerHTML = isPass
+      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
+      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+  });
+}
+
+if (toggleGeminiKeyBtn && geminiApiKeyInput) {
+  toggleGeminiKeyBtn.addEventListener("click", () => {
+    const isPass = geminiApiKeyInput.type === "password";
+    geminiApiKeyInput.type = isPass ? "text" : "password";
+    eyeGeminiIcon.innerHTML = isPass
+      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
+      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+  });
+}
 
 // Update Live Badges
 function updateBadges(settings, system) {
@@ -160,6 +191,46 @@ async function loadSettings() {
     autoApproveCheckbox.checked =
       currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === "true" ||
       currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === true;
+
+    // Populate Auth Mode & API Keys
+    const claudeAuth = currentSettings.CLAUDE_AUTH_TYPE || "oauth";
+    for (const r of claudeAuthRadios) {
+      r.checked = r.value === claudeAuth;
+    }
+    if (anthropicApiKeyInput) {
+      anthropicApiKeyInput.value = currentSettings.ANTHROPIC_API_KEY || "";
+    }
+
+    const agyAuth = currentSettings.AGY_AUTH_TYPE || "oauth";
+    for (const r of agyAuthRadios) {
+      r.checked = r.value === agyAuth;
+    }
+    if (geminiApiKeyInput) {
+      geminiApiKeyInput.value = currentSettings.GEMINI_API_KEY || "";
+    }
+
+    // Status Badges
+    if (data.authStatus) {
+      if (badgeClaudeSession) {
+        if (data.authStatus.claudeSessionActive) {
+          badgeClaudeSession.className = "badge badge-primary";
+          badgeClaudeSession.innerHTML = "✓ Sesi Aktif";
+        } else {
+          badgeClaudeSession.className = "badge";
+          badgeClaudeSession.innerHTML = "Belum Login";
+        }
+      }
+
+      if (badgeAgySession) {
+        if (data.authStatus.agySessionActive) {
+          badgeAgySession.className = "badge badge-primary";
+          badgeAgySession.innerHTML = "✓ Sesi Aktif";
+        } else {
+          badgeAgySession.className = "badge";
+          badgeAgySession.innerHTML = "Belum Login";
+        }
+      }
+    }
 
     // Populate Timeout
     timeoutInput.value = currentSettings.TASK_TIMEOUT_MS || "900000";
@@ -282,12 +353,19 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "agy";
+  const selectedClaudeAuth = document.querySelector('input[name="CLAUDE_AUTH_TYPE"]:checked')?.value || "oauth";
+  const selectedAgyAuth = document.querySelector('input[name="AGY_AUTH_TYPE"]:checked')?.value || "oauth";
+
   const payload = {
     BOT_TOKEN: botTokenInput.value.trim(),
     ALLOWED_TELEGRAM_IDS: allowedIdsInput.value.trim(),
     CLI_ENGINE: selectedEngine,
     AGY_MODEL: agyModelSelect.value,
     CLAUDE_MODEL: claudeModelSelect.value,
+    CLAUDE_AUTH_TYPE: selectedClaudeAuth,
+    AGY_AUTH_TYPE: selectedAgyAuth,
+    ANTHROPIC_API_KEY: anthropicApiKeyInput ? anthropicApiKeyInput.value.trim() : "",
+    GEMINI_API_KEY: geminiApiKeyInput ? geminiApiKeyInput.value.trim() : "",
     AGY_AUTO_APPROVE_PERMISSIONS: autoApproveCheckbox.checked ? "true" : "false",
     TASK_TIMEOUT_MS: timeoutInput.value.trim(),
   };

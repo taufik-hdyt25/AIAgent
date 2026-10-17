@@ -254,6 +254,11 @@ body {
   color: #34d399;
 }
 
+.card-icon.amber {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
 .card-title {
   font-size: 1.15rem;
   font-weight: 700;
@@ -423,8 +428,9 @@ body {
   font-family: var(--font-mono);
 }
 
-/* Engine Selector Cards */
-.engine-selector {
+/* Engine & Auth Selector Cards */
+.engine-selector,
+.auth-mode-selector {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 1rem;

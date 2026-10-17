@@ -212,6 +212,138 @@
           </div>
         </div>
 
+        <!-- SECTION: Metode Autentikasi (OAuth vs API Key) -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon amber">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">Metode Autentikasi (OAuth / CLI vs API Key)</h2>
+              <p class="card-description">Pilih metode login: melalui sesi login terminal (OAuth) atau langsung via API Key.</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- Autentikasi Claude Code -->
+            <div class="form-group">
+              <label class="form-label">METODE AUTENTIKASI CLAUDE CODE</label>
+              <div class="auth-mode-selector">
+                <label class="engine-option" id="optClaudeOAuth">
+                  <input type="radio" name="CLAUDE_AUTH_TYPE" value="oauth" checked>
+                  <div class="engine-card">
+                    <div class="engine-header">
+                      <span class="engine-name">Sesi Login / OAuth</span>
+                      <span class="badge" id="badgeClaudeSession">Memeriksa...</span>
+                    </div>
+                    <p class="engine-desc">Login interaktif akun Anthropic via <code>./auth.sh claude</code> atau <code>claude</code> di terminal.</p>
+                  </div>
+                </label>
+
+                <label class="engine-option" id="optClaudeApiKey">
+                  <input type="radio" name="CLAUDE_AUTH_TYPE" value="api_key">
+                  <div class="engine-card">
+                    <div class="engine-header">
+                      <span class="engine-name">Anthropic API Key</span>
+                      <span class="badge badge-purple">Direct Key</span>
+                    </div>
+                    <p class="engine-desc">Menggunakan API Key dari console.anthropic.com (sangat cocok untuk VPS tanpa GUI).</p>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Input ANTHROPIC_API_KEY -->
+              <div class="api-key-box" id="boxClaudeApiKey" style="margin-top: 14px;">
+                <div class="label-row">
+                  <label for="anthropicApiKey" class="form-label">ANTHROPIC API KEY</label>
+                  <span class="label-hint">sk-ant-api03-...</span>
+                </div>
+                <div class="input-action-wrapper">
+                  <input 
+                    type="password" 
+                    id="anthropicApiKey" 
+                    name="ANTHROPIC_API_KEY" 
+                    class="form-input font-mono" 
+                    placeholder="sk-ant-api03-xxxxxxxxxxxxxxxxxxxx"
+                    autocomplete="off"
+                    spellcheck="false"
+                  >
+                  <button type="button" class="btn-icon" id="toggleAnthropicKey" title="Tampilkan / Sembunyikan Key" aria-label="Toggle Anthropic Key visibility">
+                    <svg id="eyeAnthropicIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="form-help">
+                  Kunci API resmi dari <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Anthropic Console</a>.
+                </div>
+              </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 24px 0;">
+
+            <!-- Autentikasi Antigravity / Gemini -->
+            <div class="form-group">
+              <label class="form-label">METODE AUTENTIKASI ANTIGRAVITY (AGY)</label>
+              <div class="auth-mode-selector">
+                <label class="engine-option" id="optAgyOAuth">
+                  <input type="radio" name="AGY_AUTH_TYPE" value="oauth" checked>
+                  <div class="engine-card">
+                    <div class="engine-header">
+                      <span class="engine-name">Sesi Antigravity CLI</span>
+                      <span class="badge" id="badgeAgySession">Memeriksa...</span>
+                    </div>
+                    <p class="engine-desc">Login akun Google via <code>./auth.sh agy</code> (kredensial tersimpan di <code>~/.gemini</code>).</p>
+                  </div>
+                </label>
+
+                <label class="engine-option" id="optAgyApiKey">
+                  <input type="radio" name="AGY_AUTH_TYPE" value="api_key">
+                  <div class="engine-card">
+                    <div class="engine-header">
+                      <span class="engine-name">Gemini API Key</span>
+                      <span class="badge badge-emerald">Google AI</span>
+                    </div>
+                    <p class="engine-desc">Menggunakan Gemini API Key langsung dari Google AI Studio.</p>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Input GEMINI_API_KEY -->
+              <div class="api-key-box" id="boxGeminiApiKey" style="margin-top: 14px;">
+                <div class="label-row">
+                  <label for="geminiApiKey" class="form-label">GEMINI API KEY</label>
+                  <span class="label-hint">AIzaSy...</span>
+                </div>
+                <div class="input-action-wrapper">
+                  <input 
+                    type="password" 
+                    id="geminiApiKey" 
+                    name="GEMINI_API_KEY" 
+                    class="form-input font-mono" 
+                    placeholder="AIzaSyxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    autocomplete="off"
+                    spellcheck="false"
+                  >
+                  <button type="button" class="btn-icon" id="toggleGeminiKey" title="Tampilkan / Sembunyikan Key" aria-label="Toggle Gemini Key visibility">
+                    <svg id="eyeGeminiIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="form-help">
+                  Dapatkan API key dari <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
         <!-- SECTION 3: Keamanan & Timeout Runtime -->
         <div class="card">
           <div class="card-header">

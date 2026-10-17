@@ -145,6 +145,9 @@ export function createWebServer() {
     if (pathname === "/api/settings" && req.method === "GET") {
       try {
         const { parsed } = await readEnvFile();
+        const claudeSessionActive = await stat(path.join(os.homedir(), ".claude")).then(() => true).catch(() => false);
+        const agySessionActive = await stat(path.join(os.homedir(), ".gemini")).then(() => true).catch(() => false);
+
         return sendJson(200, {
           ok: true,
           settings: {
@@ -157,6 +160,16 @@ export function createWebServer() {
               parsed.AGY_AUTO_APPROVE_PERMISSIONS ?? process.env.AGY_AUTO_APPROVE_PERMISSIONS ?? "true",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
             WEB_PORT: parsed.WEB_PORT || process.env.WEB_PORT || "3030",
+            ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "",
+            GEMINI_API_KEY: parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY || "",
+            CLAUDE_AUTH_TYPE: parsed.CLAUDE_AUTH_TYPE || (parsed.ANTHROPIC_API_KEY ? "api_key" : "oauth"),
+            AGY_AUTH_TYPE: parsed.AGY_AUTH_TYPE || (parsed.GEMINI_API_KEY ? "api_key" : "oauth"),
+          },
+          authStatus: {
+            claudeSessionActive,
+            agySessionActive,
+            hasAnthropicKey: Boolean(parsed.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY),
+            hasGeminiKey: Boolean(parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
           },
           options: {
             agyModels: AVAILABLE_AGY_MODELS,
@@ -207,6 +220,18 @@ export function createWebServer() {
           }
           if (payload.TASK_TIMEOUT_MS !== undefined) {
             updates.TASK_TIMEOUT_MS = String(payload.TASK_TIMEOUT_MS).trim();
+          }
+          if (payload.ANTHROPIC_API_KEY !== undefined) {
+            updates.ANTHROPIC_API_KEY = String(payload.ANTHROPIC_API_KEY).trim();
+          }
+          if (payload.GEMINI_API_KEY !== undefined) {
+            updates.GEMINI_API_KEY = String(payload.GEMINI_API_KEY).trim();
+          }
+          if (payload.CLAUDE_AUTH_TYPE !== undefined) {
+            updates.CLAUDE_AUTH_TYPE = String(payload.CLAUDE_AUTH_TYPE).trim();
+          }
+          if (payload.AGY_AUTH_TYPE !== undefined) {
+            updates.AGY_AUTH_TYPE = String(payload.AGY_AUTH_TYPE).trim();
           }
 
           await updateEnvFile(updates);
