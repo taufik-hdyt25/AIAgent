@@ -1,7 +1,7 @@
 {
   "name": "telegram-coding-agent",
   "version": "1.0.0",
-  "description": "Telegram AI Coding Agent powered by Antigravity CLI and grammY",
+  "description": "Telegram AI Coding Agent powered by Antigravity CLI, Claude Code CLI, and grammY",
   "private": true,
   "type": "module",
   "main": "src/bot.js",

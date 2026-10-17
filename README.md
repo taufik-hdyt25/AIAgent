@@ -1,6 +1,6 @@
-# Telegram AI Coding Agent dengan Antigravity CLI (`agy`)
+# Telegram AI Coding Agent dengan Antigravity CLI dan Claude CLI
 
-Bot Telegram cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (`agy`), memungkinkan Anda mendelegasikan tugas coding langsung dari chat Telegram ke repository di server/VPS.
+Bot Telegram cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (`agy`) dan Claude Code CLI (`claude`), memungkinkan Anda mendelegasikan tugas coding langsung dari chat Telegram ke repository di server/VPS.
 
 ---
 
