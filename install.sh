@@ -197,12 +197,21 @@ if [ "$OS" = "Darwin" ]; then
     setup_directories
     setup_env_file
 
-    # 4. Install dependensi Node.js
-    echo -e "\n${BLUE}[3/4] Menginstall dependensi proyek (npm install)...${NC}"
+    # 4. Install dependensi Node.js & PM2
+    echo -e "\n${BLUE}[3/5] Menginstall dependensi proyek (npm install)...${NC}"
     npm install
 
+    # Pasang PM2 secara global jika belum terpasang
+    if ! command -v pm2 &>/dev/null; then
+        echo -e "${BLUE}Memasang PM2 process manager (agar bot bisa auto-start & jalan di background)...${NC}"
+        npm install -g pm2 2>/dev/null || sudo npm install -g pm2 2>/dev/null || true
+    fi
+    if command -v pm2 &>/dev/null; then
+        echo -e "${GREEN}✓ PM2 terpasang: $(pm2 -v)${NC}"
+    fi
+
     # 5. Cek Autentikasi CLI
-    echo -e "\n${BLUE}[4/4] Memeriksa status login model AI...${NC}"
+    echo -e "\n${BLUE}[4/5] Memeriksa status login model AI...${NC}"
     AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
     if [ -f "$HOME/.gemini/antigravity-cli/settings.json" ] || [ -d "$HOME/.gemini" ]; then
         echo -e "${GREEN}✓ Sesi Antigravity CLI ($HOME/.gemini) terdeteksi.${NC}"
@@ -214,14 +223,44 @@ if [ "$OS" = "Darwin" ]; then
         fi
     fi
 
+    # 6. Opsi Background & Auto-start
+    echo -e "\n${BLUE}[5/5] Menyiapkan Background Service & Auto-Start...${NC}"
+    if command -v pm2 &>/dev/null; then
+        echo -e "${CYAN}Ingin langsung menjalankan bot di background dan aktifkan auto-start saat Mac dinyalakan?${NC}"
+        prompt_user "Jalankan di background & auto-start? (y/n, default: y): " start_bg
+        start_bg="${start_bg:-y}"
+
+        if [ "$start_bg" != "n" ] && [ "$start_bg" != "N" ]; then
+            echo -e "${BLUE}Menjalankan bot via PM2...${NC}"
+            pm2 delete telegram-coding-agent 2>/dev/null || true
+            pm2 start ecosystem.config.cjs
+            pm2 save || true
+
+            echo -e "${YELLOW}Mengonfigurasi auto-start on boot...${NC}"
+            pm2 startup darwin -u "$USER" --hp "$HOME" 2>/dev/null || pm2 startup 2>/dev/null || true
+            pm2 save || true
+            echo -e "${GREEN}✓ Bot berhasil aktif di background dan dikonfigurasi auto-start!${NC}"
+        fi
+    fi
+
     echo -e "\n${GREEN}======================================================${NC}"
     echo -e "${GREEN}🎉 INSTALASI DI MAC BERHASIL SELESAI!                  ${NC}"
     echo -e "${GREEN}======================================================${NC}"
     echo -e "${CYAN}Web UI Control Panel siap di:${NC} ${BLUE}http://localhost:3000${NC}"
     echo -e "Anda dapat mengatur Token, ID, dan Model langsung lewat browser."
     echo ""
-    echo -e "${YELLOW}Untuk menjalankan bot sekarang:${NC}"
-    echo -e "   ${BLUE}npm start${NC}"
+    if command -v pm2 &>/dev/null && pm2 list | grep -q "telegram-coding-agent"; then
+        echo -e "${GREEN}Status Bot (PM2 Background Active):${NC}"
+        pm2 status telegram-coding-agent
+        echo ""
+        echo -e "• Cek log live:   ${BLUE}npm run logs${NC} (atau: ${BLUE}pm2 logs${NC})"
+        echo -e "• Restart bot:    ${BLUE}npm run restart${NC}"
+        echo -e "• Hentikan bot:   ${BLUE}npm run stop${NC}"
+    else
+        echo -e "${YELLOW}Untuk menjalankan bot secara manual:${NC}"
+        echo -e "   ${BLUE}npm start${NC}        # Foreground (terminal)"
+        echo -e "   ${BLUE}npm run background${NC} # Latar belakang (PM2)"
+    fi
     echo ""
     echo -e "${YELLOW}Atau hanya menjalankan Web UI Settings:${NC}"
     echo -e "   ${BLUE}npm run ui${NC}"

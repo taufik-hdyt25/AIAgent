@@ -71,10 +71,11 @@ Atau jika sudah melakukan git clone:
 
 ### Apa yang Dilakukan Installer Ini Secara Otomatis?
 1. Mengunduh repository ke folder `telegram-ai-agent` (jika belum di-clone).
-2. Memeriksa & memasang runtime **Node.js**, **Antigravity CLI (`agy`)**, dan **Claude Code CLI (`claude`)**.
+2. Memeriksa & memasang runtime **Node.js**, **Antigravity CLI (`agy`)**, **Claude Code CLI (`claude`)**, dan **PM2 Process Manager**.
 3. Menyiapkan folder kerja, file `.env`, dan model AI default.
-4. Di Linux VPS: Memberikan opsi instalasi **Native PM2** (ringan untuk VPS 1GB) atau **Docker Container**.
-5. Mengaktifkan **Web UI Control Panel** di `http://localhost:3000` (atau IP VPS Anda).
+4. **Auto-Start & Background Service:** Mengonfigurasi bot agar langsung berjalan di latar belakang dan otomatis aktif kembali saat komputer/VPS menyala (*auto-start on boot*).
+5. Di Linux VPS: Memberikan opsi instalasi **Native PM2** (ringan untuk VPS 1GB) atau **Docker Container**.
+6. Mengaktifkan **Web UI Control Panel** di `http://localhost:3000` (atau IP VPS Anda).
 
 ### Autentikasi / Login CLI:
 Cukup jalankan:

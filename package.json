@@ -7,6 +7,10 @@
   "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
+    "background": "pm2 start ecosystem.config.cjs",
+    "stop": "pm2 stop telegram-coding-agent",
+    "restart": "pm2 restart telegram-coding-agent",
+    "logs": "pm2 logs telegram-coding-agent",
     "ui": "node src/web-server.js"
   },
   "dependencies": {
