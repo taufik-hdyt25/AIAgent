@@ -10,38 +10,14 @@ const ROOT_DIR = path.resolve(__dirname, "..");
 const ENV_PATH = path.join(ROOT_DIR, ".env");
 const PUBLIC_DIR = path.join(ROOT_DIR, "public");
 
-const AVAILABLE_AGY_MODELS = [
-  { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium Thinking)", badge: "Rekomendasi" },
-  { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High Thinking)", badge: "Maksimal" },
-  { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low Thinking)", badge: "Cepat" },
-  { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)", badge: "Populer" },
-  { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)", badge: "Kuat" },
-  { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)", badge: "Open" },
-];
+import {
+  AVAILABLE_AGY_MODELS,
+  AVAILABLE_CLAUDE_MODELS,
+  AVAILABLE_UNIVERSAL_MODELS,
+  getModelList,
+  fetchRemoteModels,
+} from "./config/models.js";
 
-const AVAILABLE_CLAUDE_MODELS = [
-  { id: "sonnet", name: "Claude Sonnet (Default - Cepat & Cerdas)", badge: "Default" },
-  { id: "opus", name: "Claude Opus (Penalaran Kompleks & Mendalam)", badge: "Kuat" },
-  { id: "haiku", name: "Claude Haiku (Ultra Cepat & Ringan)", badge: "Cepat" },
-  { id: "fable", name: "Claude Fable (Experimental Creative Agent)", badge: "Eksperimental" },
-  { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
-  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
-  { id: "claude-3-5-haiku", name: "Claude 3.5 Haiku (Fast & Cost Efficient)", badge: "Hemat" },
-  { id: "claude-3-opus", name: "Claude 3 Opus (Deep Analysis)", badge: "Maksimal" },
-];
-
-const AVAILABLE_UNIVERSAL_MODELS = [
-  { id: "deepseek/deepseek-v4", name: "DeepSeek V4 (Generasi Terbaru - Flagship)", badge: "Terbaru" },
-  { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (Sangat Cerdas & Hemat - Rekomendasi)", badge: "Rekomendasi" },
-  { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (Penalaran Ekstrem / Thinking)", badge: "Thinking" },
-  { id: "deepseek/deepseek-coder", name: "DeepSeek Coder (Spesialis Koding)", badge: "Koding" },
-  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
-  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
-  { id: "openai/gpt-4o", name: "GPT-4o (Omni Flagship)", badge: "Flagship" },
-  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cepat & Ringkas)", badge: "Cepat" },
-  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (Super Cepat)", badge: "Kilat" },
-  { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B (Spesialis Koding)", badge: "Open" },
-];
 
 // Helper membaca dan parse file .env
 async function readEnvFile() {
@@ -194,9 +170,9 @@ export function createWebServer() {
             hasUniversalKey: Boolean(parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY),
           },
           options: {
-            agyModels: AVAILABLE_AGY_MODELS,
-            claudeModels: AVAILABLE_CLAUDE_MODELS,
-            universalModels: AVAILABLE_UNIVERSAL_MODELS,
+            agyModels: await getModelList("agy"),
+            claudeModels: await getModelList("claude"),
+            universalModels: await getModelList("universal"),
           },
           system: {
             platform: os.platform(),
@@ -205,6 +181,22 @@ export function createWebServer() {
             hostname: os.hostname(),
           },
         });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    // API: Tarik remote models dari provider (OpenRouter / OpenAI-compatible)
+    if (pathname === "/api/models/remote" && req.method === "GET") {
+      try {
+        const { parsed } = await readEnvFile();
+        const baseUrl = parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://openrouter.ai/api/v1";
+        const apiKey = parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY;
+        if (!apiKey) {
+          return sendError(400, "API Key belum diisi untuk mengambil model dari provider.");
+        }
+        const models = await fetchRemoteModels(baseUrl, apiKey);
+        return sendJson(200, { ok: true, models });
       } catch (err) {
         return sendError(500, err.message);
       }
