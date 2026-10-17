@@ -25,6 +25,15 @@ const AVAILABLE_CLAUDE_MODELS = [
   { id: "haiku", name: "Claude Haiku (Ultra Fast)" },
 ];
 
+const AVAILABLE_UNIVERSAL_MODELS = [
+  { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (Sangat Cerdas & Hemat - Rekomendasi)" },
+  { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (Penalaran Ekstrem / Thinking)" },
+  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)" },
+  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cepat & Ringkas)" },
+  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (Super Cepat)" },
+  { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B (Spesialis Koding)" },
+];
+
 // Helper membaca dan parse file .env
 async function readEnvFile() {
   try {
@@ -164,16 +173,21 @@ export function createWebServer() {
             GEMINI_API_KEY: parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY || "",
             CLAUDE_AUTH_TYPE: parsed.CLAUDE_AUTH_TYPE || (parsed.ANTHROPIC_API_KEY ? "api_key" : "oauth"),
             AGY_AUTH_TYPE: parsed.AGY_AUTH_TYPE || (parsed.GEMINI_API_KEY ? "api_key" : "oauth"),
+            UNIVERSAL_BASE_URL: parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://openrouter.ai/api/v1",
+            UNIVERSAL_API_KEY: parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "",
+            UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL || process.env.UNIVERSAL_MODEL || "deepseek/deepseek-chat",
           },
           authStatus: {
             claudeSessionActive,
             agySessionActive,
             hasAnthropicKey: Boolean(parsed.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY),
             hasGeminiKey: Boolean(parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
+            hasUniversalKey: Boolean(parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY),
           },
           options: {
             agyModels: AVAILABLE_AGY_MODELS,
             claudeModels: AVAILABLE_CLAUDE_MODELS,
+            universalModels: AVAILABLE_UNIVERSAL_MODELS,
           },
           system: {
             platform: os.platform(),
@@ -232,6 +246,15 @@ export function createWebServer() {
           }
           if (payload.AGY_AUTH_TYPE !== undefined) {
             updates.AGY_AUTH_TYPE = String(payload.AGY_AUTH_TYPE).trim();
+          }
+          if (payload.UNIVERSAL_MODEL !== undefined) {
+            updates.UNIVERSAL_MODEL = String(payload.UNIVERSAL_MODEL).trim();
+          }
+          if (payload.UNIVERSAL_API_KEY !== undefined) {
+            updates.UNIVERSAL_API_KEY = String(payload.UNIVERSAL_API_KEY).trim();
+          }
+          if (payload.UNIVERSAL_BASE_URL !== undefined) {
+            updates.UNIVERSAL_BASE_URL = String(payload.UNIVERSAL_BASE_URL).trim();
           }
 
           await updateEnvFile(updates);

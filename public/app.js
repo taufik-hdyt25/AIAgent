@@ -19,6 +19,10 @@ const idChipsContainer = document.getElementById("idChipsContainer");
 const engineRadios = document.querySelectorAll('input[name="CLI_ENGINE"]');
 const agyModelSelect = document.getElementById("agyModel");
 const claudeModelSelect = document.getElementById("claudeModel");
+const universalModelSelect = document.getElementById("universalModel");
+const groupAgyModel = document.getElementById("groupAgyModel");
+const groupClaudeModel = document.getElementById("groupClaudeModel");
+const groupUniversalModel = document.getElementById("groupUniversalModel");
 const autoApproveCheckbox = document.getElementById("autoApprove");
 const timeoutInput = document.getElementById("timeoutMs");
 const timeoutFormatted = document.getElementById("timeoutFormatted");
@@ -32,12 +36,17 @@ const claudeAuthRadios = document.querySelectorAll('input[name="CLAUDE_AUTH_TYPE
 const agyAuthRadios = document.querySelectorAll('input[name="AGY_AUTH_TYPE"]');
 const anthropicApiKeyInput = document.getElementById("anthropicApiKey");
 const geminiApiKeyInput = document.getElementById("geminiApiKey");
+const universalApiKeyInput = document.getElementById("universalApiKey");
+const universalBaseUrlInput = document.getElementById("universalBaseUrl");
 const toggleAnthropicKeyBtn = document.getElementById("toggleAnthropicKey");
 const toggleGeminiKeyBtn = document.getElementById("toggleGeminiKey");
+const toggleUniversalKeyBtn = document.getElementById("toggleUniversalKey");
 const eyeAnthropicIcon = document.getElementById("eyeAnthropicIcon");
 const eyeGeminiIcon = document.getElementById("eyeGeminiIcon");
+const eyeUniversalIcon = document.getElementById("eyeUniversalIcon");
 const badgeClaudeSession = document.getElementById("badgeClaudeSession");
 const badgeAgySession = document.getElementById("badgeAgySession");
+const badgeUniversalKey = document.getElementById("badgeUniversalKey");
 
 const statusPill = document.getElementById("statusPill");
 const statusText = document.getElementById("statusText");
@@ -121,11 +130,35 @@ if (toggleGeminiKeyBtn && geminiApiKeyInput) {
   });
 }
 
+if (toggleUniversalKeyBtn && universalApiKeyInput) {
+  toggleUniversalKeyBtn.addEventListener("click", () => {
+    const isPass = universalApiKeyInput.type === "password";
+    universalApiKeyInput.type = isPass ? "text" : "password";
+    eyeUniversalIcon.innerHTML = isPass
+      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
+      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+  });
+}
+
+// Helper untuk menyembunyikan/menampilkan select model sesuai engine
+function syncEngineView(engine) {
+  if (groupAgyModel) groupAgyModel.style.display = engine === "agy" ? "block" : "none";
+  if (groupClaudeModel) groupClaudeModel.style.display = engine === "claude" ? "block" : "none";
+  if (groupUniversalModel) groupUniversalModel.style.display = engine === "universal" ? "block" : "none";
+}
+
 // Update Live Badges
 function updateBadges(settings, system) {
-  badgeEngine.textContent = settings.CLI_ENGINE === "claude" ? "Claude Code" : "Antigravity (agy)";
-  badgeModel.textContent =
-    settings.CLI_ENGINE === "claude" ? settings.CLAUDE_MODEL : settings.AGY_MODEL;
+  if (settings.CLI_ENGINE === "claude") {
+    badgeEngine.textContent = "Claude Code";
+    badgeModel.textContent = settings.CLAUDE_MODEL || "sonnet";
+  } else if (settings.CLI_ENGINE === "universal") {
+    badgeEngine.textContent = "Universal API";
+    badgeModel.textContent = settings.UNIVERSAL_MODEL || "deepseek/deepseek-chat";
+  } else {
+    badgeEngine.textContent = "Antigravity (agy)";
+    badgeModel.textContent = settings.AGY_MODEL || "gemini-3.8-flash-medium";
+  }
   
   if (settings.BOT_TOKEN && settings.BOT_TOKEN.length > 20) {
     badgeToken.innerHTML = `<span style="color: #34d399;">✓ Terkonfigurasi</span>`;
@@ -154,7 +187,7 @@ async function loadSettings() {
     if (!data.ok) throw new Error(data.error || "Gagal memuat");
 
     currentSettings = data.settings;
-    availableOptions = data.options;
+    availableOptions = data.options || {};
 
     // Populate inputs
     botTokenInput.value = currentSettings.BOT_TOKEN || "";
@@ -166,10 +199,11 @@ async function loadSettings() {
     for (const r of engineRadios) {
       r.checked = r.value === activeEngine;
     }
+    syncEngineView(activeEngine);
 
     // Populate AGY Models Select
     agyModelSelect.innerHTML = "";
-    for (const m of availableOptions.agyModels) {
+    for (const m of (availableOptions.agyModels || [])) {
       const opt = document.createElement("option");
       opt.value = m.id;
       opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
@@ -179,12 +213,32 @@ async function loadSettings() {
 
     // Populate Claude Models Select
     claudeModelSelect.innerHTML = "";
-    for (const m of availableOptions.claudeModels) {
+    for (const m of (availableOptions.claudeModels || [])) {
       const opt = document.createElement("option");
       opt.value = m.id;
       opt.textContent = m.name;
       opt.selected = m.id === currentSettings.CLAUDE_MODEL;
       claudeModelSelect.appendChild(opt);
+    }
+
+    // Populate Universal Models Select
+    if (universalModelSelect) {
+      universalModelSelect.innerHTML = "";
+      for (const m of (availableOptions.universalModels || [])) {
+        const opt = document.createElement("option");
+        opt.value = m.id;
+        opt.textContent = m.name;
+        opt.selected = m.id === (currentSettings.UNIVERSAL_MODEL || "deepseek/deepseek-chat");
+        universalModelSelect.appendChild(opt);
+      }
+    }
+
+    // Populate Universal API inputs
+    if (universalBaseUrlInput) {
+      universalBaseUrlInput.value = currentSettings.UNIVERSAL_BASE_URL || "https://openrouter.ai/api/v1";
+    }
+    if (universalApiKeyInput) {
+      universalApiKeyInput.value = currentSettings.UNIVERSAL_API_KEY || "";
     }
 
     // Populate Auto Approve
@@ -228,6 +282,16 @@ async function loadSettings() {
         } else {
           badgeAgySession.className = "badge";
           badgeAgySession.innerHTML = "Belum Login";
+        }
+      }
+
+      if (badgeUniversalKey) {
+        if (data.authStatus.hasUniversalKey) {
+          badgeUniversalKey.className = "badge badge-primary";
+          badgeUniversalKey.innerHTML = "✓ Key Terpasang";
+        } else {
+          badgeUniversalKey.className = "badge";
+          badgeUniversalKey.innerHTML = "Belum Diisi";
         }
       }
     }
@@ -323,9 +387,17 @@ document.querySelectorAll(".btn-preset").forEach((btn) => {
 // Radio change
 engineRadios.forEach((r) => {
   r.addEventListener("change", () => {
-    badgeEngine.textContent = r.value === "claude" ? "Claude Code" : "Antigravity (agy)";
-    badgeModel.textContent =
-      r.value === "claude" ? claudeModelSelect.value : agyModelSelect.value;
+    syncEngineView(r.value);
+    if (r.value === "claude") {
+      badgeEngine.textContent = "Claude Code";
+      badgeModel.textContent = claudeModelSelect.value;
+    } else if (r.value === "universal") {
+      badgeEngine.textContent = "Universal API";
+      badgeModel.textContent = universalModelSelect ? universalModelSelect.value : "deepseek/deepseek-chat";
+    } else {
+      badgeEngine.textContent = "Antigravity (agy)";
+      badgeModel.textContent = agyModelSelect.value;
+    }
   });
 });
 
@@ -342,6 +414,15 @@ claudeModelSelect.addEventListener("change", () => {
     badgeModel.textContent = claudeModelSelect.value;
   }
 });
+
+if (universalModelSelect) {
+  universalModelSelect.addEventListener("change", () => {
+    const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;
+    if (selectedEngine === "universal") {
+      badgeModel.textContent = universalModelSelect.value;
+    }
+  });
+}
 
 btnReload.addEventListener("click", () => {
   loadSettings();
@@ -362,6 +443,9 @@ form.addEventListener("submit", async (e) => {
     CLI_ENGINE: selectedEngine,
     AGY_MODEL: agyModelSelect.value,
     CLAUDE_MODEL: claudeModelSelect.value,
+    UNIVERSAL_MODEL: universalModelSelect ? universalModelSelect.value : "",
+    UNIVERSAL_API_KEY: universalApiKeyInput ? universalApiKeyInput.value.trim() : "",
+    UNIVERSAL_BASE_URL: universalBaseUrlInput ? universalBaseUrlInput.value.trim() : "",
     CLAUDE_AUTH_TYPE: selectedClaudeAuth,
     AGY_AUTH_TYPE: selectedAgyAuth,
     ANTHROPIC_API_KEY: anthropicApiKeyInput ? anthropicApiKeyInput.value.trim() : "",

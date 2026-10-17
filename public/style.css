@@ -500,6 +500,11 @@ body {
   color: #d8b4fe;
 }
 
+.badge-emerald {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
 /* Toggle Switch */
 .toggle-card {
   display: flex;

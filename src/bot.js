@@ -6,6 +6,7 @@ import path from "node:path";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { startWebServer } from "./web-server.js";
+import { runUniversalAgent, resetSessionHistory } from "./universal-agent.js";
 
 const AVAILABLE_AGY_MODELS = [
   { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium Thinking)" },
@@ -22,9 +23,19 @@ const AVAILABLE_CLAUDE_MODELS = [
   { id: "haiku", name: "Claude Haiku (Ultra Cepat & Ringan)" },
 ];
 
+const AVAILABLE_UNIVERSAL_MODELS = [
+  { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (Sangat Cerdas & Hemat - Rekomendasi)" },
+  { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (Penalaran Ekstrem / Thinking)" },
+  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)" },
+  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cepat & Ringkas)" },
+  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (Super Cepat)" },
+  { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B (Spesialis Koding)" },
+];
+
 const AVAILABLE_MODELS = AVAILABLE_AGY_MODELS;
 const DEFAULT_AGY_MODEL = process.env.AGY_MODEL || "gemini-3.8-flash-medium";
 const DEFAULT_CLAUDE_MODEL = process.env.CLAUDE_MODEL || "sonnet";
+const DEFAULT_UNIVERSAL_MODEL = process.env.UNIVERSAL_MODEL || "deepseek/deepseek-chat";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const AGY_BIN =
@@ -108,6 +119,8 @@ async function resetUserConversation(userId) {
   if (context.claudeSessions && oldConvId) {
     delete context.claudeSessions[oldConvId];
   }
+  if (oldConvId) resetSessionHistory(oldConvId);
+  resetSessionHistory(newConvId);
   await saveContext(context);
 }
 
@@ -159,16 +172,31 @@ async function setUserClaudeModel(userId, modelId) {
   await saveContext(context);
 }
 
+async function getUserUniversalModel(userId) {
+  if (!userId) return DEFAULT_UNIVERSAL_MODEL;
+  const context = await loadContext();
+  return context.universalModels?.[String(userId)] || DEFAULT_UNIVERSAL_MODEL;
+}
+
+async function setUserUniversalModel(userId, modelId) {
+  if (!userId) return;
+  const context = await loadContext();
+  if (!context.universalModels) context.universalModels = {};
+  context.universalModels[String(userId)] = modelId;
+  await saveContext(context);
+}
+
 async function getUserModel(userId) {
   const engine = await getUserEngine(userId);
-  return engine === "claude" ? getUserClaudeModel(userId) : getUserAgyModel(userId);
+  if (engine === "claude") return getUserClaudeModel(userId);
+  if (engine === "universal") return getUserUniversalModel(userId);
+  return getUserAgyModel(userId);
 }
 
 async function setUserModel(userId, modelId) {
   const engine = await getUserEngine(userId);
-  if (engine === "claude") {
-    return setUserClaudeModel(userId, modelId);
-  }
+  if (engine === "claude") return setUserClaudeModel(userId, modelId);
+  if (engine === "universal") return setUserUniversalModel(userId, modelId);
   return setUserAgyModel(userId, modelId);
 }
 
@@ -379,6 +407,61 @@ ${userMessage}
 `.trim();
 
     const engine = await getUserEngine(userId);
+
+    // Engine 3: Universal API Agent (Zero-CLI / Built-in Tools)
+    if (engine === "universal") {
+      try {
+        const universalApiKey =
+          process.env.UNIVERSAL_API_KEY ||
+          process.env.OPENROUTER_API_KEY ||
+          process.env.OPENAI_API_KEY ||
+          process.env.DEEPSEEK_API_KEY;
+
+        if (!universalApiKey) {
+          clearInterval(typingInterval);
+          if (activeTask?.id === taskId) activeTask = null;
+          await ctx.reply(
+            "⚠️ *API Key Universal belum diisi!*\n\nUntuk menggunakan engine Universal API (Zero-CLI), silakan buka Web Control Panel di http://localhost:3030 dan isi *UNIVERSAL_API_KEY* (atau *OPENROUTER_API_KEY* / *OPENAI_API_KEY* / *DEEPSEEK_API_KEY*).",
+            { parse_mode: "Markdown" }
+          );
+          return;
+        }
+
+        const universalBaseUrl =
+          process.env.UNIVERSAL_BASE_URL || "https://openrouter.ai/api/v1";
+        const universalModel = await getUserUniversalModel(userId);
+
+        const replyText = await runUniversalAgent({
+          prompt,
+          convId,
+          apiKey: universalApiKey,
+          baseUrl: universalBaseUrl,
+          model: universalModel,
+          systemPrompt: `Kamu adalah TH Agent, asisten software engineer otonom yang berkomunikasi langsung dengan developer melalui chat Telegram ini. Kamu memiliki akses tools mandiri di server (execute_command, read_file, write_file, list_directory). Gunakan bahasa Indonesia yang ramah, santai, dan profesional.`,
+          onToolStart: () => {
+            sendTyping();
+          },
+        });
+
+        clearInterval(typingInterval);
+        if (activeTask?.id === taskId) activeTask = null;
+
+        try {
+          await ctx.reply(truncate(replyText, 3800), {
+            parse_mode: "Markdown",
+          });
+        } catch {
+          await ctx.reply(truncate(replyText, 3800));
+        }
+        return;
+      } catch (err) {
+        clearInterval(typingInterval);
+        if (activeTask?.id === taskId) activeTask = null;
+        await ctx.reply(`❌ Maaf, Universal Agent mengalami kendala:\n${err.message}`);
+        return;
+      }
+    }
+
     const isClaude = engine === "claude";
 
     const executeCli = async (sessionFlagOverride = null) => {
@@ -593,8 +676,11 @@ bot.command(["start", "help", "bantuan"], async (ctx) => {
   const userId = ctx.from?.id;
   const currentEngine = await getUserEngine(userId);
   const isClaude = currentEngine === "claude";
+  const isUniversal = currentEngine === "universal";
   const activeEngineLabel = isClaude
     ? "Claude Code CLI (`claude`)"
+    : isUniversal
+    ? "Universal API (`Zero-CLI`)"
     : "Antigravity CLI (`agy`)";
 
   let activeModelDisplay = "";
@@ -602,6 +688,10 @@ bot.command(["start", "help", "bantuan"], async (ctx) => {
     const claudeModel = await getUserClaudeModel(userId);
     const matched = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === claudeModel);
     activeModelDisplay = `*${matched?.name || claudeModel}* (\`${claudeModel}\`)`;
+  } else if (isUniversal) {
+    const univModel = await getUserUniversalModel(userId);
+    const matched = AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === univModel);
+    activeModelDisplay = `*${matched?.name || univModel}* (\`${univModel}\`)`;
   } else {
     const agyModel = await getUserAgyModel(userId);
     const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);
@@ -661,13 +751,22 @@ bot.command(["engine", "cli"], async (ctx) => {
     .text(
       `${currentEngine === "claude" ? "🔘 " : "⚪ "}Claude Code CLI (claude)`,
       "set_engine:claude"
+    )
+    .row()
+    .text(
+      `${currentEngine === "universal" ? "🔘 " : "⚪ "}Universal API (Zero-CLI / OpenRouter)`,
+      "set_engine:universal"
     );
 
   const engineLabel =
-    currentEngine === "claude" ? "Claude Code CLI (claude)" : "Antigravity CLI (agy)";
+    currentEngine === "claude"
+      ? "Claude Code CLI (claude)"
+      : currentEngine === "universal"
+      ? "Universal API (Zero-CLI)"
+      : "Antigravity CLI (agy)";
 
   await ctx.reply(
-    `⚙️ *Pilihan Engine CLI*\n\nEngine aktif saat ini:\n👉 *${engineLabel}*\n\nSilakan pilih engine eksekusi yang ingin digunakan:`,
+    `⚙️ *Pilihan Engine Eksekusi*\n\nEngine aktif saat ini:\n👉 *${engineLabel}*\n\nSilakan pilih engine eksekusi yang ingin digunakan:`,
     {
       reply_markup: keyboard,
       parse_mode: "Markdown",
@@ -679,14 +778,18 @@ bot.callbackQuery(/^set_engine:(.+)$/, async (ctx) => {
   const engineId = ctx.match[1];
   const userId = ctx.from?.id;
 
-  if (engineId !== "agy" && engineId !== "claude") {
+  if (engineId !== "agy" && engineId !== "claude" && engineId !== "universal") {
     await ctx.answerCallbackQuery({ text: "Engine tidak valid!" });
     return;
   }
 
   await setUserEngine(userId, engineId);
   const engineLabel =
-    engineId === "claude" ? "Claude Code CLI (claude)" : "Antigravity CLI (agy)";
+    engineId === "claude"
+      ? "Claude Code CLI (claude)"
+      : engineId === "universal"
+      ? "Universal API (Zero-CLI)"
+      : "Antigravity CLI (agy)";
 
   await ctx.answerCallbackQuery({
     text: `Engine diubah ke ${engineLabel}`,
@@ -701,16 +804,25 @@ bot.callbackQuery(/^set_engine:(.+)$/, async (ctx) => {
     .text(
       `${engineId === "claude" ? "🔘 " : "⚪ "}Claude Code CLI (claude)`,
       "set_engine:claude"
+    )
+    .row()
+    .text(
+      `${engineId === "universal" ? "🔘 " : "⚪ "}Universal API (Zero-CLI / OpenRouter)`,
+      "set_engine:universal"
     );
 
-  const engineModel =
-    engineId === "claude"
-      ? await getUserClaudeModel(userId)
-      : await getUserAgyModel(userId);
-  const matchedModel =
-    (engineId === "claude" ? AVAILABLE_CLAUDE_MODELS : AVAILABLE_AGY_MODELS).find(
-      (m) => m.id === engineModel
-    )?.name || engineModel;
+  let engineModel = "";
+  let matchedModel = "";
+  if (engineId === "claude") {
+    engineModel = await getUserClaudeModel(userId);
+    matchedModel = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === engineModel)?.name || engineModel;
+  } else if (engineId === "universal") {
+    engineModel = await getUserUniversalModel(userId);
+    matchedModel = AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === engineModel)?.name || engineModel;
+  } else {
+    engineModel = await getUserAgyModel(userId);
+    matchedModel = AVAILABLE_AGY_MODELS.find((m) => m.id === engineModel)?.name || engineModel;
+  }
 
   try {
     await ctx.editMessageText(
@@ -733,17 +845,30 @@ bot.command("model", async (ctx) => {
   const userId = ctx.from?.id;
   const currentEngine = await getUserEngine(userId);
   const isClaude = currentEngine === "claude";
-  const modelList = isClaude ? AVAILABLE_CLAUDE_MODELS : AVAILABLE_AGY_MODELS;
+  const isUniversal = currentEngine === "universal";
+  const modelList = isClaude
+    ? AVAILABLE_CLAUDE_MODELS
+    : isUniversal
+    ? AVAILABLE_UNIVERSAL_MODELS
+    : AVAILABLE_AGY_MODELS;
   const currentModel = isClaude
     ? await getUserClaudeModel(userId)
+    : isUniversal
+    ? await getUserUniversalModel(userId)
     : await getUserAgyModel(userId);
-  const engineLabel = isClaude ? "Claude Code CLI" : "Antigravity CLI";
+  const engineLabel = isClaude
+    ? "Claude Code CLI"
+    : isUniversal
+    ? "Universal API (Zero-CLI)"
+    : "Antigravity CLI";
 
   if (arg) {
     const matched = modelList.find(
       (m) => m.id.toLowerCase() === arg.toLowerCase()
     );
-    if (!matched) {
+    const chosenId = matched ? matched.id : isUniversal ? arg : null;
+
+    if (!chosenId) {
       const listStr = modelList
         .map((m) => `• \`${m.id}\` (${m.name})`)
         .join("\n");
@@ -753,13 +878,18 @@ bot.command("model", async (ctx) => {
       );
       return;
     }
+
     if (isClaude) {
-      await setUserClaudeModel(userId, matched.id);
+      await setUserClaudeModel(userId, chosenId);
+    } else if (isUniversal) {
+      await setUserUniversalModel(userId, chosenId);
     } else {
-      await setUserAgyModel(userId, matched.id);
+      await setUserAgyModel(userId, chosenId);
     }
+
+    const modelName = matched ? matched.name : chosenId;
     await ctx.reply(
-      `✅ Model untuk *${engineLabel}* berhasil diubah ke: *${matched.name}*\nID: \`${matched.id}\``,
+      `✅ Model untuk *${engineLabel}* berhasil diubah ke: *${modelName}*\nID: \`${chosenId}\``,
       { parse_mode: "Markdown" }
     );
     return;
@@ -792,31 +922,45 @@ bot.callbackQuery(/^set_model:(.+)$/, async (ctx) => {
   const userId = ctx.from?.id;
   const currentEngine = await getUserEngine(userId);
   const isClaude = currentEngine === "claude";
-  const modelList = isClaude ? AVAILABLE_CLAUDE_MODELS : AVAILABLE_AGY_MODELS;
-  const engineLabel = isClaude ? "Claude Code CLI" : "Antigravity CLI";
+  const isUniversal = currentEngine === "universal";
+  const modelList = isClaude
+    ? AVAILABLE_CLAUDE_MODELS
+    : isUniversal
+    ? AVAILABLE_UNIVERSAL_MODELS
+    : AVAILABLE_AGY_MODELS;
+  const engineLabel = isClaude
+    ? "Claude Code CLI"
+    : isUniversal
+    ? "Universal API (Zero-CLI)"
+    : "Antigravity CLI";
 
   const matched = modelList.find((m) => m.id === modelId);
 
-  if (!matched) {
+  if (!matched && !isUniversal) {
     await ctx.answerCallbackQuery({
       text: "Model tidak dikenali untuk engine ini!",
     });
     return;
   }
 
+  const chosenId = matched ? matched.id : modelId;
+  const chosenName = matched ? matched.name : modelId;
+
   if (isClaude) {
-    await setUserClaudeModel(userId, matched.id);
+    await setUserClaudeModel(userId, chosenId);
+  } else if (isUniversal) {
+    await setUserUniversalModel(userId, chosenId);
   } else {
-    await setUserAgyModel(userId, matched.id);
+    await setUserAgyModel(userId, chosenId);
   }
 
   await ctx.answerCallbackQuery({
-    text: `Model diubah ke ${matched.name}`,
+    text: `Model diubah ke ${chosenName}`,
   });
 
   const keyboard = new InlineKeyboard();
   for (const model of modelList) {
-    const isCurrent = model.id === matched.id;
+    const isCurrent = model.id === chosenId;
     const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;
     keyboard.text(label, `set_model:${model.id}`).row();
   }
@@ -825,7 +969,7 @@ bot.callbackQuery(/^set_model:(.+)$/, async (ctx) => {
     await ctx.editMessageText(
       `🤖 *Pilihan Model AI*\n\n` +
         `⚙️ Engine aktif: *${engineLabel}*\n` +
-        `✅ Model aktif sekarang:\n👉 *${matched.name}* (\`${matched.id}\`)\n\n` +
+        `✅ Model aktif sekarang:\n👉 *${chosenName}* (\`${chosenId}\`)\n\n` +
         `Silakan klik tombol di bawah jika ingin mengganti ke model lain:`,
       {
         reply_markup: keyboard,
@@ -849,8 +993,11 @@ bot.command("status", async (ctx) => {
   const userId = ctx.from?.id;
   const currentEngine = await getUserEngine(userId);
   const isClaude = currentEngine === "claude";
+  const isUniversal = currentEngine === "universal";
   const engineLabel = isClaude
     ? "Claude Code CLI (`claude`)"
+    : isUniversal
+    ? "Universal API (`Zero-CLI`)"
     : "Antigravity CLI (`agy`)";
 
   let activeModelDisplay = "";
@@ -858,6 +1005,10 @@ bot.command("status", async (ctx) => {
     const claudeModel = await getUserClaudeModel(userId);
     const matched = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === claudeModel);
     activeModelDisplay = `*${matched?.name || claudeModel}* (\`${claudeModel}\`)`;
+  } else if (isUniversal) {
+    const univModel = await getUserUniversalModel(userId);
+    const matched = AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === univModel);
+    activeModelDisplay = `*${matched?.name || univModel}* (\`${univModel}\`)`;
   } else {
     const agyModel = await getUserAgyModel(userId);
     const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);

@@ -186,6 +186,17 @@
                     <p class="engine-desc">Ditenagai oleh Claude Code CLI resmi dengan arsitektur Sonnet / Opus.</p>
                   </div>
                 </label>
+
+                <label class="engine-option" id="optUniversal">
+                  <input type="radio" name="CLI_ENGINE" value="universal">
+                  <div class="engine-card">
+                    <div class="engine-header">
+                      <span class="engine-name">Universal API (Zero-CLI)</span>
+                      <span class="badge badge-emerald">OpenRouter / Direct</span>
+                    </div>
+                    <p class="engine-desc">Tanpa CLI eksternal. Mendukung OpenRouter, DeepSeek, OpenAI, Qwen, dll via API Key.</p>
+                  </div>
+                </label>
               </div>
             </div>
 
@@ -207,6 +218,17 @@
               </div>
               <div class="select-wrapper">
                 <select id="claudeModel" name="CLAUDE_MODEL" class="form-select font-mono"></select>
+              </div>
+            </div>
+
+            <!-- Model Default untuk Universal API -->
+            <div class="form-group" id="groupUniversalModel">
+              <div class="label-row">
+                <label for="universalModel" class="form-label">DEFAULT MODEL (UNIVERSAL API)</label>
+                <span class="label-hint">OpenRouter / Custom ID</span>
+              </div>
+              <div class="select-wrapper">
+                <select id="universalModel" name="UNIVERSAL_MODEL" class="form-select font-mono"></select>
               </div>
             </div>
           </div>
@@ -337,6 +359,64 @@
                 </div>
                 <div class="form-help">
                   Dapatkan API key dari <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Google AI Studio</a>.
+                </div>
+              </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 24px 0;">
+
+            <!-- Autentikasi Universal API (Zero-CLI) -->
+            <div class="form-group">
+              <div class="label-row">
+                <label class="form-label">KONFIGURASI UNIVERSAL API (ZERO-CLI)</label>
+                <span class="badge" id="badgeUniversalKey">Memeriksa...</span>
+              </div>
+              <p class="form-help" style="margin-bottom: 14px;">
+                Digunakan saat engine <strong>Universal API</strong> aktif. Mendukung OpenRouter, DeepSeek API, OpenAI API, atau provider OpenAI-compatible lainnya tanpa instalasi CLI eksternal.
+              </p>
+
+              <div class="label-row">
+                <label for="universalBaseUrl" class="form-label">BASE URL API</label>
+                <span class="label-hint">OpenAI-compatible URL</span>
+              </div>
+              <input 
+                type="text" 
+                id="universalBaseUrl" 
+                name="UNIVERSAL_BASE_URL" 
+                class="form-input font-mono" 
+                placeholder="https://openrouter.ai/api/v1"
+                autocomplete="off"
+                spellcheck="false"
+              >
+              <div class="form-help" style="margin-bottom: 14px;">
+                Default OpenRouter: <code>https://openrouter.ai/api/v1</code>. Untuk DeepSeek langsung: <code>https://api.deepseek.com/v1</code>.
+              </div>
+
+              <!-- Input UNIVERSAL_API_KEY -->
+              <div class="api-key-box" id="boxUniversalApiKey">
+                <div class="label-row">
+                  <label for="universalApiKey" class="form-label">UNIVERSAL API KEY</label>
+                  <span class="label-hint">sk-or-... / sk-...</span>
+                </div>
+                <div class="input-action-wrapper">
+                  <input 
+                    type="password" 
+                    id="universalApiKey" 
+                    name="UNIVERSAL_API_KEY" 
+                    class="form-input font-mono" 
+                    placeholder="sk-or-v1-xxxxxxxxxxxxxxxxxxxx"
+                    autocomplete="off"
+                    spellcheck="false"
+                  >
+                  <button type="button" class="btn-icon" id="toggleUniversalKey" title="Tampilkan / Sembunyikan Key" aria-label="Toggle Universal Key visibility">
+                    <svg id="eyeUniversalIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                      <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                  </button>
+                </div>
+                <div class="form-help">
+                  Dapatkan API Key dari <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter Keys</a> atau platform AI pilihan Anda.
                 </div>
               </div>
             </div>
