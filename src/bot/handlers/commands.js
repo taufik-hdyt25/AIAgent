@@ -22,6 +22,8 @@ import {
   killProcessTree,
 } from "../../services/cli-runner.js";
 import { formatBytes, truncate } from "../../services/telegram-files.js";
+import { sendToAgent } from "../dispatcher.js";
+import { isGhAvailable } from "../../services/github-service.js";
 
 export function registerBasicCommands(bot) {
   // /start, /help
@@ -61,6 +63,7 @@ export function registerBasicCommands(bot) {
         "• *Kirim Gambar / Foto:* Kirim screenshot error terminal, mockup UI, atau diagram untuk dianalisis AI.\n\n" +
         "Perintah bantuan:\n" +
         "• `/files` - Lihat daftar file dan gambar yang telah diunggah\n" +
+        "• `/issue <url>` - Baca & selesaikan GitHub Issue secara otomatis\n" +
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
@@ -283,5 +286,33 @@ export function registerBasicCommands(bot) {
       clearTimeout(timer);
       finishExec(code, signal, null);
     });
+  });
+
+  // /issue, /issues
+  bot.command(["issue", "issues"], async (ctx) => {
+    const arg = ctx.match?.trim();
+    if (!arg) {
+      const ghReady = await isGhAvailable();
+      const ghStatus = ghReady
+        ? "✅ GitHub CLI (`gh`) aktif & terhubung."
+        : "⚠️ GitHub CLI (`gh`) belum terpasang atau belum login.";
+
+      await ctx.reply(
+        "🐙 *Fitur Auto Read & Solve GitHub Issues*\n\n" +
+          `${ghStatus}\n\n` +
+          "Ketik `/issue <url_issue>` untuk menyuruh AI membaca dan menganalisis/memperbaiki issue tersebut.\n\n" +
+          "*Contoh:*\n" +
+          "• `/issue https://github.com/owner/repo/issues/42`\n" +
+          "• Atau Anda cukup mengirim link GitHub issue langsung di obrolan chat biasa!\n",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    // Teruskan ke sendToAgent dengan instruksi perbaikan/analisis
+    await sendToAgent(
+      `Tolong pelajari GitHub issue ini secara mendalam, jelaskan masalahnya, dan berikan solusi atau lakukan perbaikan kode jika diperlukan:\n${arg}`,
+      ctx
+    );
   });
 }

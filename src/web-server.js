@@ -161,6 +161,7 @@ export function createWebServer() {
             UNIVERSAL_BASE_URL: parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1",
             UNIVERSAL_API_KEY: parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "",
             UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL || process.env.UNIVERSAL_MODEL || "deepseek-chat",
+            GITHUB_TOKEN: parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
           },
           authStatus: {
             claudeSessionActive,
@@ -168,6 +169,7 @@ export function createWebServer() {
             hasAnthropicKey: Boolean(parsed.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY),
             hasGeminiKey: Boolean(parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
             hasUniversalKey: Boolean(parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY),
+            hasGithubToken: Boolean(parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN),
           },
           options: {
             agyModels: await getModelList("agy"),
@@ -256,6 +258,9 @@ export function createWebServer() {
           }
           if (payload.UNIVERSAL_BASE_URL !== undefined) {
             updates.UNIVERSAL_BASE_URL = String(payload.UNIVERSAL_BASE_URL).trim();
+          }
+          if (payload.GITHUB_TOKEN !== undefined) {
+            updates.GITHUB_TOKEN = String(payload.GITHUB_TOKEN).trim();
           }
 
           await updateEnvFile(updates);

@@ -10,6 +10,7 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}======================================================${NC}"
@@ -68,7 +69,6 @@ ensure_local_bin_in_path() {
     mkdir -p "$HOME/.local/bin"
     if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
         export PATH="$HOME/.local/bin:$PATH"
-        # Tambahkan ke profil shell jika belum ada
         if [ -f "$HOME/.zshrc" ] && ! grep -q '\.local/bin' "$HOME/.zshrc"; then
             echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.zshrc"
         elif [ -f "$HOME/.bashrc" ] && ! grep -q '\.local/bin' "$HOME/.bashrc"; then
@@ -77,8 +77,320 @@ ensure_local_bin_in_path() {
     fi
 }
 
+# ==============================================================================
+# 1. CHECKLIST ENGINE AI
+# ==============================================================================
+SELECTED_AGY=false
+SELECTED_CLAUDE=false
+SELECTED_UNIVERSAL=false
+DEFAULT_ENGINE="agy"
+
+choose_engines() {
+    echo -e "\n${BLUE}======================================================${NC}"
+    echo -e "${MAGENTA}[1/3] CHECKLIST ENGINE / PROVIDER AI                  ${NC}"
+    echo -e "${BLUE}======================================================${NC}"
+    echo -e "Pilih AI Engine yang ingin dipasang dan diaktifkan di bot:"
+    echo -e "  ${CYAN}[1] Antigravity CLI (agy)${NC}  - Google Gemini 3.8 Flash, Thinking & Pro"
+    echo -e "  ${CYAN}[2] Claude Code CLI (claude)${NC} - Anthropic Claude 3.7 Sonnet, Opus & Haiku"
+    echo -e "  ${CYAN}[3] Universal API (Zero-CLI)${NC} - DeepSeek V3/R1, OpenRouter, OpenAI (Direct API)"
+    echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} - Pasang & aktifkan semua engine (Rekomendasi)"
+    echo ""
+    prompt_user "Pilihan Anda (contoh: 1,2 atau 1,3 atau A) [default: A]: " engine_choice
+    engine_choice="${engine_choice:-A}"
+
+    case "$engine_choice" in
+        *[aA]*)
+            SELECTED_AGY=true
+            SELECTED_CLAUDE=true
+            SELECTED_UNIVERSAL=true
+            DEFAULT_ENGINE="agy"
+            ;;
+        *)
+            if [[ "$engine_choice" == *"1"* ]]; then SELECTED_AGY=true; fi
+            if [[ "$engine_choice" == *"2"* ]]; then SELECTED_CLAUDE=true; fi
+            if [[ "$engine_choice" == *"3"* ]]; then SELECTED_UNIVERSAL=true; fi
+
+            if [ "$SELECTED_AGY" = true ]; then
+                DEFAULT_ENGINE="agy"
+            elif [ "$SELECTED_CLAUDE" = true ]; then
+                DEFAULT_ENGINE="claude"
+            elif [ "$SELECTED_UNIVERSAL" = true ]; then
+                DEFAULT_ENGINE="universal"
+            else
+                SELECTED_AGY=true
+                SELECTED_CLAUDE=true
+                SELECTED_UNIVERSAL=true
+                DEFAULT_ENGINE="agy"
+            fi
+            ;;
+    esac
+
+    echo -e "${GREEN}✓ Engine aktif:${NC}"
+    [ "$SELECTED_AGY" = true ] && echo -e "  • Antigravity CLI (agy)"
+    [ "$SELECTED_CLAUDE" = true ] && echo -e "  • Claude Code CLI (claude)"
+    [ "$SELECTED_UNIVERSAL" = true ] && echo -e "  • Universal API (Zero-CLI / DeepSeek)"
+    echo -e "  • Default Engine Awal: ${YELLOW}${DEFAULT_ENGINE}${NC}"
+}
+
+# ==============================================================================
+# 2. CHECKLIST MODEL AI
+# ==============================================================================
+choose_models() {
+    echo -e "\n${BLUE}======================================================${NC}"
+    echo -e "${MAGENTA}[2/3] CHECKLIST MODEL AI                              ${NC}"
+    echo -e "${BLUE}======================================================${NC}"
+    echo -e "Model AI dapat diceklis/dipilih sesuai kebutuhan Anda."
+    echo -e "Model yang tidak dipilih akan disembunyikan dari bot Telegram & Web UI."
+    echo -e "  ${GREEN}[A] Gunakan Semua Model Default (Select All - Rekomendasi)${NC}"
+    echo -e "  ${YELLOW}[C] Kustomisasi / Pilih Ceklis Sendiri${NC}"
+    prompt_user "Pilihan model [A/C, default: A]: " model_mode
+    model_mode="${model_mode:-A}"
+
+    mkdir -p data
+
+    if [[ "$model_mode" =~ ^[cC]$ ]]; then
+        # Tampilkan pilihan per engine
+        local agy_sel="A"
+        local claude_sel="A"
+        local univ_sel="A"
+
+        if [ "$SELECTED_AGY" = true ]; then
+            echo -e "\n${CYAN}--- Model Antigravity (agy) ---${NC}"
+            echo -e "  [1] Gemini 3.8 Flash Medium (gemini-3.8-flash-medium) - Rekomendasi"
+            echo -e "  [2] Gemini 3.8 Flash High   (gemini-3.8-flash-high)"
+            echo -e "  [3] Gemini 3.8 Flash Low    (gemini-3.8-flash-low)"
+            echo -e "  [4] Claude Sonnet 4.6       (claude-sonnet-4-6)"
+            echo -e "  [5] Claude Opus 4.6         (claude-opus-4-6-thinking)"
+            echo -e "  [6] GPT-OSS 120B            (gpt-oss-120b-medium)"
+            echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} | ${RED}[H] Hapus Semua${NC}"
+            prompt_user "Pilih nomor model agy (contoh: 1,4 atau A atau H) [default: A]: " agy_sel
+            agy_sel="${agy_sel:-A}"
+        fi
+
+        if [ "$SELECTED_CLAUDE" = true ]; then
+            echo -e "\n${CYAN}--- Model Claude Code (claude) ---${NC}"
+            echo -e "  [1] Claude Sonnet      (sonnet - Default)"
+            echo -e "  [2] Claude Opus        (opus - Penalaran Kompleks)"
+            echo -e "  [3] Claude Haiku       (haiku - Cepat & Ringan)"
+            echo -e "  [4] Claude 3.7 Sonnet  (claude-3-7-sonnet - Hybrid Reasoning)"
+            echo -e "  [5] Claude 3.5 Sonnet  (claude-3-5-sonnet - Coding Specialist)"
+            echo -e "  [6] Claude 3.5 Haiku   (claude-3-5-haiku - Hemat & Cepat)"
+            echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} | ${RED}[H] Hapus Semua${NC}"
+            prompt_user "Pilih nomor model claude (contoh: 1,4 atau A atau H) [default: A]: " claude_sel
+            claude_sel="${claude_sel:-A}"
+        fi
+
+        if [ "$SELECTED_UNIVERSAL" = true ]; then
+            echo -e "\n${CYAN}--- Model Universal API (Zero-CLI / DeepSeek) ---${NC}"
+            echo -e "  [1] DeepSeek Chat V3/V4  (deepseek-chat - Official)"
+            echo -e "  [2] DeepSeek Reasoner R1 (deepseek-reasoner - Official)"
+            echo -e "  [3] DeepSeek V4          (deepseek/deepseek-v4 - OpenRouter)"
+            echo -e "  [4] DeepSeek V3          (deepseek/deepseek-chat - OpenRouter)"
+            echo -e "  [5] DeepSeek R1          (deepseek/deepseek-r1 - OpenRouter)"
+            echo -e "  [6] Claude 3.7 Sonnet    (anthropic/claude-3.7-sonnet - OpenRouter)"
+            echo -e "  [7] GPT-4o               (openai/gpt-4o - OpenRouter)"
+            echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} | ${RED}[H] Hapus Semua${NC}"
+            prompt_user "Pilih nomor model universal (contoh: 1,2 atau A atau H) [default: A]: " univ_sel
+            univ_sel="${univ_sel:-A}"
+        fi
+
+        # Filter dan tulis ke data/models.json menggunakan Node.js
+        node -e "
+        const fs = require('fs');
+        const path = require('path');
+
+        const allAgy = [
+          { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium Thinking)', badge: 'Rekomendasi' },
+          { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High Thinking)', badge: 'Maksimal' },
+          { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low Thinking)', badge: 'Cepat' },
+          { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Thinking)', badge: 'Populer' },
+          { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)', badge: 'Kuat' },
+          { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)', badge: 'Open' }
+        ];
+
+        const allClaude = [
+          { id: 'sonnet', name: 'Claude Sonnet (Default - Cepat & Cerdas)', badge: 'Default' },
+          { id: 'opus', name: 'Claude Opus (Penalaran Kompleks)', badge: 'Kuat' },
+          { id: 'haiku', name: 'Claude Haiku (Ultra Cepat & Ringan)', badge: 'Cepat' },
+          { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet (Hybrid Reasoning)', badge: 'Thinking' },
+          { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet (Coding Specialist)', badge: 'Populer' },
+          { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku (Cost Efficient)', badge: 'Hemat' }
+        ];
+
+        const allUniv = [
+          { id: 'deepseek-chat', name: 'DeepSeek Chat (V3 / V4 - Cepat & Cerdas)', badge: 'Official' },
+          { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner (R1 - Penalaran Mendalam)', badge: 'Official' },
+          { id: 'deepseek/deepseek-v4', name: 'DeepSeek V4 (OpenRouter)', badge: 'Terbaru' },
+          { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3 (OpenRouter)', badge: 'Rekomendasi' },
+          { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1 (OpenRouter)', badge: 'Thinking' },
+          { id: 'anthropic/claude-3.7-sonnet', name: 'Claude 3.7 Sonnet (OpenRouter)', badge: 'Thinking' },
+          { id: 'openai/gpt-4o', name: 'GPT-4o (OpenRouter)', badge: 'Flagship' }
+        ];
+
+        function filterList(list, input) {
+          const val = (input || '').trim().toUpperCase();
+          if (val === 'H' || val === 'NONE' || val === '0') return [];
+          if (!val || val === 'A' || val === 'ALL') return list;
+          const nums = val.split(/[,\s]+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
+          if (nums.length === 0) return list;
+          return nums.map(idx => list[idx - 1]).filter(Boolean);
+        }
+
+        const out = {
+          agyModels: filterList(allAgy, '${agy_sel}'),
+          claudeModels: filterList(allClaude, '${claude_sel}'),
+          universalModels: filterList(allUniv, '${univ_sel}')
+        };
+
+        fs.writeFileSync(path.join('data', 'models.json'), JSON.stringify(out, null, 2));
+        console.log('✓ Model pilihan kustom berhasil disimpan ke data/models.json');
+        "
+    else
+        # Select All Default
+        node -e "
+        const fs = require('fs');
+        const path = require('path');
+        const out = {
+          agyModels: [
+            { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium Thinking)', badge: 'Rekomendasi' },
+            { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High Thinking)', badge: 'Maksimal' },
+            { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low Thinking)', badge: 'Cepat' },
+            { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Thinking)', badge: 'Populer' },
+            { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)', badge: 'Kuat' },
+            { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)', badge: 'Open' }
+          ],
+          claudeModels: [
+            { id: 'sonnet', name: 'Claude Sonnet (Default - Cepat & Cerdas)', badge: 'Default' },
+            { id: 'opus', name: 'Claude Opus (Penalaran Kompleks)', badge: 'Kuat' },
+            { id: 'haiku', name: 'Claude Haiku (Ultra Cepat & Ringan)', badge: 'Cepat' },
+            { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet (Hybrid Reasoning)', badge: 'Thinking' },
+            { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet (Coding Specialist)', badge: 'Populer' },
+            { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku (Cost Efficient)', badge: 'Hemat' }
+          ],
+          universalModels: [
+            { id: 'deepseek-chat', name: 'DeepSeek Chat (V3 / V4 - Cepat & Cerdas)', badge: 'Official' },
+            { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner (R1 - Penalaran Mendalam)', badge: 'Official' },
+            { id: 'deepseek/deepseek-v4', name: 'DeepSeek V4 (OpenRouter)', badge: 'Terbaru' },
+            { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3 (OpenRouter)', badge: 'Rekomendasi' },
+            { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1 (OpenRouter)', badge: 'Thinking' },
+            { id: 'anthropic/claude-3.7-sonnet', name: 'Claude 3.7 Sonnet (OpenRouter)', badge: 'Thinking' },
+            { id: 'openai/gpt-4o', name: 'GPT-4o (OpenRouter)', badge: 'Flagship' }
+          ]
+        };
+        fs.writeFileSync(path.join('data', 'models.json'), JSON.stringify(out, null, 2));
+        "
+        echo -e "${GREEN}✓ Semua model default telah aktif (Select All).${NC}"
+    fi
+}
+
+# ==============================================================================
+# 3. GITHUB CLI & AUTO-READ ISSUES
+# ==============================================================================
+install_gh_cli() {
+    echo -e "${BLUE}Memeriksa GitHub CLI (gh)...${NC}"
+    ensure_local_bin_in_path
+    if command -v gh &>/dev/null; then
+        echo -e "${GREEN}✓ GitHub CLI sudah terpasang: $(command -v gh)${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}GitHub CLI belum terpasang. Memulai pemasangan GitHub CLI...${NC}"
+    if [ "$OS" = "Darwin" ]; then
+        if command -v brew &>/dev/null; then
+            echo -e "${CYAN}Memasang via Homebrew...${NC}"
+            brew install gh || true
+        fi
+        if ! command -v gh &>/dev/null; then
+            echo -e "${CYAN}Mengunduh binary resmi GitHub CLI macOS...${NC}"
+            local m_arch="arm64"
+            [ "$ARCH" != "arm64" ] && m_arch="amd64"
+            local tmp_dir
+            tmp_dir="$(mktemp -d)"
+            curl -fsSL "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_macOS_${m_arch}.zip" -o "$tmp_dir/gh.zip"
+            unzip -q "$tmp_dir/gh.zip" -d "$tmp_dir"
+            mkdir -p "$HOME/.local/bin"
+            cp "$tmp_dir"/gh_*/bin/gh "$HOME/.local/bin/gh"
+            chmod +x "$HOME/.local/bin/gh"
+            rm -rf "$tmp_dir"
+            export PATH="$HOME/.local/bin:$PATH"
+        fi
+    elif [ "$OS" = "Linux" ]; then
+        if command -v apt-get &>/dev/null; then
+            echo -e "${CYAN}Memasang via APT repository resmi GitHub...${NC}"
+            (sudo mkdir -p -m 755 /etc/apt/keyrings && \
+             curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null && \
+             sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+             echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
+             sudo apt-get update -y && sudo apt-get install -y gh) || true
+        fi
+        if ! command -v gh &>/dev/null; then
+            echo -e "${CYAN}Mengunduh binary resmi GitHub CLI Linux...${NC}"
+            local l_arch="amd64"
+            if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+                l_arch="arm64"
+            fi
+            local tmp_dir
+            tmp_dir="$(mktemp -d)"
+            curl -fsSL "https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_${l_arch}.tar.gz" -o "$tmp_dir/gh.tar.gz"
+            tar -xzf "$tmp_dir/gh.tar.gz" -C "$tmp_dir"
+            mkdir -p "$HOME/.local/bin"
+            cp "$tmp_dir"/gh_*/bin/gh "$HOME/.local/bin/gh"
+            chmod +x "$HOME/.local/bin/gh"
+            rm -rf "$tmp_dir"
+            export PATH="$HOME/.local/bin:$PATH"
+        fi
+    fi
+
+    if command -v gh &>/dev/null || [ -f "$HOME/.local/bin/gh" ]; then
+        echo -e "${GREEN}✓ GitHub CLI berhasil dipasang: $(command -v gh || echo "$HOME/.local/bin/gh")${NC}"
+    else
+        echo -e "${YELLOW}⚠️ Pemasangan otomatis gh dilewati. Anda bisa memasangnya secara manual nanti.${NC}"
+    fi
+}
+
+setup_github_cli() {
+    echo -e "\n${BLUE}======================================================${NC}"
+    echo -e "${MAGENTA}[3/3] INTEGRASI GITHUB CLI & AUTO-READ ISSUES        ${NC}"
+    echo -e "${BLUE}======================================================${NC}"
+    echo -e "Opsi ini memungkinkan TH Agent membaca issue, komentar, dan kode"
+    echo -e "secara otomatis saat Anda mengirimkan link GitHub Issue di Telegram."
+    prompt_user "Pasang & aktifkan GitHub CLI sekarang? (y/n, default: y): " enable_gh
+    enable_gh="${enable_gh:-y}"
+
+    if [ "$enable_gh" = "y" ] || [ "$enable_gh" = "Y" ]; then
+        install_gh_cli
+
+        echo -e "\n${CYAN}Autentikasi GitHub Personal Access Token (PAT):${NC}"
+        echo -e "Buat token di: ${BLUE}https://github.com/settings/tokens${NC} (centang scope: ${YELLOW}'repo'${NC})"
+        prompt_user "Masukkan GitHub Personal Access Token (PAT) [kosongkan jika belum punya]: " input_pat
+        if [ -n "$input_pat" ]; then
+            local gh_bin
+            gh_bin="$(command -v gh || echo "$HOME/.local/bin/gh")"
+            if [ -x "$gh_bin" ]; then
+                echo "$input_pat" | "$gh_bin" auth login --with-token 2>/dev/null || true
+                echo -e "${GREEN}✓ GitHub CLI berhasil login dengan token!${NC}"
+            fi
+            # Simpan token ke .env
+            if [ ! -f ".env" ]; then touch .env; fi
+            if grep -q "^GITHUB_TOKEN=" .env; then
+                sed -i.bak "s|^GITHUB_TOKEN=.*|GITHUB_TOKEN=${input_pat}|" .env && rm -f .env.bak
+            else
+                echo "GITHUB_TOKEN=${input_pat}" >> .env
+            fi
+            echo -e "${GREEN}✓ GITHUB_TOKEN tersimpan di konfigurasi .env${NC}"
+        else
+            echo -e "${YELLOW}Token dilewati. Anda dapat mengisinya nanti via .env atau Web Control Panel.${NC}"
+        fi
+    else
+        echo -e "${CYAN}Integrasi GitHub CLI dilewati.${NC}"
+    fi
+}
+
+# ==============================================================================
+# INSTALLERS SPESIFIK
+# ==============================================================================
 install_agy_cli() {
-    echo -e "${BLUE}Memeriksa Antigravity CLI (agy)...${NC}"
+    echo -e "\n${BLUE}Memeriksa Antigravity CLI (agy)...${NC}"
     ensure_local_bin_in_path
     if ! command -v agy &>/dev/null && [ ! -f "$HOME/.local/bin/agy" ]; then
         echo -e "${YELLOW}Antigravity CLI belum terpasang. Mengunduh installer resmi...${NC}"
@@ -91,24 +403,24 @@ install_agy_cli() {
 }
 
 install_claude_cli() {
-    echo -e "${BLUE}Memeriksa Claude Code CLI...${NC}"
+    echo -e "\n${BLUE}Memeriksa Claude Code CLI...${NC}"
     if ! command -v claude &>/dev/null; then
         echo -e "${YELLOW}Claude Code CLI belum terpasang. Memasang via npm...${NC}"
-        npm install -g @anthropic-ai/claude-code 2>/dev/null || npm install @anthropic-ai/claude-code || true
+        npm install -g @anthropic-ai/claude-code 2>/dev/null || sudo npm install -g @anthropic-ai/claude-code 2>/dev/null || npm install @anthropic-ai/claude-code || true
     else
         echo -e "${GREEN}✓ Claude Code CLI terdeteksi: $(command -v claude)${NC}"
     fi
 }
 
 setup_directories() {
-    echo -e "\n${BLUE}[1/4] Menyiapkan direktori kerja...${NC}"
+    echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
     mkdir -p data logs projects uploads gemini_auth claude_auth public
     chmod 755 data logs projects uploads 2>/dev/null || true
     echo -e "${GREEN}✓ Direktori siap.${NC}"
 }
 
 setup_env_file() {
-    echo -e "\n${BLUE}[2/4] Menyiapkan file konfigurasi .env...${NC}"
+    echo -e "\n${BLUE}Menyiapkan file konfigurasi .env...${NC}"
     if [ ! -f ".env" ]; then
         if [ -f ".env.example" ]; then
             cp .env.example .env
@@ -121,7 +433,7 @@ setup_env_file() {
     ACTUAL_AGY_BIN="$(command -v agy || echo "$HOME/.local/bin/agy")"
     ACTUAL_CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
 
-    # Perbarui path binary di .env agar sesuai sistem host
+    # Perbarui path binary & default engine di .env
     if grep -q "^AGY_BIN=" .env; then
         sed -i.bak "s|^AGY_BIN=.*|AGY_BIN=${ACTUAL_AGY_BIN}|" .env && rm -f .env.bak
     else
@@ -134,12 +446,26 @@ setup_env_file() {
         echo "CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}" >> .env
     fi
 
+    if grep -q "^CLI_ENGINE=" .env; then
+        sed -i.bak "s|^CLI_ENGINE=.*|CLI_ENGINE=${DEFAULT_ENGINE}|" .env && rm -f .env.bak
+    else
+        echo "CLI_ENGINE=${DEFAULT_ENGINE}" >> .env
+    fi
+
     if ! grep -q "^AGY_AUTO_APPROVE_PERMISSIONS=" .env; then
         echo "AGY_AUTO_APPROVE_PERMISSIONS=true" >> .env
     fi
 
     if ! grep -q "^AGY_MODEL=" .env; then
         echo "AGY_MODEL=gemini-3.8-flash-medium" >> .env
+    fi
+
+    if ! grep -q "^UNIVERSAL_BASE_URL=" .env; then
+        echo "UNIVERSAL_BASE_URL=https://api.deepseek.com/v1" >> .env
+    fi
+
+    if ! grep -q "^UNIVERSAL_MODEL=" .env; then
+        echo "UNIVERSAL_MODEL=deepseek-chat" >> .env
     fi
 
     # Cek apakah BOT_TOKEN dan ALLOWED_TELEGRAM_IDS sudah terisi
@@ -189,16 +515,25 @@ if [ "$OS" = "Darwin" ]; then
     fi
     echo -e "${GREEN}✓ Node.js terdeteksi: $(node -v) / npm: $(npm -v)${NC}"
 
-    # 2. Pasang Antigravity CLI & Claude Code CLI
-    install_agy_cli
-    install_claude_cli
+    # 2. Interaktif: Checklist Engine, Model, dan GitHub CLI
+    choose_engines
+    choose_models
+    setup_github_cli
 
-    # 3. Direktori & .env
+    # 3. Pasang CLI yang dipilih
+    if [ "$SELECTED_AGY" = true ]; then
+        install_agy_cli
+    fi
+    if [ "$SELECTED_CLAUDE" = true ]; then
+        install_claude_cli
+    fi
+
+    # 4. Direktori & .env
     setup_directories
     setup_env_file
 
-    # 4. Install dependensi Node.js & PM2
-    echo -e "\n${BLUE}[3/5] Menginstall dependensi proyek (npm install)...${NC}"
+    # 5. Install dependensi Node.js & PM2
+    echo -e "\n${BLUE}Menginstall dependensi proyek (npm install)...${NC}"
     npm install
 
     # Pasang PM2 secara global jika belum terpasang
@@ -210,24 +545,25 @@ if [ "$OS" = "Darwin" ]; then
         echo -e "${GREEN}✓ PM2 terpasang: $(pm2 -v)${NC}"
     fi
 
-    # 5. Cek Autentikasi CLI
-    echo -e "\n${BLUE}[4/5] Memeriksa status login model AI...${NC}"
-    AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
-    if [ -f "$HOME/.gemini/antigravity-cli/settings.json" ] || [ -d "$HOME/.gemini" ]; then
-        echo -e "${GREEN}✓ Sesi Antigravity CLI ($HOME/.gemini) terdeteksi.${NC}"
-    else
-        echo -e "${YELLOW}Antigravity CLI belum login di Mac ini.${NC}"
-        prompt_user "Apakah ingin melakukan login sekarang? (y/n, default: y): " do_auth
-        if [ "$do_auth" != "n" ] && [ "$do_auth" != "N" ]; then
-            "$AGY_EXE" || true
+    # 6. Cek Autentikasi CLI (khusus jika agy aktif)
+    if [ "$SELECTED_AGY" = true ]; then
+        echo -e "\n${BLUE}Memeriksa status login Antigravity CLI...${NC}"
+        AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
+        if [ -f "$HOME/.gemini/antigravity-cli/settings.json" ] || [ -d "$HOME/.gemini" ]; then
+            echo -e "${GREEN}✓ Sesi Antigravity CLI ($HOME/.gemini) terdeteksi.${NC}"
+        else
+            echo -e "${YELLOW}Antigravity CLI belum login di Mac ini.${NC}"
+            prompt_user "Apakah ingin melakukan login Antigravity sekarang? (y/n, default: y): " do_auth
+            if [ "$do_auth" != "n" ] && [ "$do_auth" != "N" ]; then
+                "$AGY_EXE" || true
+            fi
         fi
     fi
 
-    # 6. Opsi Background & Auto-start
-    echo -e "\n${BLUE}[5/5] Menyiapkan Background Service & Auto-Start...${NC}"
+    # 7. Opsi Background & Auto-start
+    echo -e "\n${BLUE}Menyiapkan Background Service & Auto-Start...${NC}"
     if command -v pm2 &>/dev/null; then
-        echo -e "${CYAN}Ingin langsung menjalankan bot di background dan aktifkan auto-start saat Mac dinyalakan?${NC}"
-        prompt_user "Jalankan di background & auto-start? (y/n, default: y): " start_bg
+        prompt_user "Jalankan bot di background & aktifkan auto-start saat Mac nyala? (y/n, default: y): " start_bg
         start_bg="${start_bg:-y}"
 
         if [ "$start_bg" != "n" ] && [ "$start_bg" != "N" ]; then
@@ -264,9 +600,6 @@ if [ "$OS" = "Darwin" ]; then
         echo -e "   ${BLUE}npm run background${NC} # Latar belakang (PM2)"
     fi
     echo ""
-    echo -e "${YELLOW}Atau hanya menjalankan Web UI Settings:${NC}"
-    echo -e "   ${BLUE}npm run ui${NC}"
-    echo ""
 
 elif [ "$OS" = "Linux" ]; then
     # --------------------------------------------------------------------------
@@ -297,6 +630,10 @@ elif [ "$OS" = "Linux" ]; then
             DOCKER_COMPOSE="docker compose"
         fi
 
+        choose_engines
+        choose_models
+        setup_github_cli
+
         setup_directories
         setup_env_file
 
@@ -310,14 +647,12 @@ elif [ "$OS" = "Linux" ]; then
         # Mode Native VPS (PM2)
         echo -e "\n${CYAN}Memulai instalasi Native Standalone (Node.js + PM2)...${NC}"
 
-        # Pasang dependensi sistem jika Debian/Ubuntu
         if command -v apt-get &>/dev/null; then
             echo -e "${BLUE}Memperbarui package dan menginstall dependensi dasar...${NC}"
             sudo apt-get update -y
-            sudo apt-get install -y curl git build-essential procps
+            sudo apt-get install -y curl git build-essential procps unzip
         fi
 
-        # Cek Node.js 20+
         if ! command -v node &>/dev/null || [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 20 ]; then
             echo -e "${YELLOW}Menginstall Node.js 22 LTS...${NC}"
             curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
@@ -325,15 +660,21 @@ elif [ "$OS" = "Linux" ]; then
         fi
         echo -e "${GREEN}✓ Node.js terdeteksi: $(node -v)${NC}"
 
-        # Pasang PM2 secara global
         if ! command -v pm2 &>/dev/null; then
             echo -e "${BLUE}Menginstall PM2 process manager...${NC}"
             sudo npm install -g pm2
         fi
 
-        # Pasang agy & claude
-        install_agy_cli
-        install_claude_cli
+        choose_engines
+        choose_models
+        setup_github_cli
+
+        if [ "$SELECTED_AGY" = true ]; then
+            install_agy_cli
+        fi
+        if [ "$SELECTED_CLAUDE" = true ]; then
+            install_claude_cli
+        fi
 
         setup_directories
         setup_env_file
@@ -341,14 +682,14 @@ elif [ "$OS" = "Linux" ]; then
         echo -e "\n${BLUE}Menginstall dependensi proyek (npm install)...${NC}"
         npm install
 
-        # Autentikasi agy
-        AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
-        if [ ! -f "$HOME/.gemini/antigravity-cli/settings.json" ] && [ ! -d "$HOME/.gemini" ]; then
-            echo -e "\n${YELLOW}Silakan login Antigravity CLI sekarang:${NC}"
-            "$AGY_EXE" || true
+        if [ "$SELECTED_AGY" = true ]; then
+            AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
+            if [ ! -f "$HOME/.gemini/antigravity-cli/settings.json" ] && [ ! -d "$HOME/.gemini" ]; then
+                echo -e "\n${YELLOW}Silakan login Antigravity CLI sekarang:${NC}"
+                "$AGY_EXE" || true
+            fi
         fi
 
-        # Jalankan di background dengan PM2
         echo -e "\n${BLUE}Menjalankan bot via PM2 di background...${NC}"
         pm2 start ecosystem.config.cjs
         pm2 save || true

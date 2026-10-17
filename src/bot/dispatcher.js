@@ -25,6 +25,12 @@ import {
 } from "../services/cli-runner.js";
 import { truncate } from "../services/telegram-files.js";
 import { runUniversalAgent } from "../universal-agent.js";
+import {
+  GITHUB_ISSUE_REGEX,
+  fetchIssueDetails,
+  formatIssueForPrompt,
+  isGhAvailable,
+} from "../services/github-service.js";
 
 export async function sendToAgent(userMessage, ctx, fileInfo = null) {
   const currentTask = getActiveTask();
@@ -82,6 +88,25 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
 `.trim();
     }
 
+    let issueInfoPrompt = "";
+    const issueMatch = userMessage.match(GITHUB_ISSUE_REGEX);
+    if (issueMatch) {
+      try {
+        const [fullUrl, owner, repo, issueNum] = issueMatch;
+        const ghReady = await isGhAvailable();
+        if (ghReady) {
+          ctx.reply(
+            `🐙 *Membaca GitHub Issue #${issueNum}* dari \`${owner}/${repo}\`...`,
+            { parse_mode: "Markdown" }
+          ).catch(() => {});
+          const issueData = await fetchIssueDetails(fullUrl);
+          issueInfoPrompt = formatIssueForPrompt(issueData);
+        }
+      } catch (ghErr) {
+        console.warn("[GitHub Service] Gagal mengambil issue:", ghErr.message);
+      }
+    }
+
     const prompt = `
 Kamu adalah TH Agent, asisten software engineer otonom yang berkomunikasi langsung dengan developer melalui chat Telegram ini.
 
@@ -97,7 +122,7 @@ PANDUAN INTERAKSI:
 3. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja (contoh: "clone repo https://github.com/...", "buatkan fitur login di project blog", "perbaiki error di index.js") atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
 4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
 5. Format: Gunakan format Markdown yang rapi agar enak dibaca di Telegram.
-${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}
+${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}
 Pesan dari pengguna:
 ${userMessage}
 `.trim();
