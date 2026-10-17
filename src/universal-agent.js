@@ -168,8 +168,8 @@ export async function runUniversalAgent({
   prompt,
   convId,
   apiKey,
-  baseUrl = "https://openrouter.ai/api/v1",
-  model = "deepseek/deepseek-chat",
+  baseUrl = "https://api.deepseek.com/v1",
+  model = "deepseek-chat",
   systemPrompt,
   onToolStart,
 }) {

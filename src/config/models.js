@@ -25,10 +25,12 @@ export const DEFAULT_CLAUDE_MODELS = [
 ];
 
 export const DEFAULT_UNIVERSAL_MODELS = [
-  { id: "deepseek/deepseek-v4", name: "DeepSeek V4 (Generasi Terbaru - Flagship)", badge: "Terbaru" },
-  { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (Sangat Cerdas & Hemat - Rekomendasi)", badge: "Rekomendasi" },
-  { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (Penalaran Ekstrem / Thinking)", badge: "Thinking" },
-  { id: "deepseek/deepseek-coder", name: "DeepSeek Coder (Spesialis Koding)", badge: "Koding" },
+  { id: "deepseek-chat", name: "DeepSeek Chat (V3 / V4 - Cepat & Cerdas)", badge: "Official" },
+  { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 - Penalaran Mendalam)", badge: "Official" },
+  { id: "deepseek/deepseek-v4", name: "DeepSeek V4 (OpenRouter)", badge: "Terbaru" },
+  { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (OpenRouter)", badge: "Rekomendasi" },
+  { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (OpenRouter)", badge: "Thinking" },
+  { id: "deepseek/deepseek-coder", name: "DeepSeek Coder (OpenRouter)", badge: "Koding" },
   { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
   { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
   { id: "openai/gpt-4o", name: "GPT-4o (Omni Flagship)", badge: "Flagship" },

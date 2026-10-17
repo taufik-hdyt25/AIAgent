@@ -154,7 +154,7 @@ function updateBadges(settings, system) {
     badgeModel.textContent = settings.CLAUDE_MODEL || "sonnet";
   } else if (settings.CLI_ENGINE === "universal") {
     badgeEngine.textContent = "Universal API";
-    badgeModel.textContent = settings.UNIVERSAL_MODEL || "deepseek/deepseek-chat";
+    badgeModel.textContent = settings.UNIVERSAL_MODEL || "deepseek-chat";
   } else {
     badgeEngine.textContent = "Antigravity (agy)";
     badgeModel.textContent = settings.AGY_MODEL || "gemini-3.8-flash-medium";
@@ -228,14 +228,14 @@ async function loadSettings() {
         const opt = document.createElement("option");
         opt.value = m.id;
         opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
-        opt.selected = m.id === (currentSettings.UNIVERSAL_MODEL || "deepseek/deepseek-chat");
+        opt.selected = m.id === (currentSettings.UNIVERSAL_MODEL || "deepseek-chat");
         universalModelSelect.appendChild(opt);
       }
     }
 
     // Populate Universal API inputs
     if (universalBaseUrlInput) {
-      universalBaseUrlInput.value = currentSettings.UNIVERSAL_BASE_URL || "https://openrouter.ai/api/v1";
+      universalBaseUrlInput.value = currentSettings.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
     }
     if (universalApiKeyInput) {
       universalApiKeyInput.value = currentSettings.UNIVERSAL_API_KEY || "";
@@ -393,7 +393,7 @@ engineRadios.forEach((r) => {
       badgeModel.textContent = claudeModelSelect.value;
     } else if (r.value === "universal") {
       badgeEngine.textContent = "Universal API";
-      badgeModel.textContent = universalModelSelect ? universalModelSelect.value : "deepseek/deepseek-chat";
+      badgeModel.textContent = universalModelSelect ? universalModelSelect.value : "deepseek-chat";
     } else {
       badgeEngine.textContent = "Antigravity (agy)";
       badgeModel.textContent = agyModelSelect.value;

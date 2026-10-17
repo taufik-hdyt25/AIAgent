@@ -123,7 +123,7 @@ ${userMessage}
           return;
         }
 
-        const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://openrouter.ai/api/v1";
+        const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
         const universalModel = await getUserUniversalModel(userId);
 
         const replyText = await runUniversalAgent({

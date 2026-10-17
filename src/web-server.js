@@ -158,9 +158,9 @@ export function createWebServer() {
             GEMINI_API_KEY: parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY || "",
             CLAUDE_AUTH_TYPE: parsed.CLAUDE_AUTH_TYPE || (parsed.ANTHROPIC_API_KEY ? "api_key" : "oauth"),
             AGY_AUTH_TYPE: parsed.AGY_AUTH_TYPE || (parsed.GEMINI_API_KEY ? "api_key" : "oauth"),
-            UNIVERSAL_BASE_URL: parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://openrouter.ai/api/v1",
+            UNIVERSAL_BASE_URL: parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1",
             UNIVERSAL_API_KEY: parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "",
-            UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL || process.env.UNIVERSAL_MODEL || "deepseek/deepseek-chat",
+            UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL || process.env.UNIVERSAL_MODEL || "deepseek-chat",
           },
           authStatus: {
             claudeSessionActive,
@@ -186,11 +186,11 @@ export function createWebServer() {
       }
     }
 
-    // API: Tarik remote models dari provider (OpenRouter / OpenAI-compatible)
+    // API: Tarik remote models dari provider (DeepSeek / OpenAI-compatible)
     if (pathname === "/api/models/remote" && req.method === "GET") {
       try {
         const { parsed } = await readEnvFile();
-        const baseUrl = parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://openrouter.ai/api/v1";
+        const baseUrl = parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
         const apiKey = parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY;
         if (!apiKey) {
           return sendError(400, "API Key belum diisi untuk mengambil model dari provider.");
