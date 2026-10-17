@@ -22,6 +22,7 @@ import {
   clearActiveTask,
   appendLog,
   killProcessTree,
+  runProcess,
 } from "../services/cli-runner.js";
 import { truncate } from "../services/telegram-files.js";
 import { runUniversalAgent } from "../universal-agent.js";
@@ -349,3 +350,109 @@ ${userMessage}
     await ctx.reply(`❌ Terjadi error: ${err.message}`);
   }
 }
+
+// Fungsi eksekusi AI mandiri untuk background task / autonomous agent (Auto-Analyze, Auto-Fix)
+export async function runAgentAutonomous({
+  prompt,
+  convId = null,
+  userId = null,
+  cwd = process.cwd(),
+  systemPrompt = null,
+  engineOverride = null,
+  timeoutMs = TIMEOUT_MS,
+}) {
+  const engine = engineOverride || (userId ? await getUserEngine(userId) : process.env.CLI_ENGINE || "agy");
+  const actualConvId = convId || `auto-${randomUUID().slice(0, 8)}`;
+
+  // 1. Engine: Universal API (Zero-CLI)
+  if (engine === "universal") {
+    const universalApiKey =
+      process.env.UNIVERSAL_API_KEY ||
+      process.env.OPENROUTER_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      process.env.DEEPSEEK_API_KEY;
+
+    if (!universalApiKey) {
+      throw new Error("UNIVERSAL_API_KEY belum dikonfigurasi di file .env atau Web Control Panel.");
+    }
+
+    const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+    const universalModel = userId ? await getUserUniversalModel(userId) : (process.env.UNIVERSAL_MODEL || "deepseek-chat");
+
+    const replyText = await runUniversalAgent({
+      prompt,
+      convId: actualConvId,
+      apiKey: universalApiKey,
+      baseUrl: universalBaseUrl,
+      model: universalModel,
+      systemPrompt: systemPrompt || "Kamu adalah TH Agent, asisten AI software engineer otonom.",
+      workingDir: cwd,
+    });
+
+    return { ok: true, output: replyText };
+  }
+
+  // 2. Engine: CLI (agy atau claude)
+  const isClaude = engine === "claude";
+  const binToRun = isClaude ? CLAUDE_BIN : AGY_BIN;
+
+  let cliArgs = [];
+  if (isClaude) {
+    const claudeModel = userId ? await getUserClaudeModel(userId) : (process.env.CLAUDE_MODEL || "sonnet");
+    cliArgs = ["--session-id", actualConvId, "--model", claudeModel, "-p", prompt, "--output-format", "text"];
+    if (AUTO_APPROVE_PERMISSIONS) {
+      cliArgs.push("--dangerously-skip-permissions");
+    }
+  } else {
+    const agyModel = userId ? await getUserAgyModel(userId) : (process.env.AGY_MODEL || "gemini-3.8-flash-medium");
+    cliArgs = [
+      "--conversation",
+      actualConvId,
+      "--model",
+      agyModel,
+      "-p",
+      prompt,
+      "--output-format",
+      "text",
+      "--print-timeout",
+      "10m",
+    ];
+    if (AUTO_APPROVE_PERMISSIONS) {
+      cliArgs.push("--dangerously-skip-permissions");
+    }
+  }
+
+  const sanitizedEnv = { ...process.env };
+  delete sanitizedEnv.BOT_TOKEN;
+  delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
+  if (process.env.GITHUB_TOKEN) {
+    sanitizedEnv.GH_TOKEN = process.env.GITHUB_TOKEN;
+  }
+  if (process.env.CLAUDE_AUTH_TYPE === "oauth") {
+    delete sanitizedEnv.ANTHROPIC_API_KEY;
+  }
+  if (process.env.AGY_AUTH_TYPE === "oauth") {
+    delete sanitizedEnv.GEMINI_API_KEY;
+  }
+
+  const res = await runProcess({
+    command: binToRun,
+    args: cliArgs,
+    cwd,
+    timeoutMs,
+    env: sanitizedEnv,
+  });
+
+  if (res.code === 0 && res.stdout) {
+    return { ok: true, output: res.stdout };
+  }
+
+  // Jika ada output dari CLI meskipun exit non-nol (misal warning)
+  if (res.stdout && res.stdout.length > 50) {
+    return { ok: true, output: res.stdout };
+  }
+
+  const errMsg = res.stderr || res.stdout || `CLI exit code ${res.code}`;
+  throw new Error(`Eksekusi Agent CLI gagal: ${errMsg}`);
+}
+

@@ -17,6 +17,12 @@ import {
   getModelList,
   fetchRemoteModels,
 } from "./config/models.js";
+import { loadWatchConfig, saveWatchConfig } from "./services/github-service.js";
+import {
+  getDeployConfig,
+  saveDeployConfig,
+  executeDeployment,
+} from "./services/deploy-service.js";
 
 
 // Helper membaca dan parse file .env
@@ -162,6 +168,7 @@ export function createWebServer() {
             UNIVERSAL_API_KEY: parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "",
             UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL || process.env.UNIVERSAL_MODEL || "deepseek-chat",
             GITHUB_TOKEN: parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
+            DEPLOY_COMMAND: parsed.DEPLOY_COMMAND || process.env.DEPLOY_COMMAND || "git pull && npm install && pm2 reload all || pm2 reload ecosystem.config.cjs",
           },
           authStatus: {
             claudeSessionActive,
@@ -202,6 +209,93 @@ export function createWebServer() {
       } catch (err) {
         return sendError(500, err.message);
       }
+    }
+
+    // API: Ambil Status & Pengaturan Otomasi (GitHub Watcher & Deploy)
+    if (pathname === "/api/automation" && req.method === "GET") {
+      try {
+        const watchConfig = await loadWatchConfig();
+        const deployConfig = await getDeployConfig();
+        return sendJson(200, {
+          ok: true,
+          watchConfig,
+          deployConfig,
+        });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    // API: Simpan Status & Pengaturan Otomasi
+    if (pathname === "/api/automation" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 100 * 1024) req.destroy();
+      });
+
+      req.on("end", async () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          const watchConfig = await loadWatchConfig();
+          const deployConfig = await getDeployConfig();
+
+          if (payload.autoAnalyze !== undefined) {
+            watchConfig.autoAnalyze = Boolean(payload.autoAnalyze);
+          }
+          if (payload.autoFix !== undefined) {
+            watchConfig.autoFix = Boolean(payload.autoFix);
+          }
+          if (payload.pollIntervalMinutes !== undefined) {
+            watchConfig.pollIntervalMinutes = Number(payload.pollIntervalMinutes) || 5;
+          }
+          if (payload.watchedRepos !== undefined && Array.isArray(payload.watchedRepos)) {
+            watchConfig.watchedRepos = payload.watchedRepos;
+          }
+
+          if (payload.deployCommand !== undefined) {
+            deployConfig.defaultCommand = String(payload.deployCommand).trim();
+            await updateEnvFile({ DEPLOY_COMMAND: deployConfig.defaultCommand });
+          }
+
+          await saveWatchConfig(watchConfig);
+          await saveDeployConfig(deployConfig);
+
+          return sendJson(200, {
+            ok: true,
+            message: "Pengaturan otomasi berhasil diperbarui!",
+            watchConfig,
+            deployConfig,
+          });
+        } catch (err) {
+          return sendError(400, `Gagal menyimpan otomasi: ${err.message}`);
+        }
+      });
+      return;
+    }
+
+    // API: Jalankan Deploy dari Web UI
+    if (pathname === "/api/deploy/run" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 50 * 1024) req.destroy();
+      });
+
+      req.on("end", async () => {
+        try {
+          const { target, customCommand } = JSON.parse(body || "{}");
+          const result = await executeDeployment({
+            target: target || "default",
+            customCommand,
+            triggeredBy: "Web Control Panel",
+          });
+          return sendJson(200, { ok: true, result });
+        } catch (err) {
+          return sendError(500, `Deployment error: ${err.message}`);
+        }
+      });
+      return;
     }
 
     // API: Simpan Pengaturan
@@ -261,6 +355,9 @@ export function createWebServer() {
           }
           if (payload.GITHUB_TOKEN !== undefined) {
             updates.GITHUB_TOKEN = String(payload.GITHUB_TOKEN).trim();
+          }
+          if (payload.DEPLOY_COMMAND !== undefined) {
+            updates.DEPLOY_COMMAND = String(payload.DEPLOY_COMMAND).trim();
           }
 
           await updateEnvFile(updates);

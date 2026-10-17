@@ -89,8 +89,9 @@ export const AGENT_TOOLS = [
 ];
 
 // Eksekusi fungsi tool lokal
-async function executeToolCall(toolCall) {
+async function executeToolCall(toolCall, options = {}) {
   const { name, arguments: argsString } = toolCall.function;
+  const baseDir = options.workingDir || PROJECTS_DIR;
   let args = {};
   try {
     args = JSON.parse(argsString || "{}");
@@ -101,13 +102,16 @@ async function executeToolCall(toolCall) {
   try {
     switch (name) {
       case "execute_command": {
-        const targetCwd = args.cwd ? path.resolve(PROJECTS_DIR, args.cwd) : PROJECTS_DIR;
+        const targetCwd = args.cwd ? path.resolve(baseDir, args.cwd) : baseDir;
         await mkdir(targetCwd, { recursive: true });
 
         // Sanitasi environment agar tidak membocorkan BOT_TOKEN
         const sanitizedEnv = { ...process.env };
         delete sanitizedEnv.BOT_TOKEN;
         delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
+        if (process.env.GITHUB_TOKEN) {
+          sanitizedEnv.GH_TOKEN = process.env.GITHUB_TOKEN;
+        }
 
         const { stdout, stderr } = await execAsync(args.command, {
           cwd: targetCwd,
@@ -121,20 +125,24 @@ async function executeToolCall(toolCall) {
       }
 
       case "read_file": {
-        const resolvedPath = path.resolve(ROOT_DIR, args.file_path);
+        const resolvedPath = path.isAbsolute(args.file_path)
+          ? args.file_path
+          : path.resolve(baseDir, args.file_path);
         const content = await readFile(resolvedPath, "utf8");
         return content.length > 50000 ? content.slice(0, 50000) + "\n...[output dipotong]" : content;
       }
 
       case "write_file": {
-        const resolvedPath = path.resolve(ROOT_DIR, args.file_path);
+        const resolvedPath = path.isAbsolute(args.file_path)
+          ? args.file_path
+          : path.resolve(baseDir, args.file_path);
         await mkdir(path.dirname(resolvedPath), { recursive: true });
         await writeFile(resolvedPath, args.content, "utf8");
         return `File berhasil ditulis: ${args.file_path} (${Buffer.byteLength(args.content)} bytes)`;
       }
 
       case "list_directory": {
-        const resolvedPath = args.dir_path ? path.resolve(ROOT_DIR, args.dir_path) : PROJECTS_DIR;
+        const resolvedPath = args.dir_path ? path.resolve(baseDir, args.dir_path) : baseDir;
         await mkdir(resolvedPath, { recursive: true });
         const items = await readdir(resolvedPath, { withFileTypes: true });
         const list = items.map((it) => `${it.isDirectory() ? "📁 [DIR] " : "📄 [FILE]"} ${it.name}`);
@@ -171,6 +179,7 @@ export async function runUniversalAgent({
   baseUrl = "https://api.deepseek.com/v1",
   model = "deepseek-chat",
   systemPrompt,
+  workingDir = null,
   onToolStart,
 }) {
   if (!apiKey) {
@@ -257,7 +266,7 @@ export async function runUniversalAgent({
           onToolStart(toolCall.function.name, toolCall.function.arguments);
         }
 
-        const toolResult = await executeToolCall(toolCall);
+        const toolResult = await executeToolCall(toolCall, { workingDir });
         messages.push({
           role: "tool",
           tool_call_id: toolCall.id,

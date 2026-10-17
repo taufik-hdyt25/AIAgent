@@ -1,3 +1,4 @@
+import { InlineKeyboard } from "grammy";
 import { ALLOWED_IDS } from "../config/env.js";
 import {
   isGhAvailable,
@@ -6,22 +7,28 @@ import {
   fetchIssueDetails,
   formatIssueForPrompt,
 } from "./github-service.js";
+import { runIssueAnalysis, runAutoFixAndCreatePr } from "./autofix-service.js";
 
 let watcherInterval = null;
 let isPolling = false;
 
 // Mengirim pesan ke semua user yang diizinkan (atau ke chatId spesifik)
-async function notifyUsers(bot, message, specificChatId = null) {
+export async function notifyUsers(bot, message, specificChatId = null, replyMarkup = null) {
+  const options = {
+    disable_web_page_preview: true,
+  };
+  if (replyMarkup) {
+    options.reply_markup = replyMarkup;
+  }
+
   if (specificChatId) {
     try {
       await bot.api.sendMessage(specificChatId, message, {
+        ...options,
         parse_mode: "Markdown",
-        disable_web_page_preview: true,
       });
     } catch {
-      await bot.api.sendMessage(specificChatId, message, {
-        disable_web_page_preview: true,
-      });
+      await bot.api.sendMessage(specificChatId, message, options);
     }
     return;
   }
@@ -29,14 +36,12 @@ async function notifyUsers(bot, message, specificChatId = null) {
   for (const chatId of ALLOWED_IDS) {
     try {
       await bot.api.sendMessage(chatId, message, {
+        ...options,
         parse_mode: "Markdown",
-        disable_web_page_preview: true,
       });
     } catch {
       try {
-        await bot.api.sendMessage(chatId, message, {
-          disable_web_page_preview: true,
-        });
+        await bot.api.sendMessage(chatId, message, options);
       } catch (err) {
         console.warn(`[GitHub Watcher] Gagal kirim notifikasi ke ${chatId}:`, err.message);
       }
@@ -110,6 +115,12 @@ export async function checkAllWatchedRepos(bot, specificChatId = null, isManual 
             const author = issue.author?.login || "anonymous";
             const labels = (issue.labels || []).map((l) => l.name).join(", ") || "-";
 
+            const keyboard = new InlineKeyboard()
+              .text(`🛠️ Bikin Fix & Draft PR`, `autofix:${repo}:${issue.number}`)
+              .row()
+              .url(`🌐 Buka di GitHub`, issue.url || `https://github.com/${repo}/issues/${issue.number}`)
+              .text(`🚀 Deploy ke Server`, `deploy_prompt:${repo}`);
+
             const notifMsg =
               `🚨 *GITHUB ISSUE BARU TERDETEKSI!*\n\n` +
               `📦 *Repo:* \`${repo}\`\n` +
@@ -117,9 +128,37 @@ export async function checkAllWatchedRepos(bot, specificChatId = null, isManual 
               `👤 *Penulis:* @${author}\n` +
               `🏷 *Labels:* ${labels}\n` +
               `🔗 *URL:* ${issue.url}\n\n` +
-              `💡 _Ketik \`/issue ${issue.url}\` atau balas pesan ini untuk meminta AI menganalisis & memperbaikinya._`;
+              `⚙️ *Auto-Analyze:* ${config.autoAnalyze !== false ? "🟢 Aktif" : "⚪ Nonaktif"}\n` +
+              `🤖 *Auto-Fix & PR:* ${config.autoFix ? "🟢 Aktif" : "⚪ Nonaktif (Klik tombol di bawah)"}`;
 
-            await notifyUsers(bot, notifMsg, specificChatId);
+            await notifyUsers(bot, notifMsg, specificChatId, keyboard);
+
+            // Step 2: Auto-Analyze jika aktif
+            if (config.autoAnalyze !== false) {
+              console.log(`[GitHub Watcher] Menjalankan Auto-Analyze untuk issue #${issue.number} di ${repo}...`);
+              runIssueAnalysis({
+                repo,
+                issueNumber: issue.number,
+                issueData: issue,
+                bot,
+                notifyChatId: specificChatId,
+              }).catch((err) => {
+                console.error(`[GitHub Watcher] Error auto-analyze #${issue.number}:`, err);
+              });
+            }
+
+            // Step 3: Auto-Fix jika dikonfigurasi aktif secara otomatis
+            if (config.autoFix) {
+              console.log(`[GitHub Watcher] Menjalankan Auto-Fix otomatis untuk issue #${issue.number} di ${repo}...`);
+              runAutoFixAndCreatePr({
+                repo,
+                issueNumber: issue.number,
+                bot,
+                notifyChatId: specificChatId,
+              }).catch((err) => {
+                console.error(`[GitHub Watcher] Error auto-fix #${issue.number}:`, err);
+              });
+            }
           }
         }
       } catch (err) {

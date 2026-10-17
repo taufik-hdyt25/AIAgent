@@ -117,6 +117,7 @@ export async function loadWatchConfig() {
       seenIssues: data.seenIssues && typeof data.seenIssues === "object" ? data.seenIssues : {},
       lastChecked: data.lastChecked || 0,
       autoAnalyze: data.autoAnalyze !== false,
+      autoFix: Boolean(data.autoFix || process.env.GITHUB_AUTO_FIX === "true"),
     };
   } catch {
     // Default konfigurasi jika belum ada file
@@ -131,6 +132,7 @@ export async function loadWatchConfig() {
       seenIssues: {},
       lastChecked: 0,
       autoAnalyze: true,
+      autoFix: process.env.GITHUB_AUTO_FIX === "true",
     };
   }
 }
@@ -138,6 +140,55 @@ export async function loadWatchConfig() {
 // Menyimpan konfigurasi watch repositori
 export async function saveWatchConfig(config) {
   await writeFile(GITHUB_WATCH_FILE, JSON.stringify(config, null, 2), "utf8");
+}
+
+// Mengaktifkan / menonaktifkan fitur autoAnalyze
+export async function toggleAutoAnalyze(enable = null) {
+  const config = await loadWatchConfig();
+  config.autoAnalyze = enable !== null ? Boolean(enable) : !config.autoAnalyze;
+  await saveWatchConfig(config);
+  return config.autoAnalyze;
+}
+
+// Mengaktifkan / menonaktifkan fitur autoFix
+export async function toggleAutoFix(enable = null) {
+  const config = await loadWatchConfig();
+  config.autoFix = enable !== null ? Boolean(enable) : !config.autoFix;
+  await saveWatchConfig(config);
+  return config.autoFix;
+}
+
+// Membuat Draft Pull Request di GitHub via GitHub CLI
+export async function createDraftPr({ repo, branch, base = null, title, body = "" }) {
+  const ghReady = await isGhAvailable();
+  if (!ghReady) {
+    throw new Error("GitHub CLI (gh) belum terpasang atau tidak ditemukan di PATH.");
+  }
+
+  const env = { ...process.env };
+  if (process.env.GITHUB_TOKEN) {
+    env.GH_TOKEN = process.env.GITHUB_TOKEN;
+  }
+
+  const baseFlag = base ? `--base "${base}"` : "";
+  // Buat draft PR
+  const safeTitle = title.replace(/"/g, '\\"');
+  const safeBody = body.replace(/"/g, '\\"');
+  const cmd = `gh pr create -R "${repo}" --draft --head "${branch}" ${baseFlag} --title "${safeTitle}" --body "${safeBody}"`;
+
+  try {
+    const { stdout, stderr } = await execAsync(cmd, { env, timeout: 60000 });
+    const output = (stdout || "").trim();
+    // Jika gh pr create mencetak URL PR (biasanya berupa link https://github.com/owner/repo/pull/xxx)
+    const match = output.match(/https?:\/\/github\.com\/[^\s]+\/pull\/\d+/i);
+    if (match) {
+      return match[0];
+    }
+    return output;
+  } catch (err) {
+    const msg = err.stderr || err.message || "Gagal membuat Draft PR";
+    throw new Error(`GitHub CLI PR Error: ${msg.trim()}`);
+  }
 }
 
 // Menambahkan repository ke daftar pantauan

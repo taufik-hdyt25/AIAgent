@@ -48,6 +48,15 @@ const badgeClaudeSession = document.getElementById("badgeClaudeSession");
 const badgeAgySession = document.getElementById("badgeAgySession");
 const badgeUniversalKey = document.getElementById("badgeUniversalKey");
 
+// Automation & GitHub Elements
+const githubTokenInput = document.getElementById("githubToken");
+const toggleGithubKeyBtn = document.getElementById("toggleGithubKey");
+const eyeGithubIcon = document.getElementById("eyeGithubIcon");
+const autoAnalyzeCheckbox = document.getElementById("autoAnalyze");
+const autoFixCheckbox = document.getElementById("autoFix");
+const deployCommandInput = document.getElementById("deployCommand");
+const btnTestDeploy = document.getElementById("btnTestDeploy");
+
 const statusPill = document.getElementById("statusPill");
 const statusText = document.getElementById("statusText");
 const btnReload = document.getElementById("btnReload");
@@ -135,6 +144,16 @@ if (toggleUniversalKeyBtn && universalApiKeyInput) {
     const isPass = universalApiKeyInput.type === "password";
     universalApiKeyInput.type = isPass ? "text" : "password";
     eyeUniversalIcon.innerHTML = isPass
+      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
+      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
+  });
+}
+
+if (toggleGithubKeyBtn && githubTokenInput) {
+  toggleGithubKeyBtn.addEventListener("click", () => {
+    const isPass = githubTokenInput.type === "password";
+    githubTokenInput.type = isPass ? "text" : "password";
+    eyeGithubIcon.innerHTML = isPass
       ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
       : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
   });
@@ -300,6 +319,33 @@ async function loadSettings() {
     timeoutInput.value = currentSettings.TASK_TIMEOUT_MS || "900000";
     timeoutFormatted.textContent = formatMs(timeoutInput.value);
 
+    // Populate GitHub Token & Deploy Command
+    if (githubTokenInput) {
+      githubTokenInput.value = currentSettings.GITHUB_TOKEN || "";
+    }
+    if (deployCommandInput) {
+      deployCommandInput.value = currentSettings.DEPLOY_COMMAND || "";
+    }
+
+    // Ambil data status otomasi
+    try {
+      const autoRes = await fetch("/api/automation");
+      if (autoRes.ok) {
+        const autoData = await autoRes.json();
+        if (autoData.ok) {
+          if (autoAnalyzeCheckbox) {
+            autoAnalyzeCheckbox.checked = autoData.watchConfig?.autoAnalyze !== false;
+          }
+          if (autoFixCheckbox) {
+            autoFixCheckbox.checked = Boolean(autoData.watchConfig?.autoFix);
+          }
+          if (deployCommandInput && autoData.deployConfig?.defaultCommand) {
+            deployCommandInput.value = autoData.deployConfig.defaultCommand;
+          }
+        }
+      }
+    } catch (_) {}
+
     // Update Badges
     updateBadges(currentSettings, data.system);
 
@@ -452,6 +498,8 @@ form.addEventListener("submit", async (e) => {
     GEMINI_API_KEY: geminiApiKeyInput ? geminiApiKeyInput.value.trim() : "",
     AGY_AUTO_APPROVE_PERMISSIONS: autoApproveCheckbox.checked ? "true" : "false",
     TASK_TIMEOUT_MS: timeoutInput.value.trim(),
+    GITHUB_TOKEN: githubTokenInput ? githubTokenInput.value.trim() : "",
+    DEPLOY_COMMAND: deployCommandInput ? deployCommandInput.value.trim() : "",
   };
 
   btnSubmit.disabled = true;
@@ -470,9 +518,20 @@ form.addEventListener("submit", async (e) => {
       throw new Error(data.error || "Gagal menyimpan");
     }
 
+    // Juga perbarui pengaturan otomasi (/api/automation)
+    await fetch("/api/automation", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        autoAnalyze: autoAnalyzeCheckbox ? autoAnalyzeCheckbox.checked : true,
+        autoFix: autoFixCheckbox ? autoFixCheckbox.checked : false,
+        deployCommand: deployCommandInput ? deployCommandInput.value.trim() : undefined,
+      }),
+    }).catch(() => {});
+
     currentSettings = { ...currentSettings, ...payload };
     updateBadges(currentSettings);
-    showToast("Pengaturan berhasil disimpan ke .env!", "success");
+    showToast("Pengaturan & Otomasi berhasil disimpan!", "success");
   } catch (err) {
     showToast(`Error: ${err.message}`, "error");
   } finally {
@@ -481,6 +540,38 @@ form.addEventListener("submit", async (e) => {
     saveBtnText.textContent = "Simpan Pengaturan";
   }
 });
+
+// Listener untuk Test Deploy via Web UI
+if (btnTestDeploy) {
+  btnTestDeploy.addEventListener("click", async () => {
+    btnTestDeploy.disabled = true;
+    const origHtml = btnTestDeploy.innerHTML;
+    btnTestDeploy.innerHTML = `<span>Menjalankan...</span>`;
+
+    try {
+      showToast("Memulai eksekusi deployment di server...", "info");
+      const res = await fetch("/api/deploy/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customCommand: deployCommandInput ? deployCommandInput.value.trim() : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok && data.result?.success) {
+        showToast(`✅ Deploy Berhasil (${data.result.durationSec}s)! Perintah: ${data.result.command}`, "success", 6000);
+      } else {
+        showToast(`❌ Deploy Gagal (Exit ${data.result?.code}): ${data.result?.output || data.error}`, "error", 8000);
+      }
+    } catch (err) {
+      showToast(`Error menghubungi server: ${err.message}`, "error");
+    } finally {
+      btnTestDeploy.disabled = false;
+      btnTestDeploy.innerHTML = origHtml;
+    }
+  });
+}
 
 // Initialize on page load
 loadSettings();

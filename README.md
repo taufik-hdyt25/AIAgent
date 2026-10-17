@@ -194,8 +194,42 @@ Bot mendukung penerimaan file kode, skrip, data, dan gambar secara langsung dari
 
 ---
 
+## 🤖 Full Automation: GitHub Issue ke Server Deployment
+
+TH Agent kini mendukung otomasi penuh end-to-end tanpa perlu membuka terminal atau IDE manual:
+
+```
+[Issue Baru GitHub] ──> [AI Auto-Analyze] ──> [Notifikasi & Analisis ke Tele]
+                                                        │
+[Deploy ke Server] <── [Review & Merge PR] <── [Auto-Fix & Draft PR di GitHub]
+   (via Chat Tele)
+```
+
+### Alur Kerja 5 Langkah:
+1. **Issue Baru Terdeteksi:** Background Watcher memantau repositori GitHub yang didaftarkan (misal: setiap 5 menit atau via `/checkissues`).
+2. **Auto-Analyze:** Jika `autoAnalyze` aktif (default), AI otomatis mengambil detail issue, mendiagnosis akar masalah, dan mengirim laporan analisis ke Telegram lengkap dengan tombol aksi interaktif.
+3. **Auto-Fix & Draft PR:**
+   - Dijalankan otomatis jika opsi `autoFix` aktif, atau dengan 1-klik tombol `🛠️ Bikin Fix & Draft PR` / command `/autofix <url>`.
+   - AI otomatis mengklon/memperbarui repo, membuat branch `fix/issue-<no>`, memperbaiki file kode yang bermasalah, memverifikasi, melakukan commit, push branch, dan membuka **Draft Pull Request** di GitHub.
+4. **Review & Merge:** Anda menerima tautan Draft PR langsung di Telegram. Tinggal klik tautan untuk memeriksa diff kode di GitHub dan klik tombol **Merge Pull Request**.
+5. **Deploy ke Server via Chat Telegram:**
+   - Cukup ketik `/deploy` di chat Telegram atau klik tombol inline `🚀 Deploy ke Server`.
+   - Bot akan menjalankan perintah deployment yang telah dikonfigurasi (misal: `git pull && npm install && pm2 reload all` atau `docker compose up -d`), lalu mengirimkan laporan status dan durasi deploy ke Telegram.
+
+### Perintah Terkait Otomasi:
+- `/watched` - Cek status repositori dan fitur otomasi aktif
+- `/watchrepo <owner/repo>` - Daftarkan repositori baru untuk dipantau
+- `/checkissues` - Pengecekan manual instan untuk mendeteksi issue baru
+- `/autoanalyze [on|off]` - Mengaktifkan / menonaktifkan analisis AI otomatis
+- `/autopr [on|off]` - Mengaktifkan / menonaktifkan pembuatan Draft PR otomatis
+- `/autofix <url_issue>` - Menjalankan proses perbaikan dan pembukaan Draft PR untuk issue tertentu
+- `/deploy [target]` - Menjalankan proses deployment ke server
+- `/setdeploy <command>` - Mengubah perintah shell yang dijalankan saat deploy
+
+---
+
 ## 🛡️ Alur Kerja Git Setelah Task Selesai
-1. Bot akan mengirimkan ringkasan hasil task dan nama branch (`agent/task-<timestamp>`).
+1. Bot akan mengirimkan ringkasan hasil task dan nama branch (`agent/task-<timestamp>` atau `fix/issue-<no>`).
 2. Masuk ke folder project di server/VPS:
    ```bash
    cd /path/to/project
@@ -208,5 +242,5 @@ Bot mendukung penerimaan file kode, skrip, data, dan gambar secara langsung dari
 4. Jika puas, gabungkan perubahan ke branch utama:
    ```bash
    git switch main
-   git merge agent/task-...
+   git merge fix/issue-...
    ```

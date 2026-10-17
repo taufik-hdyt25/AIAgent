@@ -50,14 +50,17 @@ if (
     .setMyCommands([
       { command: "start", description: "Sambutan & info bot" },
       { command: "help", description: "Panduan lengkap perintah" },
+      { command: "deploy", description: "Deploy aplikasi ke server" },
+      { command: "autofix", description: "Auto-Fix issue & buat Draft PR" },
+      { command: "issue", description: "Analisis GitHub Issue secara mendalam" },
+      { command: "checkissues", description: "Cek issue GitHub baru sekarang" },
+      { command: "watched", description: "Status pantauan repo & otomasi" },
       { command: "files", description: "Daftar file & gambar yang diunggah" },
-      { command: "exec", description: "Eksekusi perintah terminal langsung di server" },
+      { command: "exec", description: "Eksekusi perintah terminal di server" },
       { command: "status", description: "Cek status tugas, engine & model aktif" },
       { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
       { command: "engine", description: "Pilih engine (Antigravity / Claude / Universal)" },
       { command: "reset", description: "Mulai sesi percakapan baru" },
-      { command: "checkissues", description: "Cek issue GitHub baru sekarang" },
-      { command: "watched", description: "Daftar repo yang dipantau" },
       { command: "cancel", description: "Hentikan tugas yang sedang berjalan" },
     ])
     .catch((err) => {

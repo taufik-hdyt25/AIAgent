@@ -424,6 +424,116 @@
           </div>
         </div>
 
+        <!-- SECTION: Full Automation (GitHub Issue & Server Deployment) -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon cyan" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">Full Automation (GitHub & Deploy)</h2>
+              <p class="card-description">Otomatisasi deteksi issue, analisis AI, auto-fix & Draft PR, serta eksekusi deployment server.</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- GITHUB_TOKEN -->
+            <div class="form-group">
+              <div class="label-row">
+                <label for="githubToken" class="form-label">GITHUB PERSONAL ACCESS TOKEN (PAT)</label>
+                <span class="label-hint">Wajib untuk Auto-PR & Watcher</span>
+              </div>
+              <div class="input-action-wrapper">
+                <input 
+                  type="password" 
+                  id="githubToken" 
+                  name="GITHUB_TOKEN" 
+                  class="form-input font-mono" 
+                  placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <button type="button" class="btn-icon" id="toggleGithubKey" title="Tampilkan / Sembunyikan Token" aria-label="Toggle GitHub Token visibility">
+                  <svg id="eyeGithubIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+              <div class="form-help">
+                Dapatkan Personal Access Token (classic) dengan scope <code>repo</code> dari <a href="https://github.com/settings/tokens" target="_blank" rel="noopener">GitHub Token Settings</a>.
+              </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 20px 0;">
+
+            <!-- autoAnalyze Toggle -->
+            <div class="form-group">
+              <div class="toggle-card">
+                <div class="toggle-info">
+                  <span class="toggle-title">1. Auto-Analyze Issue</span>
+                  <span class="toggle-desc">
+                    Saat issue baru terbuka di repo GitHub yang dipantau, AI otomatis mengambil detail issue, mendiagnosis akar masalah, dan mengirim laporan analisis ke Telegram.
+                  </span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="autoAnalyze" name="autoAnalyze" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- autoFix Toggle -->
+            <div class="form-group">
+              <div class="toggle-card">
+                <div class="toggle-info">
+                  <span class="toggle-title">2. Auto-Fix & Draft PR Otomatis</span>
+                  <span class="toggle-desc">
+                    AI otomatis membuat branch <code>fix/issue-&lt;no&gt;</code>, memperbaiki file kode yang bermasalah, melakukan commit, push, dan membuka <strong>Draft Pull Request</strong> di GitHub. Jika nonaktif, Anda tetap bisa menjalankannya via tombol 1-klik di Telegram.
+                  </span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="autoFix" name="autoFix">
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 20px 0;">
+
+            <!-- DEPLOY_COMMAND -->
+            <div class="form-group">
+              <div class="label-row">
+                <label for="deployCommand" class="form-label">PERINTAH DEPLOYMENT SERVER (COMMAND)</label>
+                <span class="label-hint">Dapat dieksekusi via /deploy</span>
+              </div>
+              <div class="input-action-wrapper">
+                <input 
+                  type="text" 
+                  id="deployCommand" 
+                  name="DEPLOY_COMMAND" 
+                  class="form-input font-mono" 
+                  placeholder="git pull && npm install && pm2 reload all"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <button type="button" class="btn btn-secondary" id="btnTestDeploy">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                  </svg>
+                  <span>Test Deploy</span>
+                </button>
+              </div>
+              <div class="form-help">
+                Perintah terminal yang dijalankan saat Anda memicu deployment via chat Telegram (<code>/deploy</code>) atau tombol inline.
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- SECTION 3: Keamanan & Timeout Runtime -->
         <div class="card">
           <div class="card-header">
