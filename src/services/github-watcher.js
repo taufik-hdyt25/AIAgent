@@ -148,6 +148,18 @@ export async function initGithubWatcher(bot) {
     clearInterval(watcherInterval);
   }
 
+  // Cek apakah fitur diaktifkan di .env
+  if (process.env.GITHUB_WATCHER_ENABLED === "false") {
+    console.log("[GitHub Watcher] Fitur GitHub Watcher dinonaktifkan via GITHUB_WATCHER_ENABLED=false.");
+    return;
+  }
+
+  const ghReady = await isGhAvailable();
+  if (!ghReady) {
+    console.log("[GitHub Watcher] GitHub CLI (gh) belum terpasang. Watcher otomatis tidak diaktifkan.");
+    return;
+  }
+
   const config = await loadWatchConfig();
   const intervalMs = Math.max(1, config.pollIntervalMinutes || 5) * 60 * 1000;
 

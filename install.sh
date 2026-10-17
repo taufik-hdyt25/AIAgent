@@ -381,8 +381,21 @@ setup_github_cli() {
         else
             echo -e "${YELLOW}Token dilewati. Anda dapat mengisinya nanti via .env atau Web Control Panel.${NC}"
         fi
+
+        # Aktifkan watcher di .env
+        if grep -q "^GITHUB_WATCHER_ENABLED=" .env; then
+            sed -i.bak "s|^GITHUB_WATCHER_ENABLED=.*|GITHUB_WATCHER_ENABLED=true|" .env && rm -f .env.bak
+        else
+            echo "GITHUB_WATCHER_ENABLED=true" >> .env
+        fi
     else
-        echo -e "${CYAN}Integrasi GitHub CLI dilewati.${NC}"
+        echo -e "${CYAN}Integrasi GitHub CLI & Watcher dinonaktifkan.${NC}"
+        if [ ! -f ".env" ]; then touch .env; fi
+        if grep -q "^GITHUB_WATCHER_ENABLED=" .env; then
+            sed -i.bak "s|^GITHUB_WATCHER_ENABLED=.*|GITHUB_WATCHER_ENABLED=false|" .env && rm -f .env.bak
+        else
+            echo "GITHUB_WATCHER_ENABLED=false" >> .env
+        fi
     fi
 }
 
