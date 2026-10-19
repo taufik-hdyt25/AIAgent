@@ -470,6 +470,22 @@
 
             <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 20px 0;">
 
+            <!-- GitHub Watcher Toggle -->
+            <div class="form-group">
+              <div class="toggle-card">
+                <div class="toggle-info">
+                  <span class="toggle-title">GitHub Watcher (Saklar Utama)</span>
+                  <span class="toggle-desc">
+                    Mengecek issue baru di repo yang dipantau secara berkala. Jika dimatikan, Auto-Analyze dan Auto-Fix di bawah ikut berhenti. Cek manual via <code>/checkissues</code> tetap bisa dipakai.
+                  </span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="watcherEnabled" name="watcherEnabled" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
             <!-- autoAnalyze Toggle -->
             <div class="form-group">
               <div class="toggle-card">

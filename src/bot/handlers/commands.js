@@ -29,6 +29,7 @@ import {
   loadWatchConfig,
   addWatchedRepo,
   removeWatchedRepo,
+  toggleWatcher,
   toggleAutoAnalyze,
   toggleAutoFix,
   GITHUB_ISSUE_REGEX,
@@ -82,6 +83,7 @@ export function registerBasicCommands(bot) {
         "• `/setdeploy <cmd>` - Atur perintah shell untuk deployment server\n" +
         "• `/autofix <issue_url>` - Otomatis buat branch fix, perbaiki kode & buat Draft PR\n" +
         "• `/issue <url>` - Baca & analisis GitHub Issue secara mendalam\n" +
+        "• `/watcher [on|off]` - Nyalakan/matikan GitHub Watcher (cek issue berkala)\n" +
         "• `/autoanalyze [on|off]` - Toggle analisis AI otomatis saat issue baru muncul\n" +
         "• `/autopr [on|off]` - Toggle pembuatan Draft PR otomatis saat issue baru muncul\n" +
         "• `/checkissues` - Cek issue baru di GitHub sekarang (manual trigger)\n" +
@@ -415,6 +417,7 @@ export function registerBasicCommands(bot) {
       }
 
       text += `\n\n⚙️ *Fitur Otomasi:*\n`;
+      text += `• GitHub Watcher: ${cfg.enabled ? "🟢 Aktif" : "⚪ Nonaktif"} (\`/watcher\`)\n`;
       text += `• Auto-Analyze Issue: ${cfg.autoAnalyze !== false ? "🟢 Aktif" : "⚪ Nonaktif"} (\`/autoanalyze\`)\n`;
       text += `• Auto-Fix & Draft PR: ${cfg.autoFix ? "🟢 Aktif" : "⚪ Nonaktif"} (\`/autopr\`)\n`;
 
@@ -422,6 +425,23 @@ export function registerBasicCommands(bot) {
     } catch (err) {
       await ctx.reply(`❌ Gagal membaca status pantauan: ${err.message}`);
     }
+  });
+
+  // /watcher [on|off]
+  bot.command("watcher", async (ctx) => {
+    const arg = ctx.match?.trim().toLowerCase();
+    let targetState = null;
+    if (arg === "on" || arg === "aktif" || arg === "enable" || arg === "true") targetState = true;
+    if (arg === "off" || arg === "nonaktif" || arg === "disable" || arg === "false") targetState = false;
+
+    const newState = await toggleWatcher(targetState);
+    await ctx.reply(
+      `🐙 *GitHub Watcher:* ${newState ? "🟢 AKTIF" : "⚪ NONAKTIF"}\n\n` +
+      (newState
+        ? "Bot akan mengecek issue baru di repo yang dipantau secara berkala."
+        : "Pengecekan berkala dihentikan (termasuk Auto-Analyze & Auto-PR). Anda tetap bisa cek manual dengan `/checkissues`."),
+      { parse_mode: "Markdown" }
+    );
   });
 
   // /autoanalyze [on|off]

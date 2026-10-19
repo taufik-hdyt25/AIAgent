@@ -52,6 +52,7 @@ const badgeUniversalKey = document.getElementById("badgeUniversalKey");
 const githubTokenInput = document.getElementById("githubToken");
 const toggleGithubKeyBtn = document.getElementById("toggleGithubKey");
 const eyeGithubIcon = document.getElementById("eyeGithubIcon");
+const watcherEnabledCheckbox = document.getElementById("watcherEnabled");
 const autoAnalyzeCheckbox = document.getElementById("autoAnalyze");
 const autoFixCheckbox = document.getElementById("autoFix");
 const deployCommandInput = document.getElementById("deployCommand");
@@ -333,6 +334,9 @@ async function loadSettings() {
       if (autoRes.ok) {
         const autoData = await autoRes.json();
         if (autoData.ok) {
+          if (watcherEnabledCheckbox) {
+            watcherEnabledCheckbox.checked = autoData.watchConfig?.enabled !== false;
+          }
           if (autoAnalyzeCheckbox) {
             autoAnalyzeCheckbox.checked = autoData.watchConfig?.autoAnalyze !== false;
           }
@@ -523,6 +527,7 @@ form.addEventListener("submit", async (e) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        enabled: watcherEnabledCheckbox ? watcherEnabledCheckbox.checked : true,
         autoAnalyze: autoAnalyzeCheckbox ? autoAnalyzeCheckbox.checked : true,
         autoFix: autoFixCheckbox ? autoFixCheckbox.checked : false,
         deployCommand: deployCommandInput ? deployCommandInput.value.trim() : undefined,

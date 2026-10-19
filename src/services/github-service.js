@@ -1,10 +1,11 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DATA_DIR } from "../config/env.js";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 const GITHUB_WATCH_FILE = path.join(DATA_DIR, "github-watch.json");
 
 // Helper memeriksa apakah GitHub CLI (gh) terpasang di sistem
@@ -116,6 +117,7 @@ export async function loadWatchConfig() {
       pollIntervalMinutes: Number(data.pollIntervalMinutes || process.env.GITHUB_POLL_INTERVAL_MINUTES || 5),
       seenIssues: data.seenIssues && typeof data.seenIssues === "object" ? data.seenIssues : {},
       lastChecked: data.lastChecked || 0,
+      enabled: data.enabled !== undefined ? data.enabled !== false : process.env.GITHUB_WATCHER_ENABLED !== "false",
       autoAnalyze: data.autoAnalyze !== false,
       autoFix: Boolean(data.autoFix || process.env.GITHUB_AUTO_FIX === "true"),
     };
@@ -131,6 +133,7 @@ export async function loadWatchConfig() {
       pollIntervalMinutes: Number(process.env.GITHUB_POLL_INTERVAL_MINUTES || 5),
       seenIssues: {},
       lastChecked: 0,
+      enabled: process.env.GITHUB_WATCHER_ENABLED !== "false",
       autoAnalyze: true,
       autoFix: process.env.GITHUB_AUTO_FIX === "true",
     };
@@ -140,6 +143,14 @@ export async function loadWatchConfig() {
 // Menyimpan konfigurasi watch repositori
 export async function saveWatchConfig(config) {
   await writeFile(GITHUB_WATCH_FILE, JSON.stringify(config, null, 2), "utf8");
+}
+
+// Mengaktifkan / menonaktifkan GitHub Watcher (pengecekan berkala)
+export async function toggleWatcher(enable = null) {
+  const config = await loadWatchConfig();
+  config.enabled = enable !== null ? Boolean(enable) : !config.enabled;
+  await saveWatchConfig(config);
+  return config.enabled;
 }
 
 // Mengaktifkan / menonaktifkan fitur autoAnalyze
@@ -170,14 +181,13 @@ export async function createDraftPr({ repo, branch, base = null, title, body = "
     env.GH_TOKEN = process.env.GITHUB_TOKEN;
   }
 
-  const baseFlag = base ? `--base "${base}"` : "";
-  // Buat draft PR
-  const safeTitle = title.replace(/"/g, '\\"');
-  const safeBody = body.replace(/"/g, '\\"');
-  const cmd = `gh pr create -R "${repo}" --draft --head "${branch}" ${baseFlag} --title "${safeTitle}" --body "${safeBody}"`;
+  // Title & body berasal dari issue GitHub (input pihak luar), jadi dikirim sebagai argumen
+  // langsung via execFile tanpa shell agar tidak bisa disisipi command injection
+  const args = ["pr", "create", "-R", repo, "--draft", "--head", branch, "--title", title, "--body", body];
+  if (base) args.push("--base", base);
 
   try {
-    const { stdout, stderr } = await execAsync(cmd, { env, timeout: 60000 });
+    const { stdout } = await execFileAsync("gh", args, { env, timeout: 60000 });
     const output = (stdout || "").trim();
     // Jika gh pr create mencetak URL PR (biasanya berupa link https://github.com/owner/repo/pull/xxx)
     const match = output.match(/https?:\/\/github\.com\/[^\s]+\/pull\/\d+/i);
@@ -216,12 +226,14 @@ export async function checkNewIssuesForRepo(repo) {
   const config = await loadWatchConfig();
   const issues = await listRepoIssues(repo, 15, "open");
 
-  if (!config.seenIssues[repo]) {
+  // Run pertama ditandai dari belum adanya entry repo, bukan dari list kosong,
+  // supaya issue pertama di repo yang awalnya tanpa issue tetap terdeteksi
+  const isFirstRun = !Array.isArray(config.seenIssues[repo]);
+  if (isFirstRun) {
     config.seenIssues[repo] = [];
   }
 
   const seenList = config.seenIssues[repo];
-  const isFirstRun = seenList.length === 0;
 
   const newIssues = [];
   for (const issue of issues) {

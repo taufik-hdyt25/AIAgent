@@ -55,6 +55,7 @@ if (
       { command: "issue", description: "Analisis GitHub Issue secara mendalam" },
       { command: "checkissues", description: "Cek issue GitHub baru sekarang" },
       { command: "watched", description: "Status pantauan repo & otomasi" },
+      { command: "watcher", description: "Nyalakan/matikan GitHub Watcher" },
       { command: "files", description: "Daftar file & gambar yang diunggah" },
       { command: "exec", description: "Eksekusi perintah terminal di server" },
       { command: "status", description: "Cek status tugas, engine & model aktif" },

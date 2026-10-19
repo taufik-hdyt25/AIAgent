@@ -240,6 +240,9 @@ export function createWebServer() {
           const watchConfig = await loadWatchConfig();
           const deployConfig = await getDeployConfig();
 
+          if (payload.enabled !== undefined) {
+            watchConfig.enabled = Boolean(payload.enabled);
+          }
           if (payload.autoAnalyze !== undefined) {
             watchConfig.autoAnalyze = Boolean(payload.autoAnalyze);
           }

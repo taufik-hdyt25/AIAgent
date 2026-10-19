@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import { stat } from "node:fs/promises";
@@ -14,6 +14,7 @@ import { truncate } from "./telegram-files.js";
 import { notifyUsers } from "./github-watcher.js";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Set untuk tracking proses autofix yang sedang berjalan agar tidak dobel
 const activeFixJobs = new Set();
@@ -179,8 +180,9 @@ ${issueData.body || "(Tidak ada deskripsi)"}
 PANDUAN EKSEKUSI:
 1. Telusuri file di direktori ini menggunakan tool yang tersedia (read_file, write_file, execute_command, list_directory).
 2. Lakukan perubahan kode yang diperlukan untuk menyelesaikan issue secara tuntas dan rapi.
-3. Pastikan tidak menimbulkan error sintaksis. Jika ada skrip tes/build (npm test / npm run build / python test), jalankan via terminal untuk memverifikasi.
-4. Di akhir, berikan ringkasan singkat dalam bahasa Indonesia mengenai file apa saja yang diubah dan perbaikan yang dilakukan.
+3. Review ulang perubahanmu, lalu WAJIB jalankan pengecekan: cek sintaks, dan jika ada skrip tes/build (npm test / npm run build / python test) jalankan via terminal. Jika gagal, perbaiki sampai lolos.
+4. Jika tes/build tetap gagal, tulis "⚠️ TES/BUILD GAGAL" beserta alasannya di ringkasan.
+5. Di akhir, berikan ringkasan singkat dalam bahasa Indonesia mengenai file apa saja yang diubah dan perbaikan yang dilakukan.
 `.trim();
 
     const { output: agentFixSummary } = await runAgentAutonomous({
@@ -226,7 +228,8 @@ PANDUAN EKSEKUSI:
 
     const commitMsg = `fix: resolve issue #${issueNumber} - ${issueData.title}`;
     await execAsync(`git add -A`, { cwd: projectPath, env });
-    await execAsync(`git commit -m "${commitMsg.replace(/"/g, '\\"')}"`, { cwd: projectPath, env });
+    // Judul issue = input pihak luar, jadi pakai execFile (tanpa shell) agar aman dari command injection
+    await execFileAsync("git", ["commit", "-m", commitMsg], { cwd: projectPath, env });
     await execAsync(`git push -u origin "${branchName}" --force`, { cwd: projectPath, env, timeout: 60000 });
 
     await notifyUsers(

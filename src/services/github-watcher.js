@@ -187,12 +187,6 @@ export async function initGithubWatcher(bot) {
     clearInterval(watcherInterval);
   }
 
-  // Cek apakah fitur diaktifkan di .env
-  if (process.env.GITHUB_WATCHER_ENABLED === "false") {
-    console.log("[GitHub Watcher] Fitur GitHub Watcher dinonaktifkan via GITHUB_WATCHER_ENABLED=false.");
-    return;
-  }
-
   const ghReady = await isGhAvailable();
   if (!ghReady) {
     console.log("[GitHub Watcher] GitHub CLI (gh) belum terpasang. Watcher otomatis tidak diaktifkan.");
@@ -203,19 +197,27 @@ export async function initGithubWatcher(bot) {
   const intervalMs = Math.max(1, config.pollIntervalMinutes || 5) * 60 * 1000;
 
   console.log(
-    `[GitHub Watcher] Aktif memantau ${config.watchedRepos.length} repositori setiap ${config.pollIntervalMinutes} menit.`
+    `[GitHub Watcher] ${config.enabled ? "Aktif" : "Nonaktif (bisa diaktifkan via /watcher on)"} - ` +
+      `${config.watchedRepos.length} repositori, interval ${config.pollIntervalMinutes} menit.`
   );
+
+  // Status ON/OFF dibaca ulang setiap tick, jadi toggle via /watcher atau Web Panel berlaku tanpa restart
+  const scheduledCheck = async () => {
+    const current = await loadWatchConfig();
+    if (!current.enabled) return;
+    await checkAllWatchedRepos(bot, null, false);
+  };
 
   // Jalankan pengecekan perdana 10 detik setelah bot startup
   setTimeout(() => {
-    checkAllWatchedRepos(bot, null, false).catch((err) => {
+    scheduledCheck().catch((err) => {
       console.warn("[GitHub Watcher] Error initial check:", err.message);
     });
   }, 10000);
 
   // Loop berkala
   watcherInterval = setInterval(() => {
-    checkAllWatchedRepos(bot, null, false).catch((err) => {
+    scheduledCheck().catch((err) => {
       console.warn("[GitHub Watcher] Error interval check:", err.message);
     });
   }, intervalMs);
