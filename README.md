@@ -157,11 +157,13 @@ pm2 logs telegram-coding-agent
 | `/start` | Menampilkan pesan selamat datang, status engine, model, dan panduan fitur |
 | `/files` | Melihat daftar file dan gambar yang pernah diunggah ke server (`uploads/`) |
 | `/exec <cmd>` | Menjalankan perintah terminal langsung di server (misal: `/exec python3 uploads/...`) |
-| `/engine` / `/cli` | Memilih engine CLI yang digunakan (**Antigravity CLI** `agy` atau **Claude Code CLI** `claude`) |
-| `/model` | Membuka menu pemilihan model AI untuk Antigravity (Claude Sonnet/Opus, Gemini, GPT) |
-| `/status` | Melihat status task yang sedang berlangsung, engine, & model yang aktif |
+| `/queue` / `/antrean` | Melihat daftar antrean instruksi AI yang sedang menunggu giliran |
+| `/clearqueue` | Mengosongkan seluruh antrean instruksi yang menunggu |
+| `/engine` / `/cli` | Memilih engine CLI yang digunakan (**Antigravity CLI** `agy` atau **Claude Code CLI** `claude` / **Universal API**) |
+| `/model` | Membuka menu pemilihan model AI (Claude, Gemini, DeepSeek, GPT) |
+| `/status` | Melihat status task aktif, status antrean, engine, & model yang aktif |
 | `/reset` / `/new` | Memulai sesi obrolan baru dari awal (reset memori percakapan) |
-| `/cancel` | Menghentikan task yang sedang diproses |
+| `/cancel` | Menghentikan task yang sedang diproses / membatalkan antrean |
 
 ---
 

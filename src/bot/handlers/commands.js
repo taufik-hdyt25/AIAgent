@@ -21,6 +21,15 @@ import {
   clearActiveTask,
   killProcessTree,
 } from "../../services/cli-runner.js";
+import {
+  getQueue,
+  getQueueLength,
+  clearQueue,
+  isQueuePaused,
+  pauseQueue,
+  resumeQueue,
+  processNextQueue,
+} from "../../services/queue-service.js";
 import { formatBytes, truncate } from "../../services/telegram-files.js";
 import { sendToAgent } from "../dispatcher.js";
 import { InlineKeyboard } from "grammy";
@@ -91,11 +100,13 @@ export function registerBasicCommands(bot) {
         "• `/watchrepo <repo>` - Pantau repo baru (contoh: owner/repo)\n" +
         "• `/files` - Lihat daftar file dan gambar yang telah diunggah\n" +
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
+        "• `/queue` - Cek daftar antrean instruksi AI\n" +
+        "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
         "• `/reset` - Mulai sesi obrolan baru dari awal\n" +
-        "• `/status` - Cek status bot, engine & model aktif\n" +
-        "• `/cancel` - Hentikan tugas yang sedang berjalan",
+        "• `/status` - Cek status bot, antrean, engine & model aktif\n" +
+        "• `/cancel` - Hentikan tugas aktif / antrean",
       { parse_mode: "Markdown" }
     );
   });
@@ -127,22 +138,119 @@ export function registerBasicCommands(bot) {
       activeModelDisplay = `*${matched?.name || agyModel}* (\`${agyModel}\`)`;
     }
 
+    const queueLen = getQueueLength();
+    const queueStatus =
+      queueLen > 0
+        ? `*${queueLen} instruksi menunggu* (\`/queue\`)`
+        : "Kosong (tidak ada antrean)";
+
     const activeTask = getActiveTask();
     if (!activeTask) {
       await ctx.reply(
-        `🟢 TH Agent sedang idle (siap menerima instruksi).\n` +
+        `🟢 *Status TH Agent: Idle (Siap menerima instruksi)*\n\n` +
         `⚙️ Engine aktif: *${engineLabel}*\n` +
-        `🤖 Model aktif: ${activeModelDisplay}`,
+        `🤖 Model aktif: ${activeModelDisplay}\n` +
+        `📋 Status Antrean: ${queueStatus}`,
         { parse_mode: "Markdown" }
       );
       return;
     }
 
     const elapsed = Math.floor((Date.now() - activeTask.startedAt) / 1000);
+    const taskPreview = activeTask.preview ? `\n💬 Tugas: _“${truncate(activeTask.preview, 80)}”_` : "";
+
     await ctx.reply(
-      `⏳ TH Agent sedang menjalankan tugas:\nID: \`${activeTask.id}\`\nDurasi: ${elapsed} detik.\n` +
+      `⏳ *TH Agent Sedang Menjalankan Tugas*\n\n` +
+      `🆔 Task ID: \`${activeTask.id}\`\n` +
+      `⏱ Durasi: *${elapsed} detik*${taskPreview}\n\n` +
       `⚙️ Engine: *${engineLabel}*\n` +
-      `🤖 Model: ${activeModelDisplay}`,
+      `🤖 Model: ${activeModelDisplay}\n` +
+      `📋 Status Antrean: ${queueStatus}\n\n` +
+      `💡 _Kirim /cancel untuk membatalkan atau /queue untuk melihat daftar antrean._`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // /queue, /antrean, /q
+  bot.command(["queue", "antrean", "q"], async (ctx) => {
+    const activeTask = getActiveTask();
+    const queue = getQueue();
+    const isPaused = isQueuePaused();
+
+    let text = `📋 *Status Antrean Instruksi TH Agent*\n\n`;
+
+    if (activeTask) {
+      const elapsed = Math.floor((Date.now() - activeTask.startedAt) / 1000);
+      text += `⚡ *Tugas Sedang Berjalan:*\n`;
+      text += `• ID: \`${activeTask.id}\`\n`;
+      text += `• Durasi: ${elapsed} detik\n`;
+      if (activeTask.preview) {
+        text += `• Instruksi: _“${truncate(activeTask.preview, 80)}”_\n`;
+      }
+      text += "\n";
+    } else {
+      text += `🟢 *Status AI:* Idle (siap menerima instruksi)\n\n`;
+    }
+
+    if (queue.length === 0) {
+      text += `_Antrean instruksi saat ini kosong._\nSemua pesan yang Anda kirim saat AI sedang bekerja akan otomatis masuk antrean di sini.`;
+      const keyboard = new InlineKeyboard();
+      if (activeTask) {
+        keyboard.text("🛑 Batalkan Tugas Aktif", "queue_cancel_active");
+      }
+      await ctx.reply(text, {
+        parse_mode: "Markdown",
+        reply_markup: keyboard.inline_keyboard.length ? keyboard : undefined,
+      });
+      return;
+    }
+
+    text += `⏳ *Instruksi Menunggu Giliran (${queue.length}):*\n`;
+    const previewItems = queue.slice(0, 8);
+    for (const item of previewItems) {
+      const waitSec = Math.floor((Date.now() - item.enqueuedAt) / 1000);
+      const waitStr = waitSec >= 60 ? `${Math.floor(waitSec / 60)}m ${waitSec % 60}s` : `${waitSec}s`;
+      text += `*#${item.position}* [\`${item.id}\`] (@${item.username}) _(${waitStr} lalu)_\n`;
+      text += `  💬 _"${truncate(item.userMessage, 70)}"_\n`;
+      if (item.hasFile) {
+        text += `  📎 _File: \`${item.fileName}\`_\n`;
+      }
+    }
+
+    if (queue.length > 8) {
+      text += `\n_...dan ${queue.length - 8} instruksi lainnya dalam antrean._\n`;
+    }
+
+    if (isPaused) {
+      text += `\n⚠️ *Perhatian:* Antrean sedang di-pause sementara.\n`;
+    }
+
+    text += `\n💡 _Gunakan \`/clearqueue\` untuk menghapus antrean atau \`/cancel\` untuk menghentikan tugas aktif._`;
+
+    const keyboard = new InlineKeyboard();
+    if (isPaused) {
+      keyboard.text("▶️ Lanjutkan Antrean", "queue_resume").row();
+    }
+    keyboard.text("🗑️ Kosongkan Antrean", "queue_clear");
+    if (activeTask) {
+      keyboard.text("🛑 Batalkan Tugas Aktif", "queue_cancel_active");
+    }
+
+    await ctx.reply(text, {
+      parse_mode: "Markdown",
+      reply_markup: keyboard,
+    });
+  });
+
+  // /clearqueue, /cancelqueue, /hapusantrean
+  bot.command(["clearqueue", "cancelqueue", "hapusantrean"], async (ctx) => {
+    const count = clearQueue();
+    if (count === 0) {
+      await ctx.reply("ℹ️ Antrean instruksi sudah kosong.");
+      return;
+    }
+    await ctx.reply(
+      `🗑️ *Antrean Dikosongkan:*\nBerhasil membatalkan *${count} instruksi* yang ada di dalam antrean.`,
       { parse_mode: "Markdown" }
     );
   });
@@ -156,16 +264,74 @@ export function registerBasicCommands(bot) {
     );
   });
 
-  // /cancel
+  // /cancel [all]
   bot.command("cancel", async (ctx) => {
     const activeTask = getActiveTask();
-    if (!activeTask?.process) {
-      await ctx.reply("Tidak ada proses agent yang sedang aktif.");
+    const queueLen = getQueueLength();
+    const arg = ctx.match?.trim().toLowerCase();
+
+    // Jika user mengirim /cancel all
+    if (arg === "all" || arg === "semua") {
+      if (activeTask?.process) {
+        activeTask.cancelled = true;
+        killProcessTree(activeTask.process, "SIGTERM");
+      } else if (activeTask) {
+        activeTask.cancelled = true;
+      }
+      const cleared = clearQueue();
+      await ctx.reply(
+        `🛑 *Semua Dibatalkan:*\nTugas aktif dihentikan & *${cleared} instruksi di antrean* telah dibatalkan.`,
+        { parse_mode: "Markdown" }
+      );
       return;
     }
+
+    if (!activeTask) {
+      if (queueLen > 0) {
+        const keyboard = new InlineKeyboard()
+          .text("▶️ Jalankan Antrean", "queue_resume")
+          .text("🗑️ Kosongkan Antrean", "queue_clear");
+
+        await ctx.reply(
+          `ℹ️ Tidak ada tugas yang sedang aktif berjalan, tetapi ada *${queueLen} instruksi di antrean*.\n\nApakah Anda ingin menjalankan antrean atau mengosongkannya?`,
+          { parse_mode: "Markdown", reply_markup: keyboard }
+        );
+        return;
+      }
+      await ctx.reply("Tidak ada proses agent atau antrean yang sedang aktif.");
+      return;
+    }
+
+    // Jika antrean kosong, langsung batalkan tugas aktif
+    if (queueLen === 0) {
+      activeTask.cancelled = true;
+      if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
+      await ctx.reply(`🛑 Permintaan pembatalan tugas aktif (\`${activeTask.id}\`) telah dikirim.`);
+      return;
+    }
+
+    // Jika ada antrean tersisa, pause antrean dan tanyakan konfirmasi lewat tombol interaktif
+    pauseQueue();
     activeTask.cancelled = true;
-    killProcessTree(activeTask.process, "SIGTERM");
-    await ctx.reply("🛑 Permintaan pembatalan telah dikirim.");
+    if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
+
+    const queueList = getQueue()
+      .slice(0, 3)
+      .map((it, idx) => `${idx + 1}. _"${truncate(it.userMessage, 50)}"_`)
+      .join("\n");
+
+    const keyboard = new InlineKeyboard()
+      .text("▶️ Lanjut Kerjakan Antrean", "queue_resume")
+      .row()
+      .text("🗑️ Batalkan Semua Antrean", "queue_clear");
+
+    await ctx.reply(
+      `🛑 *Tugas aktif (\`${activeTask.id}\`) dibatalkan.*\n\n` +
+      `📋 *Masih ada ${queueLen} instruksi di antrean:*\n${queueList}\n` +
+      (queueLen > 3 ? `_...dan ${queueLen - 3} instruksi lainnya_\n\n` : "\n") +
+      `Pilih tindakan untuk antrean yang tersisa:`,
+      { parse_mode: "Markdown", reply_markup: keyboard }
+    );
   });
 
   // /files
@@ -235,6 +401,9 @@ export function registerBasicCommands(bot) {
       startedAt: Date.now(),
       process: null,
       cancelled: false,
+      preview: `/exec ${truncate(cmd, 60)}`,
+      userId: ctx.from?.id,
+      chatId: ctx.chat?.id,
     };
     setActiveTask(task);
 
@@ -267,6 +436,7 @@ export function registerBasicCommands(bot) {
 
       if (task.cancelled) {
         await ctx.reply("⚠️ Eksekusi dibatalkan.");
+        processNextQueue().catch(() => {});
         return;
       }
 
@@ -286,6 +456,8 @@ export function registerBasicCommands(bot) {
       } catch {
         await ctx.reply(truncate(msg.replace(/[`*]/g, ""), 3500));
       }
+
+      processNextQueue().catch(() => {});
     };
 
     const timer = setTimeout(() => {
@@ -738,5 +910,46 @@ export function registerBasicCommands(bot) {
       }
     }
   });
+
+  // ==================== QUEUE CALLBACK QUERIES ====================
+
+  // Callback: Lanjutkan eksekusi antrean
+  bot.callbackQuery("queue_resume", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "▶️ Melanjutkan antrean..." });
+    const count = getQueueLength();
+    if (count === 0) {
+      await ctx.reply("ℹ️ Antrean sudah kosong.");
+      return;
+    }
+    await ctx.reply(`▶️ *Melanjutkan antrean...* (${count} instruksi tersisa)`, {
+      parse_mode: "Markdown",
+    });
+    resumeQueue();
+  });
+
+  // Callback: Kosongkan antrean
+  bot.callbackQuery("queue_clear", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "🗑️ Mengosongkan antrean..." });
+    const count = clearQueue();
+    await ctx.reply(
+      `🗑️ *Antrean Dikosongkan:*\nBerhasil membatalkan *${count} instruksi* yang ada di antrean.`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // Callback: Batalkan tugas aktif saja
+  bot.callbackQuery("queue_cancel_active", async (ctx) => {
+    const activeTask = getActiveTask();
+    if (!activeTask) {
+      await ctx.answerCallbackQuery({ text: "Tidak ada tugas aktif." });
+      await ctx.reply("ℹ️ Tidak ada tugas aktif yang sedang berjalan.");
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "🛑 Membatalkan tugas aktif..." });
+    activeTask.cancelled = true;
+    if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
+    await ctx.reply(`🛑 Permintaan pembatalan tugas aktif (\`${activeTask.id}\`) telah dikirim.`);
+  });
 }
+
 

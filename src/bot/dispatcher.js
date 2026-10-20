@@ -32,25 +32,29 @@ import {
   formatIssueForPrompt,
   isGhAvailable,
 } from "../services/github-service.js";
+import {
+  enqueueTask,
+  getQueuePosition,
+  processNextQueue,
+  registerQueueExecutor,
+  isQueuePaused,
+  resumeQueue,
+} from "../services/queue-service.js";
 
-export async function sendToAgent(userMessage, ctx, fileInfo = null) {
-  const currentTask = getActiveTask();
-  if (currentTask) {
-    await ctx.reply(
-      `⏳ TH Agent sedang memproses instruksi sebelumnya (${currentTask.id}). Tunggu sebentar atau kirim /cancel untuk membatalkan.`
-    );
-    return;
-  }
-
+// Fungsi inti eksekusi instruksi AI (CLI atau Universal API)
+export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null }) {
   const userId = ctx.from?.id;
-  const convId = await getUserConversationId(userId);
-  const taskId = randomUUID().slice(0, 8);
+  const taskId = id || randomUUID().slice(0, 8);
 
   const task = {
     id: taskId,
     startedAt: Date.now(),
     process: null,
     cancelled: false,
+    preview: truncate(userMessage, 100),
+    userId,
+    chatId: ctx.chat?.id,
+    userMessage,
   };
   setActiveTask(task);
 
@@ -65,6 +69,8 @@ export async function sendToAgent(userMessage, ctx, fileInfo = null) {
   const typingInterval = setInterval(sendTyping, 4000);
 
   try {
+    const convId = await getUserConversationId(userId);
+
     let fileInfoPrompt = "";
     if (fileInfo) {
       fileInfoPrompt = `
@@ -151,6 +157,7 @@ ${userMessage}
             "⚠️ *API Key Universal belum diisi!*\n\nUntuk menggunakan engine Universal API (Zero-CLI), silakan buka Web Control Panel di http://localhost:3030 dan isi *UNIVERSAL_API_KEY*.",
             { parse_mode: "Markdown" }
           );
+          processNextQueue().catch(() => {});
           return;
         }
 
@@ -177,11 +184,15 @@ ${userMessage}
         } catch {
           await ctx.reply(truncate(replyText, 3800));
         }
+
+        // Lanjutkan antrean tugas berikutnya
+        processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
         return;
       } catch (err) {
         clearInterval(typingInterval);
         clearActiveTask(taskId);
         await ctx.reply(`❌ Maaf, Universal Agent mengalami kendala:\n${err.message}`);
+        processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
         return;
       }
     }
@@ -299,6 +310,7 @@ ${userMessage}
 
         if (task.cancelled) {
           await ctx.reply("⚠️ Proses dihentikan.");
+          processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
           return;
         }
 
@@ -309,6 +321,7 @@ ${userMessage}
           await ctx.reply(
             `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`
           );
+          processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
           return;
         }
 
@@ -321,6 +334,9 @@ ${userMessage}
         } catch {
           await ctx.reply(truncate(responseText, 3800));
         }
+
+        // Lanjutkan antrean tugas berikutnya
+        processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
       };
 
       timer = setTimeout(() => {
@@ -353,7 +369,47 @@ ${userMessage}
     clearInterval(typingInterval);
     clearActiveTask(taskId);
     await ctx.reply(`❌ Terjadi error: ${err.message}`);
+    processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
   }
+}
+
+// Registrasi executor ke Queue Service
+registerQueueExecutor(async (item) => {
+  await executeTaskInternal(item);
+});
+
+/**
+ * Entry point utama menerima pesan/file untuk TH Agent.
+ * Jika AI sedang sibuk menjalankan instruksi lain, pesan dimasukkan ke antrean.
+ */
+export async function sendToAgent(userMessage, ctx, fileInfo = null) {
+  // Jika antrean sedang di-pause tapi user mengirim pesan baru, unpause otomatis
+  if (isQueuePaused()) {
+    resumeQueue();
+  }
+
+  const currentTask = getActiveTask();
+  if (currentTask) {
+    const queueItem = enqueueTask({ userMessage, ctx, fileInfo });
+    const position = getQueuePosition(queueItem.id);
+    const activePreview = currentTask.preview
+      ? `\n_“${truncate(currentTask.preview, 70)}”_`
+      : "";
+
+    await ctx.reply(
+      `📥 *Instruksi Dimasukkan ke Antrean (Urutan #${position})*\n\n` +
+        `⏳ TH Agent sedang memproses tugas sebelumnya (\`${currentTask.id}\`):${activePreview}\n\n` +
+        `Instruksi Anda telah dicatat dan akan *otomatis dijalankan* saat gilirannya tiba.\n\n` +
+        `💬 *Instruksi:*\n_"${truncate(userMessage, 120)}"_${
+          fileInfo ? `\n📎 *File:* \`${fileInfo.fileName}\`` : ""
+        }\n\n` +
+        `💡 _Ketik /queue untuk melihat daftar antrean atau /clearqueue untuk membatalkan._`,
+      { parse_mode: "Markdown" }
+    );
+    return { queued: true, id: queueItem.id, position };
+  }
+
+  await executeTaskInternal({ userMessage, ctx, fileInfo });
 }
 
 // Fungsi eksekusi AI mandiri untuk background task / autonomous agent (Auto-Analyze, Auto-Fix)

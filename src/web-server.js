@@ -23,6 +23,13 @@ import {
   saveDeployConfig,
   executeDeployment,
 } from "./services/deploy-service.js";
+import { getActiveTask } from "./services/cli-runner.js";
+import {
+  getQueue,
+  getQueueLength,
+  clearQueue,
+  isQueuePaused,
+} from "./services/queue-service.js";
 
 
 // Helper membaca dan parse file .env
@@ -206,6 +213,43 @@ export function createWebServer() {
         }
         const models = await fetchRemoteModels(baseUrl, apiKey);
         return sendJson(200, { ok: true, models });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    // API: Ambil Status Antrean Tugas
+    if (pathname === "/api/queue" && req.method === "GET") {
+      try {
+        const active = getActiveTask();
+        return sendJson(200, {
+          ok: true,
+          activeTask: active
+            ? {
+                id: active.id,
+                startedAt: active.startedAt,
+                preview: active.preview || null,
+                userId: active.userId || null,
+              }
+            : null,
+          queue: getQueue(),
+          queueLength: getQueueLength(),
+          isPaused: isQueuePaused(),
+        });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    // API: Kosongkan Seluruh Antrean Tugas
+    if (pathname === "/api/queue/clear" && req.method === "POST") {
+      try {
+        const clearedCount = clearQueue();
+        return sendJson(200, {
+          ok: true,
+          message: `Berhasil mengosongkan ${clearedCount} instruksi di antrean.`,
+          clearedCount,
+        });
       } catch (err) {
         return sendError(500, err.message);
       }

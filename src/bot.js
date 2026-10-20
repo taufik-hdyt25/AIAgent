@@ -58,11 +58,13 @@ if (
       { command: "watcher", description: "Nyalakan/matikan GitHub Watcher" },
       { command: "files", description: "Daftar file & gambar yang diunggah" },
       { command: "exec", description: "Eksekusi perintah terminal di server" },
-      { command: "status", description: "Cek status tugas, engine & model aktif" },
+      { command: "queue", description: "Cek antrean instruksi AI" },
+      { command: "clearqueue", description: "Kosongkan seluruh antrean tugas" },
+      { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
       { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
       { command: "engine", description: "Pilih engine (Antigravity / Claude / Universal)" },
       { command: "reset", description: "Mulai sesi percakapan baru" },
-      { command: "cancel", description: "Hentikan tugas yang sedang berjalan" },
+      { command: "cancel", description: "Hentikan tugas aktif atau antrean" },
     ])
     .catch((err) => {
       console.warn("Gagal mendaftarkan menu commands ke Telegram:", err.message);
