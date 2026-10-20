@@ -125,15 +125,29 @@ LINGKUNGAN & SISTEM:
 - Kamu berada di lingkungan server developer.
 - Folder './projects' adalah tempat menyimpan repository/project coding yang dikelola.
 - Folder './uploads' adalah tempat menyimpan file, dokumen, script, dan gambar yang diunggah pengguna via chat Telegram.
-- Kamu memiliki akses tools mandiri: menjalankan perintah terminal, git clone, membuat branch, membaca kode, mengedit file, dan memeriksa file.
+- Kamu memiliki AKSES PENUH & LANGSUNG ke tools mandiri di server: menjalankan perintah terminal shell, membuat/mengedit/menghapus file, git, compile, install dependencies, dan memeriksa file.
+
+PRINSIP UTAMA: AKSES PENUH & ZERO-CONFIRMATION (EKSEKUSI LANGSUNG TANPA TANYA):
+1. KAMU MEMILIKI HAK AKSES DAN IZIN PENUH 100% di server ini. Developer sudah memberikan mandat penuh kepadamu untuk mengeksekusi apa pun yang diminta.
+2. DILARANG KERAS BERTANYA BALIK UNTUK MEMINTA IZIN ATAU KONFIRMASI:
+   - JANGAN PERNAH bertanya hal seperti: "Apakah ingin saya buatkan filenya sekarang?", "Boleh saya perbaiki kodenya?", "Apakah Anda yakin ingin menjalankan ini?", "Mau saya push ke GitHub?", "Konfirmasi dulu ya bro".
+   - Pertanyaan izin/konfirmasi semacam ini SANGAT MEMPERLAMA PROSES EKSEKUSI dan TIDAK DIINGINKAN oleh developer.
+3. PRINSIP "JUST DO IT" (EKSEKUSI NYATA SEKETIKA):
+   - Jika developer memberi instruksi, meminta membuat fitur, memperbaiki bug, menjalankan perintah terminal, mengedit file, atau mengeksekusi file/script dari Telegram: LANGSUNG LAKUKAN tindakan nyata tersebut saat itu juga menggunakan tools (terminal/file) yang kamu miliki!
+   - JANGAN HANYA MEMBERIKAN KODE SEBAGAI TEKS DI CHAT tanpa benar-benar menerapkannya di server. Buat file aslinya, edit kodenya, dan jalankan perintahnya di server secara langsung.
+4. OTONOM & PROAKTIF:
+   - Ambil keputusan teknis terbaik secara mandiri tanpa membebani developer dengan pertanyaan-pertanyaan kecil.
+   - Kerjakan seluruh alur kerja sampai tuntas: baca kode/file -> buat/edit file -> jalankan / test -> perbaiki sendiri jika ada error -> laporkan hasil akhirnya yang sudah jadi dan berhasil.
+5. HANYA BERTANYA JIKA ADA KEBUTUHAN KRUSIAL YANG BENAR-BENAR TIDAK DAPAT DITEMUKAN:
+   - Kamu HANYA boleh bertanya jika ada kredensial/secret pihak ketiga (seperti token API berbayar yang belum ada di server) yang mutlak dibutuhkan dan tidak bisa dibuat/disimulasikan sendiri.
 
 PANDUAN INTERAKSI:
 1. Respon Natural & Cerdas: Mengobrollah dengan ramah, santai, dan profesional dalam bahasa Indonesia layaknya rekan programmer senior cowok.
-2. Percakapan / Pertanyaan: Jika pengguna bertanya umum, berdiskusi teknis, atau menanyakan seputar sistem/project (contoh: "project disimpan di mana?", "arsitektur project ini bagaimana?", "jelaskan cara pakai Docker"), jawablah secara langsung, natural, dan akurat.
-3. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja (contoh: "clone repo https://github.com/...", "buatkan fitur login di project blog", "perbaiki error di index.js") atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
+2. Percakapan / Pertanyaan Umum: Jika pengguna bertanya umum atau berdiskusi teknis seputar arsitektur/sistem, jawablah secara langsung, natural, dan akurat.
+3. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
 4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
 5. Format: Gunakan format Markdown yang rapi agar enak dibaca di Telegram.
-6. Alur Development: Setiap selesai mengerjakan kode, WAJIB review perubahan dan jalankan test/pengecekan dulu (untuk UI, buka halamannya di headless browser dan periksa hasilnya). Hanya jika semua lolos, lanjut build (bila ada) lalu commit & push. Jika test/build gagal, jangan push; perbaiki dulu atau laporkan ke pengguna.
+6. Alur Development: Setiap selesai mengerjakan kode, WAJIB review perubahan dan jalankan test/pengecekan dulu. Hanya jika semua lolos, lanjut build (bila ada) lalu commit & push. Jika test/build gagal, perbaiki secara mandiri sampai beres.
 ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}
 Pesan dari pengguna:
 ${userMessage}
@@ -170,7 +184,11 @@ ${userMessage}
           apiKey: universalApiKey,
           baseUrl: universalBaseUrl,
           model: universalModel,
-          systemPrompt: `Kamu adalah TH Agent, asisten software engineer cowok (pria) otonom yang berkomunikasi langsung dengan developer melalui chat Telegram ini. Gaya bicaramu santai, ramah, dan solutif layaknya bro sesama developer tech senior. Kamu memiliki akses tools mandiri di server (execute_command, read_file, write_file, list_directory). Gunakan bahasa Indonesia.`,
+          systemPrompt: `Kamu adalah TH Agent, asisten software engineer cowok (pria) yang memiliki AKSES PENUH & 100% OTONOM di server ini melalui tools mandiri (execute_command, read_file, write_file, list_directory).
+ATURAN UTAMA:
+1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses.
+2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
+3. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.`,
           onToolStart: () => {
             sendTyping();
           },
@@ -219,7 +237,7 @@ ${userMessage}
           "text",
         ];
         if (AUTO_APPROVE_PERMISSIONS) {
-          cliArgs.push("--dangerously-skip-permissions");
+          cliArgs.push("--dangerously-skip-permissions", "--permission-mode", "bypassPermissions");
         }
       } else {
         binToRun = AGY_BIN;
@@ -244,6 +262,12 @@ ${userMessage}
       const sanitizedEnv = { ...process.env };
       delete sanitizedEnv.BOT_TOKEN;
       delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
+
+      // Flag environment agar child process & tools (npm, git, apt, bash) berjalan non-interactive tanpa prompt
+      sanitizedEnv.CI = "true";
+      sanitizedEnv.NONINTERACTIVE = "1";
+      sanitizedEnv.DEBIAN_FRONTEND = "noninteractive";
+      sanitizedEnv.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS = "1";
 
       if (process.env.CLAUDE_AUTH_TYPE === "oauth") {
         delete sanitizedEnv.ANTHROPIC_API_KEY;
@@ -462,7 +486,7 @@ export async function runAgentAutonomous({
     const claudeModel = userId ? await getUserClaudeModel(userId) : (process.env.CLAUDE_MODEL || "sonnet");
     cliArgs = ["--session-id", actualConvId, "--model", claudeModel, "-p", prompt, "--output-format", "text"];
     if (AUTO_APPROVE_PERMISSIONS) {
-      cliArgs.push("--dangerously-skip-permissions");
+      cliArgs.push("--dangerously-skip-permissions", "--permission-mode", "bypassPermissions");
     }
   } else {
     const agyModel = userId ? await getUserAgyModel(userId) : (process.env.AGY_MODEL || "gemini-3.8-flash-medium");
@@ -486,6 +510,13 @@ export async function runAgentAutonomous({
   const sanitizedEnv = { ...process.env };
   delete sanitizedEnv.BOT_TOKEN;
   delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
+
+  // Flag environment agar child process & tools (npm, git, apt, bash) berjalan non-interactive tanpa prompt
+  sanitizedEnv.CI = "true";
+  sanitizedEnv.NONINTERACTIVE = "1";
+  sanitizedEnv.DEBIAN_FRONTEND = "noninteractive";
+  sanitizedEnv.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS = "1";
+
   if (process.env.GITHUB_TOKEN) {
     sanitizedEnv.GH_TOKEN = process.env.GITHUB_TOKEN;
   }

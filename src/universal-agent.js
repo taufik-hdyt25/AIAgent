@@ -197,7 +197,9 @@ export async function runUniversalAgent({
   if (messages.length === 0) {
     messages.push({
       role: "system",
-      content: systemPrompt || "Kamu adalah TH Agent, asisten AI software engineer cowok (pria) yang otonom, ramah, dan solutif.",
+      content:
+        systemPrompt ||
+        "Kamu adalah TH Agent, asisten AI software engineer cowok (pria) yang memiliki AKSES PENUH dan OTONOM. DILARANG KERAS meminta izin/konfirmasi yang memperlama proses. Langsung eksekusi tugas nyata menggunakan tools sampai tuntas.",
     });
   }
 
