@@ -35,6 +35,20 @@ export async function getUserConversationId(userId) {
   return context.conversations[String(userId)];
 }
 
+export async function getUserAgyConversationId(userId) {
+  if (!userId) return null;
+  const context = await loadContext();
+  return context.agyConversations?.[String(userId)] || null;
+}
+
+export async function setUserAgyConversationId(userId, agyConvId) {
+  if (!userId || !agyConvId) return;
+  const context = await loadContext();
+  if (!context.agyConversations) context.agyConversations = {};
+  context.agyConversations[String(userId)] = agyConvId;
+  await saveContext(context);
+}
+
 export async function resetUserConversation(userId) {
   if (!userId) return;
   const context = await loadContext();
@@ -42,6 +56,10 @@ export async function resetUserConversation(userId) {
   const oldConvId = context.conversations[String(userId)];
   const newConvId = randomUUID();
   context.conversations[String(userId)] = newConvId;
+
+  if (context.agyConversations && context.agyConversations[String(userId)]) {
+    delete context.agyConversations[String(userId)];
+  }
 
   if (context.claudeSessions && oldConvId) {
     delete context.claudeSessions[oldConvId];

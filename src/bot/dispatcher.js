@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { readdir } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import {
   AGY_BIN,
@@ -6,9 +7,12 @@ import {
   TIMEOUT_MS,
   MAX_OUTPUT,
   AUTO_APPROVE_PERMISSIONS,
+  PROJECTS_DIR,
 } from "../config/env.js";
 import {
   getUserConversationId,
+  getUserAgyConversationId,
+  setUserAgyConversationId,
   getUserEngine,
   getUserAgyModel,
   getUserClaudeModel,
@@ -114,6 +118,15 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       }
     }
 
+    let availableProjectsPrompt = "";
+    try {
+      const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+      const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
+      if (dirs.length > 0) {
+        availableProjectsPrompt = `\n- Proyek aktif yang sudah ada di folder './projects': ${dirs.map((d) => `'./projects/${d}'`).join(", ")}.`;
+      }
+    } catch (_) {}
+
     const prompt = `
 Kamu adalah TH Agent, asisten software engineer cowok (pria) yang otonom dan berkomunikasi langsung dengan developer melalui chat Telegram ini.
 
@@ -123,7 +136,7 @@ PERSONA & GAYA KOMUNIKASI:
 
 LINGKUNGAN & SISTEM:
 - Kamu berada di lingkungan server developer.
-- Folder './projects' adalah tempat menyimpan repository/project coding yang dikelola.
+- Folder './projects' adalah tempat menyimpan repository/project coding yang dikelola.${availableProjectsPrompt}
 - Folder './uploads' adalah tempat menyimpan file, dokumen, script, dan gambar yang diunggah pengguna via chat Telegram.
 - Kamu memiliki AKSES PENUH & LANGSUNG ke tools mandiri di server: menjalankan perintah terminal shell, membuat/mengedit/menghapus file, git, compile, install dependencies, dan memeriksa file.
 
@@ -242,18 +255,18 @@ ATURAN UTAMA:
       } else {
         binToRun = AGY_BIN;
         const userModel = await getUserAgyModel(userId);
+        const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
         cliArgs = [
-          "--conversation",
-          convId,
           "--model",
           userModel,
           "-p",
           prompt,
           "--output-format",
-          "text",
-          "--print-timeout",
-          "10m",
+          "json",
         ];
+        if (agyConvId) {
+          cliArgs.unshift("--conversation", agyConvId);
+        }
         if (AUTO_APPROVE_PERMISSIONS) {
           cliArgs.push("--dangerously-skip-permissions");
         }
@@ -318,14 +331,48 @@ ATURAN UTAMA:
 
         clearInterval(typingInterval);
 
+        const engineLabel = isClaude ? "Claude Code" : "Antigravity";
+        let responseText = "";
+        let jsonError = null;
+
+        if (!isClaude) {
+          const rawOutput = stdout.trim();
+          let parsed = null;
+          try {
+            parsed = JSON.parse(rawOutput);
+          } catch {
+            const jsonMatch = rawOutput.match(/\{[\s\S]*"conversation_id"[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                parsed = JSON.parse(jsonMatch[0]);
+              } catch (_) {}
+            }
+          }
+
+          if (parsed) {
+            if (parsed.conversation_id && userId) {
+              await setUserAgyConversationId(userId, parsed.conversation_id);
+            }
+            if (parsed.status === "SUCCESS") {
+              responseText = parsed.response || "";
+            } else if (parsed.error) {
+              jsonError = parsed.error;
+            }
+          } else {
+            responseText = rawOutput;
+          }
+        } else {
+          responseText = stdout.trim();
+        }
+
         const result = {
           taskId,
           userId,
           cancelled: task.cancelled,
           exitCode: code,
           signal,
-          error: error?.message || null,
-          output: truncate(stdout.trim(), MAX_OUTPUT),
+          error: error?.message || jsonError || null,
+          output: truncate(responseText || stdout.trim(), MAX_OUTPUT),
           stderr: truncate(stderr.trim(), 2500),
         };
 
@@ -338,18 +385,28 @@ ATURAN UTAMA:
           return;
         }
 
-        const engineLabel = isClaude ? "Claude Code" : "Antigravity";
+        const isTimedOut = signal === "SIGTERM" || signal === "SIGKILL" || stderr.includes("print timeout") || stderr.includes("timed out");
+        const hasError = error || jsonError || (code !== 0 && !responseText.trim()) || (!responseText.trim() && stderr.trim());
 
-        if (error || (code !== 0 && !stdout.trim())) {
-          const errText = stderr.trim() || error?.message || `Exit code ${code}`;
-          await ctx.reply(
-            `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`
-          );
+        if (hasError) {
+          let errText = jsonError || stderr.trim() || error?.message || (code !== null ? `Exit code ${code}` : "");
+
+          if (isTimedOut) {
+            errText = `⏱️ *Batas Waktu Eksekusi Terlampaui (Timeout)*\n\n${engineLabel} memerlukan waktu pemrosesan lebih lama dari batas waktu yang ditentukan. Coba persempit atau pecah instruksi menjadi langkah-langkah yang lebih terarah.`;
+          } else if (errText.includes("permission that headless mode cannot prompt for") || errText.includes("permission")) {
+            errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan \`AGY_AUTO_APPROVE_PERMISSIONS=true\` diaktifkan pada .env.`;
+          } else {
+            errText = `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`;
+          }
+
+          await ctx.reply(errText, { parse_mode: "Markdown" }).catch(() => ctx.reply(truncate(errText, 1000)));
           processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
           return;
         }
 
-        const responseText = stdout.trim() || `${engineLabel} tidak mengembalikan pesan balasan.`;
+        if (!responseText.trim()) {
+          responseText = `ℹ️ ${engineLabel} telah selesai memproses instruksi, namun tidak ada teks balasan yang dihasilkan.`;
+        }
 
         try {
           await ctx.reply(truncate(responseText, 3800), {
@@ -491,17 +548,16 @@ export async function runAgentAutonomous({
   } else {
     const agyModel = userId ? await getUserAgyModel(userId) : (process.env.AGY_MODEL || "gemini-3.8-flash-medium");
     cliArgs = [
-      "--conversation",
-      actualConvId,
       "--model",
       agyModel,
       "-p",
       prompt,
       "--output-format",
-      "text",
-      "--print-timeout",
-      "10m",
+      "json",
     ];
+    if (convId) {
+      cliArgs.unshift("--conversation", convId);
+    }
     if (AUTO_APPROVE_PERMISSIONS) {
       cliArgs.push("--dangerously-skip-permissions");
     }
@@ -536,6 +592,27 @@ export async function runAgentAutonomous({
   });
 
   if (res.code === 0 && res.stdout) {
+    if (!isClaude) {
+      try {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(res.stdout.trim());
+        } catch {
+          const match = res.stdout.match(/\{[\s\S]*"conversation_id"[\s\S]*\}/);
+          if (match) parsed = JSON.parse(match[0]);
+        }
+        if (parsed) {
+          if (parsed.status === "SUCCESS") {
+            return { ok: true, output: parsed.response, conversationId: parsed.conversation_id };
+          }
+          if (parsed.error) {
+            throw new Error(`Eksekusi Agent CLI gagal: ${parsed.error}`);
+          }
+        }
+      } catch (err) {
+        if (err.message.startsWith("Eksekusi Agent CLI gagal:")) throw err;
+      }
+    }
     return { ok: true, output: res.stdout };
   }
 

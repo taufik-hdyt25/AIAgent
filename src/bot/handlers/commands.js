@@ -2,7 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { UPLOADS_DIR, MAX_OUTPUT } from "../../config/env.js";
+import { UPLOADS_DIR, MAX_OUTPUT, PROJECTS_DIR } from "../../config/env.js";
 import {
   AVAILABLE_AGY_MODELS,
   AVAILABLE_CLAUDE_MODELS,
@@ -100,6 +100,7 @@ export function registerBasicCommands(bot) {
         "• `/watchrepo <repo>` - Pantau repo baru (contoh: owner/repo)\n" +
         "• `/files` - Lihat daftar file dan gambar yang telah diunggah\n" +
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
+        "• `/projects` - Lihat daftar proyek coding di ./projects\n" +
         "• `/queue` - Cek daftar antrean instruksi AI\n" +
         "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
@@ -262,6 +263,25 @@ export function registerBasicCommands(bot) {
       "🔄 *Sesi percakapan baru dimulai!*\nKonteks percakapan sebelumnya telah di-reset. Ada yang ingin kita kerjakan hari ini?",
       { parse_mode: "Markdown" }
     );
+  });
+
+  // /projects, /proyek
+  bot.command(["projects", "proyek"], async (ctx) => {
+    try {
+      const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+      const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
+      if (dirs.length === 0) {
+        await ctx.reply("📁 Belum ada project di folder `./projects`.");
+        return;
+      }
+      const list = dirs.map((d, i) => `${i + 1}. \`./projects/${d}\``).join("\n");
+      await ctx.reply(
+        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n💡 *Tip:* Kirim pesan ke bot untuk langsung bekerja pada proyek di atas (contoh: _"Oke saya mau development ke ${dirs[0]}"_).`,
+        { parse_mode: "Markdown" }
+      );
+    } catch (err) {
+      await ctx.reply(`❌ Gagal membaca folder projects: ${err.message}`);
+    }
   });
 
   // /cancel [all]
