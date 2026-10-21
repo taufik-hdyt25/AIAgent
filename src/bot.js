@@ -180,10 +180,10 @@ if (
     if (!isPollingActive) return;
 
     try {
-      const controller = new AbortController();
-      const pingTimer = setTimeout(() => controller.abort(), 7000);
-      await bot.api.getMe({ signal: controller.signal });
-      clearTimeout(pingTimer);
+      await Promise.race([
+        bot.api.getMe(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Ping Timeout")), 7000)),
+      ]);
       consecutivePingFails = 0;
     } catch (pingErr) {
       consecutivePingFails++;
