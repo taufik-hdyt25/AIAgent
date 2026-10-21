@@ -40,6 +40,10 @@ import {
 import {
   enqueueTask,
   getQueuePosition,
+  getQueueLength,
+  getDeferredProjects,
+  markProjectDeferred,
+  clearDeferredProjects,
   processNextQueue,
   registerQueueExecutor,
   isQueuePaused,
@@ -127,16 +131,46 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       (engine === "agy" && agyConvId)
     );
 
+    const currentQueueLen = getQueueLength();
+    const deferredList = getDeferredProjects();
+
+    let queueStatusPrompt = "";
+    if (currentQueueLen > 0) {
+      queueStatusPrompt = `
+[STATUS ANTREAN CHAT TELEGRAM: SIBUK (${currentQueueLen} TUGAS MENUNGGU)]
+⚠️ ATURAN DEFERRED BUILD & DEPLOY (PENTING!):
+- Saat ini masih ada ${currentQueueLen} tugas lain di antrean chat Telegram yang sedang menunggu giliran.
+- DILARANG melakukan build ('npm run build', docker build, dll.) dan DILARANG melakukan deploy ke VPS/server sekarang!
+- Cukup selesaikan modifikasi kode, periksa syntax/linter, simpan file, dan commit jika diperlukan.
+- Jangan menghabiskan waktu untuk build/deploy agar tugas berikutnya di antrean dapat segera diproses dengan cepat.
+- Di akhir respon chat, informasikan secara singkat dan santai kepada developer bahwa proses build & deploy ditunda dulu karena masih ada antrean chat.
+`.trim();
+    } else {
+      let deferredNotice = "";
+      if (deferredList.length > 0) {
+        deferredNotice = `\n- CATATAN PERUBAHAN TERTUNDA: Proyek berikut memiliki perubahan dari instruksi antrean sebelumnya yang belum dibuild/deploy: ${deferredList.map((p) => `'${p}'`).join(", ")}. Karena antrean sekarang sudah kosong, SEGERA jalankan build dan deploy untuk proyek tersebut sekarang sampai live!`;
+      }
+      queueStatusPrompt = `
+[STATUS ANTREAN CHAT TELEGRAM: KOSONG / TUGAS TERAKHIR]
+🟢 ATURAN BUILD & DEPLOY SEKARANG:
+- Antrean chat sudah kosong (ini giliran tugas terakhir).
+- Jika tugas ini atau tugas sebelumnya mengubah kode proyek yang butuh build/deploy (misal: 'npm run build', './deploy-to-vps.sh', restart service/container), LANGSUNG LAKUKAN BUILD DAN DEPLOY SEKARANG sampai selesai dan live!${deferredNotice}
+`.trim();
+    }
+
     let prompt = "";
     if (isOngoingSession) {
       // Sesi aktif berjalan: hemat token drastis tanpa mengulang puluhan baris persona boilerplate
       prompt = `
+${queueStatusPrompt}
+
 [Pesan dari Pengguna]:
 ${userMessage}
 ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}
 [Panduan Eksekusi Lanjutan]:
 - Lanjutkan tugas secara otonom & langsung eksekusi tanpa meminta konfirmasi (Zero-Confirmation).
 - Jika ada proyek yang belum terdaftar di ./projects/PROJECTS_SUMMARY.md, telusuri dan daftarkan ke file tersebut.
+- Patuhi aturan status antrean chat di atas (tunda build/deploy jika antrean > 0; langsung build & deploy jika antrean kosong).
 - Format respon dalam Markdown rapi untuk chat Telegram.
 `.trim();
     } else {
@@ -195,11 +229,16 @@ PANDUAN INTERAKSI:
 3. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
 4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
 5. Format: Gunakan format Markdown yang rapi agar enak dibaca di Telegram.
-6. Alur Development: Setiap selesai mengerjakan kode, WAJIB review perubahan dan jalankan test/pengecekan dulu. Hanya jika semua lolos, lanjut build (bila ada) lalu commit & push. Jika test/build gagal, perbaiki secara mandiri sampai beres.
+6. Alur Development & Manajemen Antrean (Deferred Build & Deploy - Berlaku untuk Semua Proyek):
+   - WAJIB periksa status antrean chat (dari status antrean di prompt di bawah, file './data/queue-status.json', atau env QUEUE_LENGTH).
+   - JIKA ADA ANTREAN MENUNGGU (queueLength > 0): DILARANG menjalankan proses build ('npm run build', docker build) dan DILARANG deploy! Cukup edit kode, validasi syntax/linting, dan simpan. Biarkan tugas berikutnya di antrean berjalan cepat tanpa tertahan proses build.
+   - JIKA ANTREAN HABIS/KOSONG (queueLength == 0): Lakukan proses build dan deploy penuh (misal: 'npm run build', './deploy-to-vps.sh', restart container/service) agar semua hasil perubahan kode dari antrean sebelumnya langsung ter-deploy dan aktif live.
 7. Efisiensi Token & Pembacaan Bedah (Surgical):
    - Di setiap proyek './projects/<nama-proyek>', terdapat file 'ARCHITECTURE.md' yang merangkum rute, arsitektur, dan komponen kunci. Cek file ringkas ini terlebih dahulu daripada membaca puluhan file dari awal.
    - Hindari membaca file utuh (500+ baris); gunakan grep/pencarian baris lalu baca range baris yang dibutuhkan saja (StartLine & EndLine) agar context token selalu hemat dan awet.
 ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}
+${queueStatusPrompt}
+
 Pesan dari pengguna:
 ${userMessage}
 `.trim();
@@ -238,7 +277,10 @@ ${userMessage}
 ATURAN UTAMA:
 1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses.
 2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
-3. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.`,
+3. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.
+4. ATURAN MANAJEMEN ANTREAN (BUILD & DEPLOY):
+   - Jika ada antrean tugas chat (queueLength > 0), DILARANG melakukan build ('npm run build', docker build) atau deploy. Cukup selesaikan modifikasi kode dan validasi syntax.
+   - Jika antrean chat kosong (queueLength == 0), segera lakukan build dan deploy semua proyek yang tertunda sampai live.`,
           onToolStart: () => {
             sendTyping();
           },
@@ -318,6 +360,9 @@ ATURAN UTAMA:
       sanitizedEnv.NONINTERACTIVE = "1";
       sanitizedEnv.DEBIAN_FRONTEND = "noninteractive";
       sanitizedEnv.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS = "1";
+      sanitizedEnv.QUEUE_LENGTH = String(currentQueueLen);
+      sanitizedEnv.HAS_PENDING_QUEUE = currentQueueLen > 0 ? "1" : "0";
+      sanitizedEnv.QUEUE_STATUS_FILE = path.join(process.cwd(), "data", "queue-status.json");
 
       if (process.env.CLAUDE_AUTH_TYPE === "oauth") {
         delete sanitizedEnv.ANTHROPIC_API_KEY;

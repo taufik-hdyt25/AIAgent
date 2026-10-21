@@ -1,3 +1,6 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+import { DATA_DIR } from "../config/env.js";
 import { getActiveTask } from "./cli-runner.js";
 import { truncate } from "./telegram-files.js";
 
@@ -6,6 +9,66 @@ const taskQueue = [];
 let isPaused = false;
 let executorFn = null;
 let isProcessing = false;
+const deferredProjects = new Set();
+
+const QUEUE_STATUS_FILE = path.join(DATA_DIR, "queue-status.json");
+
+/**
+ * Menandai sebuah proyek memiliki perubahan tertunda yang belum dibuild/deploy
+ */
+export function markProjectDeferred(projectName) {
+  if (projectName) {
+    deferredProjects.add(projectName);
+    syncQueueStatusToFile().catch(() => {});
+  }
+}
+
+/**
+ * Menghapus proyek dari daftar build/deploy tertunda setelah berhasil dideploy
+ */
+export function clearDeferredProjects(projectName = null) {
+  if (projectName) {
+    deferredProjects.delete(projectName);
+  } else {
+    deferredProjects.clear();
+  }
+  syncQueueStatusToFile().catch(() => {});
+}
+
+/**
+ * Mendapatkan daftar nama proyek yang tertunda dibuild/deploy
+ */
+export function getDeferredProjects() {
+  return Array.from(deferredProjects);
+}
+
+/**
+ * Menyimpan status antrean saat ini ke data/queue-status.json
+ * agar proses build/deploy di semua proyek dapat mendeteksi apakah antrean sedang sibuk.
+ */
+export async function syncQueueStatusToFile() {
+  try {
+    const qLen = taskQueue.length;
+    const statusData = {
+      queueLength: qLen,
+      hasPending: qLen > 0,
+      shouldBuildAndDeploy: qLen === 0,
+      deferredProjects: Array.from(deferredProjects),
+      updatedAt: new Date().toISOString(),
+      queue: taskQueue.map((item, index) => ({
+        position: index + 1,
+        id: item.id,
+        preview: item.preview,
+        username: item.username,
+        enqueuedAt: item.enqueuedAt,
+      })),
+    };
+    await writeFile(QUEUE_STATUS_FILE, JSON.stringify(statusData, null, 2), "utf8");
+  } catch (_) {}
+}
+
+// Inisialisasi awal file status antrean
+syncQueueStatusToFile().catch(() => {});
 
 /**
  * Mendaftarkan fungsi eksekutor utama (sendToAgentInternal / executeTask)
@@ -35,6 +98,7 @@ export function enqueueTask({ userMessage, ctx, fileInfo = null }) {
   };
 
   taskQueue.push(item);
+  syncQueueStatusToFile().catch(() => {});
   return item;
 }
 
@@ -78,6 +142,7 @@ export function clearQueue() {
   const count = taskQueue.length;
   taskQueue.length = 0;
   isPaused = false;
+  syncQueueStatusToFile().catch(() => {});
   return count;
 }
 
@@ -88,6 +153,7 @@ export function removeQueueItem(id) {
   const index = taskQueue.findIndex((it) => it.id === id);
   if (index !== -1) {
     const [removed] = taskQueue.splice(index, 1);
+    syncQueueStatusToFile().catch(() => {});
     return removed;
   }
   return null;
@@ -138,6 +204,7 @@ export async function processNextQueue() {
 
   isProcessing = true;
   const nextItem = taskQueue.shift();
+  syncQueueStatusToFile().catch(() => {});
   if (!nextItem) {
     isProcessing = false;
     return false;

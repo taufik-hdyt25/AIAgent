@@ -24,6 +24,7 @@ import {
 import {
   getQueue,
   getQueueLength,
+  getDeferredProjects,
   clearQueue,
   isQueuePaused,
   pauseQueue,
@@ -203,6 +204,11 @@ export function registerBasicCommands(bot) {
       text += "\n";
     } else {
       text += `🟢 *Status AI:* Idle (siap menerima instruksi)\n\n`;
+    }
+
+    const deferredList = getDeferredProjects();
+    if (deferredList.length > 0) {
+      text += `📦 *Proyek Menunggu Build & Deploy:* ${deferredList.map((p) => `\`${p}\``).join(", ")}\n_(Akan otomatis dibuild & deploy saat antrean kosong)_\n\n`;
     }
 
     if (queue.length === 0) {

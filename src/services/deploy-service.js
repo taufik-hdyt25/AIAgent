@@ -4,6 +4,11 @@ import { promisify } from "node:util";
 import path from "node:path";
 import { DATA_DIR, ROOT_DIR, PROJECTS_DIR } from "../config/env.js";
 import { truncate } from "./telegram-files.js";
+import {
+  getQueueLength,
+  markProjectDeferred,
+  clearDeferredProjects,
+} from "./queue-service.js";
 
 const execAsync = promisify(exec);
 const DEPLOY_CONFIG_FILE = path.join(DATA_DIR, "deploy-config.json");
@@ -51,7 +56,27 @@ export async function executeDeployment({
   customCommand = null,
   specificCwd = null,
   triggeredBy = "Telegram User",
+  force = false,
 }) {
+  const queueLen = getQueueLength();
+  const repoName = target && target !== "default" && target !== "root"
+    ? (target.includes("/") ? target.split("/")[1] : target)
+    : "root";
+
+  // Jika masih ada antrean chat dan tidak dipaksa (force), tunda deployment
+  if (!force && queueLen > 0) {
+    markProjectDeferred(repoName);
+    return {
+      success: true,
+      deferred: true,
+      code: 0,
+      command: customCommand || "(ditunda)",
+      workDir: specificCwd || ROOT_DIR,
+      durationSec: 0,
+      output: `⏸️ [QUEUE GUARD] Proses deploy untuk '${target}' ditunda karena terdapat ${queueLen} tugas lain di antrean chat.\nBuild & Deploy akan otomatis dieksekusi saat antrean kosong.`,
+    };
+  }
+
   const config = await getDeployConfig();
   
   let cmdToRun = customCommand;
@@ -106,6 +131,7 @@ export async function executeDeployment({
     };
     config.history = [logEntry, ...(config.history || [])].slice(0, 20);
     await saveDeployConfig(config).catch(() => {});
+    clearDeferredProjects(repoName);
 
     return {
       success: true,
