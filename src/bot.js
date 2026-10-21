@@ -9,6 +9,12 @@ import { registerEngineHandlers } from "./bot/handlers/engine.js";
 import { registerModelHandlers } from "./bot/handlers/model.js";
 import { registerMessageHandlers } from "./bot/handlers/messages.js";
 import { initGithubWatcher } from "./services/github-watcher.js";
+import {
+  getActiveTask,
+  clearActiveTask,
+  killProcessTree,
+} from "./services/cli-runner.js";
+import { processNextQueue } from "./services/queue-service.js";
 
 // Pastikan semua direktori kerja lokal siap
 await ensureDirectories();
@@ -141,7 +147,29 @@ if (
     if (elapsed > 25000) {
       const sleepSeconds = Math.round(elapsed / 1000);
       console.log(`\n💤 [PowerManagement] Terdeteksi Mac baru saja bangun dari Sleep mode (${sleepSeconds} detik).`);
-      console.log(`🔄 [PowerManagement] Merefresh socket dan menyambungkan kembali polling bot...`);
+      console.log(`🔄 [PowerManagement] Membersihkan task yang terinterupsi & merefresh koneksi bot...`);
+
+      // Hentikan dan bersihkan tugas CLI yang terputus di tengah jalan saat laptop ditutup
+      const activeTask = getActiveTask();
+      if (activeTask) {
+        console.log(`[PowerManagement] Menghentikan tugas #${activeTask.id} yang terinterupsi saat lid Mac ditutup...`);
+        activeTask.cancelled = true;
+        if (activeTask.process) {
+          killProcessTree(activeTask.process, "SIGKILL");
+        }
+        clearActiveTask(activeTask.id);
+
+        if (activeTask.chatId) {
+          bot.api.sendMessage(
+            activeTask.chatId,
+            `⚠️ *Mac baru saja dibuka kembali setelah mode sleep.*\nInstruksi koding sebelumnya (\`${activeTask.id}\`) sempat terhenti saat laptop ditutup dan telah dibersihkan secara aman.\n\n✅ Bot sekarang sudah aktif kembali dan siap menerima instruksi baru!`,
+            { parse_mode: "Markdown" }
+          ).catch(() => {});
+        }
+
+        processNextQueue().catch(() => {});
+      }
+
       try {
         await bot.stop().catch(() => {});
       } catch (_) {}
