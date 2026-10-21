@@ -9,7 +9,7 @@ module.exports = {
       instances: 1,
       exec_mode: "fork",
       autorestart: true,
-      max_restarts: 10,
+      max_restarts: 100,
       min_uptime: "10s",
       restart_delay: 3000,
       kill_timeout: 10000,
@@ -17,6 +17,21 @@ module.exports = {
       out_file: path.join(__dirname, "logs/out.log"),
       error_file: path.join(__dirname, "logs/error.log"),
       merge_logs: true,
+      env: {
+        NODE_ENV: "production"
+      }
+    },
+    {
+      name: "keep-awake",
+      script: "/usr/bin/caffeinate",
+      args: "-dimsu",
+      instances: 1,
+      exec_mode: "fork",
+      autorestart: true,
+      max_restarts: 100,
+      min_uptime: "10s",
+      restart_delay: 3000,
+      time: true,
       env: {
         NODE_ENV: "production"
       }

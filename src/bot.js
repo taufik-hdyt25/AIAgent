@@ -45,51 +45,143 @@ if (
   BOT_TOKEN !== "PLACEHOLDER_TOKEN_FOR_CHECK"
 ) {
   console.log("Memulai Telegram Coding Agent (TH Agent Gateway)...");
-  
-  bot.api
-    .setMyCommands([
-      { command: "start", description: "Sambutan & info bot" },
-      { command: "help", description: "Panduan lengkap perintah" },
-      { command: "deploy", description: "Deploy aplikasi ke server" },
-      { command: "autofix", description: "Auto-Fix issue & buat Draft PR" },
-      { command: "issue", description: "Analisis GitHub Issue secara mendalam" },
-      { command: "checkissues", description: "Cek issue GitHub baru sekarang" },
-      { command: "watched", description: "Status pantauan repo & otomasi" },
-      { command: "watcher", description: "Nyalakan/matikan GitHub Watcher" },
-      { command: "files", description: "Daftar file & gambar yang diunggah" },
-      { command: "exec", description: "Eksekusi perintah terminal di server" },
-      { command: "queue", description: "Cek antrean instruksi AI" },
-      { command: "clearqueue", description: "Kosongkan seluruh antrean tugas" },
-      { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
-      { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
-      { command: "engine", description: "Pilih engine (Antigravity / Claude / Universal)" },
-      { command: "reset", description: "Mulai sesi percakapan baru" },
-      { command: "cancel", description: "Hentikan tugas aktif atau antrean" },
-    ])
-    .catch((err) => {
-      console.warn("Gagal mendaftarkan menu commands ke Telegram:", err.message);
-    });
 
-  bot.start({
-    drop_pending_updates: true,
-    onStart: (botInfo) => {
-      console.log(`🤖 Bot @${botInfo.username} berhasil terhubung dan siap menerima pesan di Telegram!`);
-      // Mulai background watcher untuk issue GitHub (cek tiap 5 menit)
-      initGithubWatcher(bot).catch((err) => {
-        console.warn("Gagal memulai GitHub Issue Watcher:", err.message);
+  const syncCommands = () => {
+    bot.api
+      .setMyCommands([
+        { command: "start", description: "Sambutan & info bot" },
+        { command: "help", description: "Panduan lengkap perintah" },
+        { command: "projects", description: "Daftar proyek coding di ./projects" },
+        { command: "deploy", description: "Deploy aplikasi ke server" },
+        { command: "autofix", description: "Auto-Fix issue & buat Draft PR" },
+        { command: "issue", description: "Analisis GitHub Issue secara mendalam" },
+        { command: "checkissues", description: "Cek issue GitHub baru sekarang" },
+        { command: "watched", description: "Status pantauan repo & otomasi" },
+        { command: "watcher", description: "Nyalakan/matikan GitHub Watcher" },
+        { command: "files", description: "Daftar file & gambar yang diunggah" },
+        { command: "exec", description: "Eksekusi perintah terminal di server" },
+        { command: "queue", description: "Cek antrean instruksi AI" },
+        { command: "clearqueue", description: "Kosongkan seluruh antrean tugas" },
+        { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
+        { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
+        { command: "engine", description: "Pilih engine (Antigravity / Claude / Universal)" },
+        { command: "reset", description: "Mulai sesi percakapan baru" },
+        { command: "cancel", description: "Hentikan tugas aktif atau antrean" },
+      ])
+      .catch((err) => {
+        console.warn("Gagal mendaftarkan menu commands ke Telegram:", err.message);
       });
-    },
-  }).catch((err) => {
-    console.error("❌ Gagal memulai bot Telegram:", err.message);
-    if (err.error_code === 409 || err.description?.includes("Conflict") || String(err).includes("409")) {
-      console.warn("\n⚠️  [409 CONFLICT DETECTED]");
-      console.warn("   Token bot ini sedang aktif dijalankan di server/tempat lain (misal: di VPS atau terminal lain).");
-      console.warn("   Telegram melarang 2 aplikasi berjalan bersamaan menggunakan 1 token bot yang sama.");
-      console.warn("   👉 Solusi: Hentikan instance bot di server lain, atau gunakan token bot baru dari @BotFather.");
-      const webPort = process.env.WEB_PORT || 3030;
-      console.warn(`   🌐 Web UI tetap aktif di http://localhost:${webPort} untuk mengubah konfigurasi token Anda.\n`);
+  };
+
+  syncCommands();
+
+  let isWatcherStarted = false;
+  let shouldRun = true;
+  let isPollingActive = false;
+
+  // Auto-Recovery Polling Loop (kebal sleep/wake, network drop, dan reboot)
+  const startBotLoop = async () => {
+    let retryAttempt = 0;
+
+    while (shouldRun) {
+      try {
+        isPollingActive = true;
+        await bot.start({
+          drop_pending_updates: false, // Pertahankan pesan yang masuk saat laptop sleep/offline
+          onStart: (botInfo) => {
+            retryAttempt = 0;
+            console.log(`🤖 Bot @${botInfo.username} berhasil terhubung dan siap menerima pesan di Telegram!`);
+            syncCommands();
+
+            if (!isWatcherStarted) {
+              isWatcherStarted = true;
+              initGithubWatcher(bot).catch((err) => {
+                console.warn("Gagal memulai GitHub Issue Watcher:", err.message);
+              });
+            }
+          },
+        });
+
+        console.log("[Bot Gateway] Polling connection ditutup atau dihentikan.");
+      } catch (err) {
+        console.error(`❌ Kendala polling bot Telegram: ${err.message}`);
+
+        if (err.error_code === 409 || err.description?.includes("Conflict") || String(err).includes("409")) {
+          console.warn("\n⚠️  [409 CONFLICT DETECTED]");
+          console.warn("   Token bot ini sedang aktif dijalankan di tempat lain (misal: di VPS atau terminal lain).");
+          console.warn("   Menunggu 30 detik sebelum mencoba reconnect kembali...\n");
+          await new Promise((r) => setTimeout(r, 30000));
+          continue;
+        }
+      } finally {
+        isPollingActive = false;
+      }
+
+      if (!shouldRun) break;
+
+      retryAttempt++;
+      const delayMs = Math.min(30000, 3000 * Math.min(retryAttempt, 5));
+      console.log(`[Bot Gateway] Menghubungkan ulang ke Telegram dalam ${Math.round(delayMs / 1000)} detik (percobaan #${retryAttempt})...`);
+      await new Promise((r) => setTimeout(r, delayMs));
     }
-  });
+  };
+
+  startBotLoop().catch((err) => console.error("[Bot Gateway] Loop error fatal:", err));
+
+  // Deteksi Sleep / Wake-up Mac & Heartbeat Watchdog
+  let lastHeartbeatTime = Date.now();
+  let consecutivePingFails = 0;
+
+  const watchdogInterval = setInterval(async () => {
+    const now = Date.now();
+    const elapsed = now - lastHeartbeatTime;
+    lastHeartbeatTime = now;
+
+    // Jika selisih waktu > 25 detik (interval seharusnya 10 detik), berarti Mac baru bangun dari Sleep!
+    if (elapsed > 25000) {
+      const sleepSeconds = Math.round(elapsed / 1000);
+      console.log(`\n💤 [PowerManagement] Terdeteksi Mac baru saja bangun dari Sleep mode (${sleepSeconds} detik).`);
+      console.log(`🔄 [PowerManagement] Merefresh socket dan menyambungkan kembali polling bot...`);
+      try {
+        await bot.stop().catch(() => {});
+      } catch (_) {}
+      return;
+    }
+
+    // Hanya lakukan healthcheck ping jika bot sedang aktif polling
+    if (!isPollingActive) return;
+
+    try {
+      const controller = new AbortController();
+      const pingTimer = setTimeout(() => controller.abort(), 7000);
+      await bot.api.getMe({ signal: controller.signal });
+      clearTimeout(pingTimer);
+      consecutivePingFails = 0;
+    } catch (pingErr) {
+      consecutivePingFails++;
+      console.warn(`[Watchdog] Healthcheck Telegram gagal (${consecutivePingFails}/3): ${pingErr.message}`);
+      if (consecutivePingFails >= 3) {
+        console.warn("[Watchdog] Koneksi Telegram terputus (stale socket). Merefresh polling bot...");
+        consecutivePingFails = 0;
+        try {
+          await bot.stop().catch(() => {});
+        } catch (_) {}
+      }
+    }
+  }, 10000);
+
+  // Graceful shutdown
+  const handleExit = async () => {
+    shouldRun = false;
+    clearInterval(watchdogInterval);
+    try {
+      await bot.stop().catch(() => {});
+    } catch (_) {}
+    process.exit(0);
+  };
+
+  process.on("SIGINT", handleExit);
+  process.on("SIGTERM", handleExit);
 } else {
   const webPort = process.env.WEB_PORT || 3030;
   console.log("\nℹ️  BOT_TOKEN belum diisi atau masih kosong.");
