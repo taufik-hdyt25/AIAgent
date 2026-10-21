@@ -196,6 +196,9 @@ PANDUAN INTERAKSI:
 4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
 5. Format: Gunakan format Markdown yang rapi agar enak dibaca di Telegram.
 6. Alur Development: Setiap selesai mengerjakan kode, WAJIB review perubahan dan jalankan test/pengecekan dulu. Hanya jika semua lolos, lanjut build (bila ada) lalu commit & push. Jika test/build gagal, perbaiki secara mandiri sampai beres.
+7. Efisiensi Token & Pembacaan Bedah (Surgical):
+   - Di setiap proyek './projects/<nama-proyek>', terdapat file 'ARCHITECTURE.md' yang merangkum rute, arsitektur, dan komponen kunci. Cek file ringkas ini terlebih dahulu daripada membaca puluhan file dari awal.
+   - Hindari membaca file utuh (500+ baris); gunakan grep/pencarian baris lalu baca range baris yang dibutuhkan saja (StartLine & EndLine) agar context token selalu hemat dan awet.
 ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}
 Pesan dari pengguna:
 ${userMessage}
