@@ -2,11 +2,15 @@ node_modules/
 .env
 logs/*.log
 logs/*.json
-data/*.tmp
+data/*
+!data/projects.json
+!data/.gitkeep
+claude_auth/
 gemini_auth/
 projects/*
 !projects/.gitkeep
+!projects/PROJECTS_SUMMARY.md
 uploads/*
 !uploads/.gitkeep
 .DS_Store
-
+docker-compose.override.yml

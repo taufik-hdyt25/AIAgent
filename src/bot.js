@@ -9,6 +9,7 @@ import { registerEngineHandlers } from "./bot/handlers/engine.js";
 import { registerModelHandlers } from "./bot/handlers/model.js";
 import { registerMessageHandlers } from "./bot/handlers/messages.js";
 import { initGithubWatcher } from "./services/github-watcher.js";
+import { initDailyCleanup } from "./services/cleanup-service.js";
 import {
   getActiveTask,
   clearActiveTask,
@@ -58,6 +59,8 @@ if (
         { command: "start", description: "Sambutan & info bot" },
         { command: "help", description: "Panduan lengkap perintah" },
         { command: "projects", description: "Daftar proyek coding di ./projects" },
+        { command: "syncprojects", description: "Sinkronisasi peta arsitektur semua project" },
+        { command: "clean", description: "Bersihkan cache & file server tidak terpakai" },
         { command: "deploy", description: "Deploy aplikasi ke server" },
         { command: "autofix", description: "Auto-Fix issue & buat Draft PR" },
         { command: "issue", description: "Analisis GitHub Issue secara mendalam" },
@@ -70,6 +73,7 @@ if (
         { command: "clearqueue", description: "Kosongkan seluruh antrean tugas" },
         { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
         { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
+        { command: "compact", description: "Padatkan riwayat sesi agar token hemat" },
         { command: "engine", description: "Pilih engine (Antigravity / Claude / Universal)" },
         { command: "reset", description: "Mulai sesi percakapan baru" },
         { command: "cancel", description: "Hentikan tugas aktif atau antrean" },
@@ -104,6 +108,7 @@ if (
               initGithubWatcher(bot).catch((err) => {
                 console.warn("Gagal memulai GitHub Issue Watcher:", err.message);
               });
+              initDailyCleanup(bot);
             }
           },
         });

@@ -50,6 +50,16 @@ import {
   getDeployConfig,
   setProjectDeployCommand,
 } from "../../services/deploy-service.js";
+import {
+  executeServerCleanup,
+  formatCleanupReport,
+  getMsUntilNextMidnight,
+  getCleanupTimezone,
+} from "../../services/cleanup-service.js";
+import {
+  ensureProjectsIndexed,
+  syncProjectsSummary,
+} from "../../services/project-indexer.js";
 
 export function registerBasicCommands(bot) {
   // /start, /help
@@ -105,6 +115,8 @@ export function registerBasicCommands(bot) {
         "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
+        "• `/compact` - Padatkan konteks obrolan agar token input hemat\n" +
+        "• `/clean` - Bersihkan build cache Docker & temporary files\n" +
         "• `/reset` - Mulai sesi obrolan baru dari awal\n" +
         "• `/status` - Cek status bot, antrean, engine & model aktif\n" +
         "• `/cancel` - Hentikan tugas aktif / antrean",
@@ -268,6 +280,7 @@ export function registerBasicCommands(bot) {
   // /projects, /proyek
   bot.command(["projects", "proyek"], async (ctx) => {
     try {
+      await ensureProjectsIndexed().catch(() => {});
       const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
       const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
       if (dirs.length === 0) {
@@ -276,11 +289,31 @@ export function registerBasicCommands(bot) {
       }
       const list = dirs.map((d, i) => `${i + 1}. \`./projects/${d}\``).join("\n");
       await ctx.reply(
-        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n💡 *Tip:* Kirim pesan ke bot untuk langsung bekerja pada proyek di atas (contoh: _"Oke saya mau development ke ${dirs[0]}"_).`,
+        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n💡 *Tip:* Semua project sudah terindeks otomatis di \`./projects/PROJECTS_SUMMARY.md\` agar hemat token AI. Ketik \`/syncprojects\` jika ingin re-index ulang.`,
         { parse_mode: "Markdown" }
       );
     } catch (err) {
       await ctx.reply(`❌ Gagal membaca folder projects: ${err.message}`);
+    }
+  });
+
+  // /syncprojects, /reindex
+  bot.command(["syncprojects", "reindex"], async (ctx) => {
+    const statusMsg = await ctx.reply("🔄 *Mensinkronisasi peta arsitektur semua project...*", {
+      parse_mode: "Markdown",
+    });
+
+    try {
+      const results = await syncProjectsSummary();
+      const projectList = results.map((p) => `• *${p.name}* (\`${p.stack.slice(0, 2).join(", ") || "Standard App"}\`)`).join("\n");
+      await ctx.api.editMessageText(
+        ctx.chat.id,
+        statusMsg.message_id,
+        `✅ *Sinkronisasi Project Selesai!*\n\n${projectList}\n\n📄 File registry diperbarui: \`./projects/PROJECTS_SUMMARY.md\`\nAI akan membaca peta ini agar tidak membaca file dari awal.`,
+        { parse_mode: "Markdown" }
+      );
+    } catch (err) {
+      await ctx.reply(`❌ Gagal sinkronisasi project: ${err.message}`);
     }
   });
 
@@ -929,6 +962,41 @@ export function registerBasicCommands(bot) {
         await ctx.reply(msg, { parse_mode: "Markdown" });
       }
     }
+  });
+
+  // /clean, /cleanserver, /bersihkan
+  bot.command(["clean", "cleanserver", "bersihkan"], async (ctx) => {
+    const statusMsg = await ctx.reply(
+      "🧹 *Memulai pembersihan server...*\nSedang membersihkan Docker build cache, dangling images, NPM cache & file temporary...",
+      { parse_mode: "Markdown" }
+    );
+
+    try {
+      const result = await executeServerCleanup();
+      const report = formatCleanupReport(result);
+      try {
+        await ctx.api.editMessageText(ctx.chat.id, statusMsg.message_id, report, {
+          parse_mode: "Markdown",
+        });
+      } catch {
+        await ctx.reply(report, { parse_mode: "Markdown" });
+      }
+    } catch (err) {
+      await ctx.reply(`❌ Gagal membersihkan server: ${err.message}`);
+    }
+  });
+
+  // /compact, /padatkan
+  bot.command(["compact", "padatkan"], async (ctx) => {
+    await ctx.reply(
+      "✂️ *Memadatkan riwayat obrolan & konteks sesi...*\nMenyaring intisari pekerjaan dan membersihkan log usang agar token tetap hemat...",
+      { parse_mode: "Markdown" }
+    );
+
+    await sendToAgent(
+      "/compact\n\n(Tolong rangkum dan padatkan konteks sesi percakapan ini. Buang log terminal usang atau output build yang panjang, pertahankan rangkuman pekerjaan terakhir agar input token hemat).",
+      ctx
+    );
   });
 
   // ==================== QUEUE CALLBACK QUERIES ====================

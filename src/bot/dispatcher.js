@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   AGY_BIN,
@@ -44,6 +45,7 @@ import {
   isQueuePaused,
   resumeQueue,
 } from "../services/queue-service.js";
+import { ensureProjectsIndexed } from "../services/project-indexer.js";
 
 // Fungsi inti eksekusi instruksi AI (CLI atau Universal API)
 export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null }) {
@@ -118,16 +120,49 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       }
     }
 
-    let availableProjectsPrompt = "";
-    try {
-      const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
-      const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
-      if (dirs.length > 0) {
-        availableProjectsPrompt = `\n- Proyek aktif yang sudah ada di folder './projects': ${dirs.map((d) => `'./projects/${d}'`).join(", ")}.`;
-      }
-    } catch (_) {}
+    const engine = await getUserEngine(userId);
+    const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
+    const isOngoingSession = Boolean(
+      (engine === "claude" && (await isClaudeSessionStarted(convId))) ||
+      (engine === "agy" && agyConvId)
+    );
 
-    const prompt = `
+    let prompt = "";
+    if (isOngoingSession) {
+      // Sesi aktif berjalan: hemat token drastis tanpa mengulang puluhan baris persona boilerplate
+      prompt = `
+[Pesan dari Pengguna]:
+${userMessage}
+${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}
+[Panduan Eksekusi Lanjutan]:
+- Lanjutkan tugas secara otonom & langsung eksekusi tanpa meminta konfirmasi (Zero-Confirmation).
+- Jika ada proyek yang belum terdaftar di ./projects/PROJECTS_SUMMARY.md, telusuri dan daftarkan ke file tersebut.
+- Format respon dalam Markdown rapi untuk chat Telegram.
+`.trim();
+    } else {
+      await ensureProjectsIndexed().catch((err) =>
+        console.warn("[Project Indexer] Check error:", err.message)
+      );
+
+      let availableProjectsPrompt = "";
+      try {
+        const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+        const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
+        if (dirs.length > 0) {
+          availableProjectsPrompt = `\n- Proyek aktif yang sudah ada di folder './projects': ${dirs.map((d) => `'./projects/${d}'`).join(", ")}.`;
+        }
+      } catch (_) {}
+
+      let projectsSummaryPrompt = "";
+      try {
+        const summaryFile = path.join(PROJECTS_DIR, "PROJECTS_SUMMARY.md");
+        const summaryContent = await readFile(summaryFile, "utf8");
+        projectsSummaryPrompt = `\n\nRINGKASAN ARSITEKTUR & PETA PROYEK (BACA INI DULU AGAR TIDAK SCAN DARI NOL):\n${summaryContent.trim()}\n\n*ATURAN WAJIB TOKEN EFFICIENCY & PROYEK BARU:*
+1. Jangan membaca atau menelusuri folder/file dari awal jika proyek sudah tercatat di ringkasan di atas (manfaatkan info port, stack, container, dan file utama yang ada).
+2. Jika ada proyek baru yang dibuat, di-clone, atau belum ada di ringkasan di atas, telusuri secara ringkas lalu WAJIB perbarui file './projects/PROJECTS_SUMMARY.md' agar sesi berikutnya langsung tahu tanpa perlu read dari awal lagi.`;
+      } catch (_) {}
+
+      prompt = `
 Kamu adalah TH Agent, asisten software engineer cowok (pria) yang otonom dan berkomunikasi langsung dengan developer melalui chat Telegram ini.
 
 PERSONA & GAYA KOMUNIKASI:
@@ -138,7 +173,7 @@ LINGKUNGAN & SISTEM:
 - Kamu berada di lingkungan server developer.
 - Folder './projects' adalah tempat menyimpan repository/project coding yang dikelola.${availableProjectsPrompt}
 - Folder './uploads' adalah tempat menyimpan file, dokumen, script, dan gambar yang diunggah pengguna via chat Telegram.
-- Kamu memiliki AKSES PENUH & LANGSUNG ke tools mandiri di server: menjalankan perintah terminal shell, membuat/mengedit/menghapus file, git, compile, install dependencies, dan memeriksa file.
+- Kamu memiliki AKSES PENUH & LANGSUNG ke tools mandiri di server: menjalankan perintah terminal shell, membuat/mengedit/menghapus file, git, compile, install dependencies, dan memeriksa file.${projectsSummaryPrompt}
 
 PRINSIP UTAMA: AKSES PENUH & ZERO-CONFIRMATION (EKSEKUSI LANGSUNG TANPA TANYA):
 1. KAMU MEMILIKI HAK AKSES DAN IZIN PENUH 100% di server ini. Developer sudah memberikan mandat penuh kepadamu untuk mengeksekusi apa pun yang diminta.
@@ -165,8 +200,7 @@ ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueIn
 Pesan dari pengguna:
 ${userMessage}
 `.trim();
-
-    const engine = await getUserEngine(userId);
+    }
 
     // Engine 3: Universal API Agent (Zero-CLI / Built-in Tools)
     if (engine === "universal") {
