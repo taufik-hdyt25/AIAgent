@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM node:24-bookworm-slim
 
 # 1. Install dependensi sistem dasar untuk Git, Antigravity CLI, dan build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
