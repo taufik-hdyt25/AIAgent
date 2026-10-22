@@ -60,6 +60,16 @@ import {
   ensureProjectsIndexed,
   syncProjectsSummary,
 } from "../../services/project-indexer.js";
+import {
+  loadMemories,
+  addMemory,
+  deleteMemory,
+} from "../../services/memory-service.js";
+import {
+  loadAllSkills,
+  saveSkill,
+  deleteSkill,
+} from "../../services/skill-service.js";
 
 export function registerBasicCommands(bot) {
   // /start, /help
@@ -111,6 +121,12 @@ export function registerBasicCommands(bot) {
         "• `/files` - Lihat daftar file dan gambar yang telah diunggah\n" +
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
         "• `/projects` - Lihat daftar proyek coding di ./projects\n" +
+        "• `/memories` - Lihat daftar fakta & preferensi jangka panjang AI\n" +
+        "• `/remember <teks>` - Simpan fakta/preferensi baru ke memori permanen\n" +
+        "• `/forget <id>` - Hapus memori AI berdasarkan ID\n" +
+        "• `/skills` - Lihat daftar skill & SOP yang dikuasai AI\n" +
+        "• `/learn <id> | <desc> | <sop>` - Ajarkan skill atau alur kerja baru ke AI\n" +
+        "• `/delskill <id>` - Hapus skill AI yang dipelajari\n" +
         "• `/queue` - Cek daftar antrean instruksi AI\n" +
         "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
@@ -997,6 +1013,205 @@ export function registerBasicCommands(bot) {
       "/compact\n\n(Tolong rangkum dan padatkan konteks sesi percakapan ini. Buang log terminal usang atau output build yang panjang, pertahankan rangkuman pekerjaan terakhir agar input token hemat).",
       ctx
     );
+  });
+
+  // ==================== PERSISTENT MEMORY & SKILL COMMANDS ====================
+
+  // /memories, /memory
+  bot.command(["memories", "memory"], async (ctx) => {
+    const list = await loadMemories();
+    if (!list || list.length === 0) {
+      await ctx.reply(
+        "🧠 *Memori Jangka Panjang Masih Kosong*\n\n" +
+        "Belum ada fakta atau preferensi yang tersimpan.\n" +
+        "Gunakan `/remember <teks>` untuk menyimpan memori baru secara manual.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    let text = `🧠 *Persistent Vector Memory (${list.length} Item Tersimpan)*\n\n`;
+    text += `Memori ini tersimpan permanen dan di-recall otomatis menggunakan cosine similarity saat relevan:\n\n`;
+
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      const categoryBadge = `[${(m.category || "GENERAL").toUpperCase()}]`;
+      const recallInfo = m.recallCount ? `_(di-recall ${m.recallCount}x)_` : `_(baru)_`;
+      const tags = m.tags && m.tags.length > 0 ? `\n   🏷️ \`${m.tags.join("`, `")}\`` : "";
+      text += `*${i + 1}.* \`${m.id}\` *${categoryBadge}* ${recallInfo}\n   "${m.content}"${tags}\n\n`;
+      if (text.length > 3400) {
+        text += `_...dan ${list.length - (i + 1)} memori lainnya._\n\n`;
+        break;
+      }
+    }
+
+    text += `💡 *Perintah Memori:*\n`;
+    text += `• \`/remember <teks>\` - Tambah memori baru\n`;
+    text += `• \`/forget <id>\` - Hapus memori berdasarkan ID`;
+
+    await ctx.reply(truncate(text, 3800), { parse_mode: "Markdown" });
+  });
+
+  // /remember
+  bot.command("remember", async (ctx) => {
+    const text = ctx.message?.text?.replace(/^\/remember(@\w+)?\s*/i, "").trim();
+    if (!text) {
+      await ctx.reply(
+        "ℹ️ *Format Perintah /remember:*\n\n" +
+        "`/remember <fakta atau preferensi>`\n\n" +
+        "Contoh:\n" +
+        "`/remember Jangan pernah hapus folder .git saat deployment`\n" +
+        "`/remember Gunakan Tailwind v3 untuk project blog`",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const words = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
+    const tags = Array.from(new Set(words.slice(0, 5)));
+
+    const saved = await addMemory({
+      content: text,
+      category: "preference",
+      tags,
+      importance: 4,
+    });
+
+    await ctx.reply(
+      `✅ *Fakta Berhasil Disimpan ke Persistent Vector Memory!*\n\n` +
+      `🆔 ID: \`${saved.id}\`\n` +
+      `📂 Kategori: \`${saved.category}\`\n` +
+      `🏷️ Tags: \`${(saved.tags || []).join(", ") || "-"}\`\n\n` +
+      `📝 *Isi:*\n"${saved.content}"\n\n` +
+      `_Memori ini akan otomatis disuntikkan saat Anda memberikan instruksi yang relevan di masa mendatang._`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // /forget, /delmemory
+  bot.command(["forget", "delmemory", "hapusmemori"], async (ctx) => {
+    const id = ctx.message?.text?.replace(/^\/(forget|delmemory|hapusmemori)(@\w+)?\s*/i, "").trim();
+    if (!id) {
+      await ctx.reply(
+        "ℹ️ *Format Perintah /forget:*\n\n" +
+        "`/forget <id_memori>`\n\n" +
+        "Contoh: `/forget mem-seed-1`\n" +
+        "Cek daftar ID dengan perintah `/memories`.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const ok = await deleteMemory(id);
+    if (ok) {
+      await ctx.reply(`🗑️ *Memori \`${id}\` berhasil dihapus.*`, { parse_mode: "Markdown" });
+    } else {
+      await ctx.reply(`⚠️ Memori dengan ID \`${id}\` tidak ditemukan. Cek daftar di \`/memories\`.`, { parse_mode: "Markdown" });
+    }
+  });
+
+  // /skills, /skill
+  bot.command(["skills", "skill"], async (ctx) => {
+    const list = await loadAllSkills();
+    if (!list || list.length === 0) {
+      await ctx.reply(
+        "⚡ *Dynamic Skills Masih Kosong*\n\n" +
+        "Belum ada skill yang terdaftar.\n" +
+        "Gunakan `/learn <id> | <deskripsi> | <instruksi>` untuk menambahkan skill baru secara manual.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    let text = `⚡ *Daftar Skill & SOP AI (${list.length} Skill Aktif)*\n\n`;
+    text += `Skill ini dicocokkan otomatis berdasarkan semantic similarity & trigger keywords:\n\n`;
+
+    for (let i = 0; i < list.length; i++) {
+      const s = list[i];
+      const sourceBadge = s.source === "system" ? "🛠️ [SYSTEM]" : "🎓 [LEARNED]";
+      const triggerStr = s.triggers?.length ? s.triggers.join(", ") : s.id;
+      text += `*${i + 1}. ${s.name}* (\`${s.id}\`) ${sourceBadge}\n`;
+      if (s.description) text += `   📖 _${s.description}_\n`;
+      text += `   🎯 Triggers: \`${triggerStr}\`\n\n`;
+
+      if (text.length > 3400) {
+        text += `_...dan ${list.length - (i + 1)} skill lainnya._\n\n`;
+        break;
+      }
+    }
+
+    text += `💡 *Perintah Skill:*\n`;
+    text += `• \`/learn <id> | <deskripsi> | <instruksi>\` - Ajarkan skill baru\n`;
+    text += `• \`/delskill <id>\` - Hapus skill berdasarkan ID`;
+
+    await ctx.reply(truncate(text, 3800), { parse_mode: "Markdown" });
+  });
+
+  // /learn, /addskill
+  bot.command(["learn", "addskill"], async (ctx) => {
+    const raw = ctx.message?.text?.replace(/^\/(learn|addskill)(@\w+)?\s*/i, "").trim();
+    if (!raw || !raw.includes("|")) {
+      await ctx.reply(
+        "ℹ️ *Format Perintah /learn (Tambah Skill/SOP Manual):*\n\n" +
+        "`/learn <id> | <deskripsi singkat> | <langkah-langkah instruksi>`\n\n" +
+        "Contoh:\n" +
+        "`/learn restart-podcast | Restart service AI podcast | 1. Masuk ke projects/ai-podcast-live\\n2. Jalankan docker compose restart\\n3. Periksa status via curl http://localhost:3005`",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const parts = raw.split("|").map((p) => p.trim());
+    const id = parts[0];
+    const description = parts[1] || "";
+    const instructions = parts.slice(2).join("|").trim();
+
+    if (!id || !instructions) {
+      await ctx.reply("⚠️ Mohon isi minimal ID dan Langkah-langkah instruksi yang dipisahkan tanda pipa (`|`).", { parse_mode: "Markdown" });
+      return;
+    }
+
+    const triggers = [id, ...description.toLowerCase().split(/\s+/).filter((w) => w.length > 3)];
+
+    await saveSkill({
+      id,
+      name: id.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+      description,
+      triggers,
+      instructions,
+      source: "learned",
+    });
+
+    await ctx.reply(
+      `🎓 *Skill Baru Berhasil Dipelajari & Terdaftar!*\n\n` +
+      `🆔 ID: \`${id}\`\n` +
+      `📖 Deskripsi: ${description || "-"}\n` +
+      `🎯 Triggers: \`${triggers.join("`, `")}\`\n\n` +
+      `_Skill ini akan otomatis dicocokkan saat Anda memberikan tugas terkait._`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // /delskill, /removeskill
+  bot.command(["delskill", "removeskill"], async (ctx) => {
+    const id = ctx.message?.text?.replace(/^\/(delskill|removeskill)(@\w+)?\s*/i, "").trim();
+    if (!id) {
+      await ctx.reply(
+        "ℹ️ *Format Perintah /delskill:*\n\n" +
+        "`/delskill <id_skill>`\n\n" +
+        "Contoh: `/delskill restart-podcast`\n" +
+        "Cek daftar ID dengan perintah `/skills`.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const ok = await deleteSkill(id);
+    if (ok) {
+      await ctx.reply(`🗑️ *Skill \`${id}\` berhasil dihapus.*`, { parse_mode: "Markdown" });
+    } else {
+      await ctx.reply(`⚠️ Skill dengan ID \`${id}\` tidak ditemukan. Cek daftar di \`/skills\`.`, { parse_mode: "Markdown" });
+    }
   });
 
   // ==================== QUEUE CALLBACK QUERIES ====================
