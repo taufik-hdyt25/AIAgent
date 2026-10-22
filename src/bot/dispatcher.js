@@ -60,6 +60,10 @@ import {
   formatSkillsForPrompt,
   saveSkill,
 } from "../services/skill-service.js";
+import {
+  isMultiTaskRequest,
+  executeSwarm,
+} from "../services/swarm-service.js";
 
 /**
  * Memproses tag otonom dari output AI (Hermes-like self-learning & persistent memory):
@@ -661,9 +665,13 @@ ATURAN UTAMA:
   }
 }
 
-// Registrasi executor ke Queue Service
+// Registrasi executor ke Queue Service (Mendukung Single Task & Multi-Agent Swarm)
 registerQueueExecutor(async (item) => {
-  await executeTaskInternal(item);
+  if (isMultiTaskRequest(item.userMessage)) {
+    await executeSwarm(item);
+  } else {
+    await executeTaskInternal(item);
+  }
 });
 
 /**
@@ -697,6 +705,12 @@ export async function sendToAgent(userMessage, ctx, fileInfo = null) {
     return { queued: true, id: queueItem.id, position };
   }
 
+  // Jika terdeteksi multi-task request, langsung delegasikan ke Multi-Agent Swarm!
+  if (isMultiTaskRequest(userMessage)) {
+    await executeSwarm({ userMessage, ctx, fileInfo });
+    return;
+  }
+
   await executeTaskInternal({ userMessage, ctx, fileInfo });
 }
 
@@ -709,6 +723,7 @@ export async function runAgentAutonomous({
   systemPrompt = null,
   engineOverride = null,
   timeoutMs = TIMEOUT_MS,
+  onSpawn = null,
 }) {
   const engine = engineOverride || (userId ? await getUserEngine(userId) : process.env.CLI_ENGINE || "agy");
   const actualConvId = convId || `auto-${randomUUID().slice(0, 8)}`;
@@ -796,6 +811,7 @@ export async function runAgentAutonomous({
     cwd,
     timeoutMs,
     env: sanitizedEnv,
+    onSpawn,
   });
 
   if (res.code === 0 && res.stdout) {

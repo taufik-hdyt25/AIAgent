@@ -5,6 +5,7 @@ import { LOG_DIR, MAX_OUTPUT, TIMEOUT_MS } from "../config/env.js";
 import { truncate } from "./telegram-files.js";
 
 let activeTask = null;
+const activeWorkers = new Map();
 
 export function getActiveTask() {
   return activeTask;
@@ -18,6 +19,29 @@ export function clearActiveTask(taskId) {
   if (activeTask && (!taskId || activeTask.id === taskId)) {
     activeTask = null;
   }
+}
+
+export function registerWorker(id, data) {
+  activeWorkers.set(id, { id, ...data, startedAt: Date.now() });
+}
+
+export function unregisterWorker(id) {
+  activeWorkers.delete(id);
+}
+
+export function getActiveWorkers() {
+  return Array.from(activeWorkers.values());
+}
+
+export function killAllWorkers(signal = "SIGTERM") {
+  const count = activeWorkers.size;
+  for (const worker of activeWorkers.values()) {
+    if (worker.process) {
+      killProcessTree(worker.process, signal);
+    }
+  }
+  activeWorkers.clear();
+  return count;
 }
 
 export function killProcessTree(childProcess, signal = "SIGTERM") {
@@ -46,6 +70,7 @@ export function runProcess({
   maxOutput = MAX_OUTPUT,
   onStdout,
   onStderr,
+  onSpawn,
 }) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
@@ -55,6 +80,12 @@ export function runProcess({
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+
+    if (typeof onSpawn === "function") {
+      try {
+        onSpawn(child);
+      } catch (_) {}
+    }
 
     let stdout = "";
     let stderr = "";

@@ -65,6 +65,7 @@ if (
         { command: "help", description: "Panduan lengkap perintah" },
         { command: "projects", description: "Daftar proyek coding di ./projects" },
         { command: "syncprojects", description: "Sinkronisasi peta arsitektur semua project" },
+        { command: "swarm", description: "Eksekusi multi-tugas dengan Sub-Agent Swarm" },
         { command: "memories", description: "Daftar memori jangka panjang AI" },
         { command: "remember", description: "Simpan fakta/aturan baru ke memori AI" },
         { command: "skills", description: "Daftar skill & SOP AI" },

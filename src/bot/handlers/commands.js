@@ -20,7 +20,10 @@ import {
   setActiveTask,
   clearActiveTask,
   killProcessTree,
+  getActiveWorkers,
+  killAllWorkers,
 } from "../../services/cli-runner.js";
+import { executeSwarm } from "../../services/swarm-service.js";
 import {
   getQueue,
   getQueueLength,
@@ -121,6 +124,7 @@ export function registerBasicCommands(bot) {
         "• `/watchrepo <repo>` - Pantau repo baru (contoh: owner/repo)\n" +
         "• `/files` - Lihat daftar file dan gambar yang telah diunggah\n" +
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
+        "• `/swarm <t1> | <t2> | <t3>` - Eksekusi banyak tugas paralel dengan Sub-Agent Swarm\n" +
         "• `/projects` - Lihat daftar proyek coding di ./projects\n" +
         "• `/memories` - Lihat daftar fakta & preferensi jangka panjang AI\n" +
         "• `/remember <teks>` - Simpan fakta/preferensi baru ke memori permanen\n" +
@@ -189,10 +193,17 @@ export function registerBasicCommands(bot) {
     const elapsed = Math.floor((Date.now() - activeTask.startedAt) / 1000);
     const taskPreview = activeTask.preview ? `\n💬 Tugas: _“${truncate(activeTask.preview, 80)}”_` : "";
 
+    const activeWorkers = getActiveWorkers();
+    let swarmSection = "";
+    if (activeWorkers.length > 0) {
+      swarmSection = `\n\n🐝 *Sub-Agents Aktif (${activeWorkers.length} Worker):*\n` +
+        activeWorkers.map((w) => `• *[${w.name}]* _"${truncate(w.title, 45)}"_`).join("\n");
+    }
+
     await ctx.reply(
       `⏳ *TH Agent Sedang Menjalankan Tugas*\n\n` +
       `🆔 Task ID: \`${activeTask.id}\`\n` +
-      `⏱ Durasi: *${elapsed} detik*${taskPreview}\n\n` +
+      `⏱ Durasi: *${elapsed} detik*${taskPreview}${swarmSection}\n\n` +
       `⚙️ Engine: *${engineLabel}*\n` +
       `🤖 Model: ${activeModelDisplay}\n` +
       `📋 Status Antrean: ${queueStatus}\n\n` +
@@ -347,6 +358,7 @@ export function registerBasicCommands(bot) {
 
     // Jika user mengirim /cancel all
     if (arg === "all" || arg === "semua") {
+      killAllWorkers("SIGTERM");
       if (activeTask?.process) {
         activeTask.cancelled = true;
         killProcessTree(activeTask.process, "SIGTERM");
@@ -355,13 +367,19 @@ export function registerBasicCommands(bot) {
       }
       const cleared = clearQueue();
       await ctx.reply(
-        `🛑 *Semua Dibatalkan:*\nTugas aktif dihentikan & *${cleared} instruksi di antrean* telah dibatalkan.`,
+        `🛑 *Semua Dibatalkan:*\nTugas aktif & sub-agent dihentikan, serta *${cleared} instruksi di antrean* telah dibatalkan.`,
         { parse_mode: "Markdown" }
       );
       return;
     }
 
     if (!activeTask) {
+      const workersKilled = killAllWorkers("SIGTERM");
+      if (workersKilled > 0) {
+        await ctx.reply(`🛑 Berhasil menghentikan *${workersKilled} sub-agent worker* yang sedang aktif.`);
+        return;
+      }
+
       if (queueLen > 0) {
         const keyboard = new InlineKeyboard()
           .text("▶️ Jalankan Antrean", "queue_resume")
@@ -377,11 +395,14 @@ export function registerBasicCommands(bot) {
       return;
     }
 
+    const workersKilled = killAllWorkers("SIGTERM");
+    const workerNotice = workersKilled > 0 ? ` serta *${workersKilled} sub-agent worker*` : "";
+
     // Jika antrean kosong, langsung batalkan tugas aktif
     if (queueLen === 0) {
       activeTask.cancelled = true;
       if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
-      await ctx.reply(`🛑 Permintaan pembatalan tugas aktif (\`${activeTask.id}\`) telah dikirim.`);
+      await ctx.reply(`🛑 Permintaan pembatalan tugas aktif (\`${activeTask.id}\`)${workerNotice} telah dikirim.`);
       return;
     }
 
@@ -1218,6 +1239,29 @@ export function registerBasicCommands(bot) {
     } else {
       await ctx.reply(`⚠️ Skill dengan ID \`${id}\` tidak ditemukan. Cek daftar di \`/skills\`.`, { parse_mode: "Markdown" });
     }
+  });
+
+  // ==================== MULTI-AGENT SWARM COMMANDS ====================
+
+  // /swarm, /parallel, /multitask
+  bot.command(["swarm", "parallel", "multitask"], async (ctx) => {
+    const raw = ctx.message?.text?.replace(/^\/(swarm|parallel|multitask)(@\w+)?\s*/i, "").trim();
+    if (!raw) {
+      await ctx.reply(
+        "🐝 *Format Perintah /swarm (Multi-Agent Swarm):*\n\n" +
+        "`/swarm <tugas 1> | <tugas 2> | <tugas 3>`\n\n" +
+        "Atau dalam format baris bernomor:\n" +
+        "`/swarm`\n" +
+        "`1. Periksa container wa-bot`\n" +
+        "`2. Cek disk space VPS`\n" +
+        "`3. Analisis issue terakhir GitHub`\n\n" +
+        "_Lead Orchestrator (TH Agent) akan langsung mendelegasikan masing-masing tugas ke Sub-Agent independen yang bekerja secara paralel di server!_",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    await executeSwarm({ userMessage: raw, ctx });
   });
 
   // ==================== QUEUE CALLBACK QUERIES ====================
