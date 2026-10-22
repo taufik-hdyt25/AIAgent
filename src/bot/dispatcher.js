@@ -50,6 +50,95 @@ import {
   resumeQueue,
 } from "../services/queue-service.js";
 import { ensureProjectsIndexed } from "../services/project-indexer.js";
+import {
+  searchMemories,
+  formatMemoriesForPrompt,
+  addMemory,
+} from "../services/memory-service.js";
+import {
+  findMatchingSkills,
+  formatSkillsForPrompt,
+  saveSkill,
+} from "../services/skill-service.js";
+
+/**
+ * Memproses tag otonom dari output AI (Hermes-like self-learning & persistent memory):
+ * - :::memory:add {"content": "...", "category": "...", "tags": [...]}:::
+ * - :::skill:add {"id": "...", "name": "...", "description": "...", "triggers": [...], "instructions": "..."}:::
+ */
+export async function processAutonomousOutput(rawText) {
+  if (!rawText || typeof rawText !== "string") {
+    return { cleanedText: rawText || "", savedMemories: [], savedSkills: [] };
+  }
+
+  const savedMemories = [];
+  const savedSkills = [];
+  let cleaned = rawText;
+
+  // 1. Ekstraksi :::memory:add {...} :::
+  const memoryRegex = /:::memory:add\s*([\s\S]*?):::/g;
+  let match;
+  while ((match = memoryRegex.exec(rawText)) !== null) {
+    try {
+      const jsonStr = match[1].trim();
+      const data = JSON.parse(jsonStr);
+      if (data.content) {
+        const saved = await addMemory({
+          content: data.content,
+          category: data.category || "general",
+          tags: Array.isArray(data.tags) ? data.tags : [],
+          importance: data.importance || 4,
+        });
+        if (saved) savedMemories.push(saved);
+      }
+    } catch (e) {
+      console.warn("[Dispatcher] Gagal parse memory tag:", e.message);
+    }
+  }
+  cleaned = cleaned.replace(memoryRegex, "").trim();
+
+  // 2. Ekstraksi :::skill:add {...} :::
+  const skillRegex = /:::skill:add\s*([\s\S]*?):::/g;
+  while ((match = skillRegex.exec(rawText)) !== null) {
+    try {
+      const jsonStr = match[1].trim();
+      const data = JSON.parse(jsonStr);
+      if (data.id || data.name) {
+        await saveSkill({
+          id: data.id,
+          name: data.name || data.id,
+          description: data.description || "",
+          triggers: Array.isArray(data.triggers) ? data.triggers : [data.triggers || data.id],
+          instructions: data.instructions || "",
+          source: "learned",
+        });
+        savedSkills.push(data.name || data.id);
+      }
+    } catch (e) {
+      console.warn("[Dispatcher] Gagal parse skill tag:", e.message);
+    }
+  }
+  cleaned = cleaned.replace(skillRegex, "").trim();
+
+  // Tambahkan feedback visual jika ada memori atau skill baru yang tersimpan
+  const badges = [];
+  if (savedMemories.length > 0) {
+    badges.push(`🧠 _[Tersimpan ke Memori: "${truncate(savedMemories[0].content, 60)}"]_`);
+  }
+  if (savedSkills.length > 0) {
+    badges.push(`⚡ _[Skill Baru Dipelajari: "${savedSkills.join(", ")}"]_`);
+  }
+
+  if (badges.length > 0) {
+    cleaned = `${cleaned}\n\n${badges.join("\n")}`.trim();
+  }
+
+  return {
+    cleanedText: cleaned,
+    savedMemories,
+    savedSkills,
+  };
+}
 
 // Fungsi inti eksekusi instruksi AI (CLI atau Universal API)
 export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null }) {
@@ -131,6 +220,7 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       (engine === "agy" && agyConvId)
     );
 
+<<<<<<< HEAD
     const currentQueueLen = getQueueLength();
     const deferredList = getDeferredProjects();
 
@@ -157,6 +247,15 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
 - Jika tugas ini atau tugas sebelumnya mengubah kode proyek yang butuh build/deploy (misal: 'npm run build', './deploy-to-vps.sh', restart service/container), LANGSUNG LAKUKAN BUILD DAN DEPLOY SEKARANG sampai selesai dan live!${deferredNotice}
 `.trim();
     }
+=======
+    // Retrieve relevant persistent memories & skills (Hermes-like dynamic injection)
+    const [relevantMemories, matchingSkills] = await Promise.all([
+      searchMemories(userMessage, { limit: 3, minScore: 0.18 }).catch(() => []),
+      findMatchingSkills(userMessage, { limit: 2, minScore: 0.22 }).catch(() => []),
+    ]);
+    const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
+    const skillPrompt = formatSkillsForPrompt(matchingSkills);
+>>>>>>> 7ca5b92767d444954244beae697382cf195afa57
 
     let prompt = "";
     if (isOngoingSession) {
@@ -166,9 +265,11 @@ ${queueStatusPrompt}
 
 [Pesan dari Pengguna]:
 ${userMessage}
-${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}
+${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}
 [Panduan Eksekusi Lanjutan]:
 - Lanjutkan tugas secara otonom & langsung eksekusi tanpa meminta konfirmasi (Zero-Confirmation).
+- Simpan fakta/preferensi baru jika ada: :::memory:add {"content": "...", "category": "preference|architecture|workflow|solution", "tags": [...]}:::
+- Simpan SOP/skill berulang jika baru dipelajari: :::skill:add {"id": "nama-skill", "name": "...", "description": "...", "triggers": [...], "instructions": "..."}:::
 - Jika ada proyek yang belum terdaftar di ./projects/PROJECTS_SUMMARY.md, telusuri dan daftarkan ke file tersebut.
 - Patuhi aturan status antrean chat di atas (tunda build/deploy jika antrean > 0; langsung build & deploy jika antrean kosong).
 - Format respon dalam Markdown rapi untuk chat Telegram.
@@ -196,6 +297,16 @@ ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueIn
 2. Jika ada proyek baru yang dibuat, di-clone, atau belum ada di ringkasan di atas, telusuri secara ringkas lalu WAJIB perbarui file './projects/PROJECTS_SUMMARY.md' agar sesi berikutnya langsung tahu tanpa perlu read dari awal lagi.`;
       } catch (_) {}
 
+      const memorySkillInstructions = `
+FITUR OTONOM: PERSISTENT MEMORY & AUTO-SKILL CREATION:
+1. Persistent Vector Memory:
+   Jika developer menyampaikan preferensi, aturan kerja, port container, atau fakta penting yang harus selalu diingat lintas sesi, kamu BISA menyimpan memori baru dengan menyisipkan blok tag berikut di akhir jawabanmu:
+   :::memory:add {"content": "Deskripsi fakta yang diingat", "category": "preference|architecture|workflow|solution", "tags": ["tag1", "tag2"]}:::
+2. Auto-Skill Creation:
+   Jika kamu berhasil menyelesaikan masalah kompleks, deployment khusus, atau prosedur berulang yang sangat bernilai untuk dipakai kembali di masa depan, kamu BISA membuat skill baru secara otomatis dengan menyisipkan tag:
+   :::skill:add {"id": "nama-skill-kebab-case", "name": "Judul Skill", "description": "Kegunaan skill", "triggers": ["trigger 1", "trigger 2"], "instructions": "Langkah-langkah instruksi..."}:::
+   Sistem akan otomatis menyimpan dan mengindeks skill tersebut ke dalam persistent storage.`;
+
       prompt = `
 Kamu adalah TH Agent, asisten software engineer cowok (pria) yang otonom dan berkomunikasi langsung dengan developer melalui chat Telegram ini.
 
@@ -222,6 +333,7 @@ PRINSIP UTAMA: AKSES PENUH & ZERO-CONFIRMATION (EKSEKUSI LANGSUNG TANPA TANYA):
    - Kerjakan seluruh alur kerja sampai tuntas: baca kode/file -> buat/edit file -> jalankan / test -> perbaiki sendiri jika ada error -> laporkan hasil akhirnya yang sudah jadi dan berhasil.
 5. HANYA BERTANYA JIKA ADA KEBUTUHAN KRUSIAL YANG BENAR-BENAR TIDAK DAPAT DITEMUKAN:
    - Kamu HANYA boleh bertanya jika ada kredensial/secret pihak ketiga (seperti token API berbayar yang belum ada di server) yang mutlak dibutuhkan dan tidak bisa dibuat/disimulasikan sendiri.
+${memorySkillInstructions}
 
 PANDUAN INTERAKSI:
 1. Respon Natural & Cerdas: Mengobrollah dengan ramah, santai, dan profesional dalam bahasa Indonesia layaknya rekan programmer senior cowok.
@@ -229,6 +341,7 @@ PANDUAN INTERAKSI:
 3. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
 4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
 5. Format: Gunakan format Markdown yang rapi agar enak dibaca di Telegram.
+<<<<<<< HEAD
 6. Alur Development & Manajemen Antrean (Deferred Build & Deploy - Berlaku untuk Semua Proyek):
    - WAJIB periksa status antrean chat (dari status antrean di prompt di bawah, file './data/queue-status.json', atau env QUEUE_LENGTH).
    - JIKA ADA ANTREAN MENUNGGU (queueLength > 0): DILARANG menjalankan proses build ('npm run build', docker build) dan DILARANG deploy! Cukup edit kode, validasi syntax/linting, dan simpan. Biarkan tugas berikutnya di antrean berjalan cepat tanpa tertahan proses build.
@@ -239,6 +352,10 @@ PANDUAN INTERAKSI:
 ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}
 ${queueStatusPrompt}
 
+=======
+6. Alur Development: Setiap selesai mengerjakan kode, WAJIB review perubahan dan jalankan test/pengecekan dulu. Hanya jika semua lolos, lanjut build (bila ada) lalu commit & push. Jika test/build gagal, perbaiki secara mandiri sampai beres.
+${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}
+>>>>>>> 7ca5b92767d444954244beae697382cf195afa57
 Pesan dari pengguna:
 ${userMessage}
 `.trim();
@@ -286,13 +403,15 @@ ATURAN UTAMA:
           },
         });
 
+        const { cleanedText } = await processAutonomousOutput(replyText);
+
         clearInterval(typingInterval);
         clearActiveTask(taskId);
 
         try {
-          await ctx.reply(truncate(replyText, 3800), { parse_mode: "Markdown" });
+          await ctx.reply(truncate(cleanedText, 3800), { parse_mode: "Markdown" });
         } catch {
-          await ctx.reply(truncate(replyText, 3800));
+          await ctx.reply(truncate(cleanedText, 3800));
         }
 
         // Lanjutkan antrean tugas berikutnya
@@ -445,6 +564,12 @@ ATURAN UTAMA:
           }
         } else {
           responseText = stdout.trim();
+        }
+
+        // Process autonomous tags (Memory & Skills) jika response ada
+        if (responseText) {
+          const { cleanedText } = await processAutonomousOutput(responseText);
+          responseText = cleanedText;
         }
 
         const result = {

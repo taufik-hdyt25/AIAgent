@@ -16,9 +16,14 @@ import {
   killProcessTree,
 } from "./services/cli-runner.js";
 import { processNextQueue } from "./services/queue-service.js";
+import { loadMemories } from "./services/memory-service.js";
+import { initSkillStore } from "./services/skill-service.js";
 
-// Pastikan semua direktori kerja lokal siap
+// Pastikan semua direktori kerja lokal siap & load persistent vector memory & dynamic skills
 await ensureDirectories();
+await Promise.all([loadMemories(), initSkillStore()]).catch((err) =>
+  console.warn("[Init] Gagal inisialisasi memori/skills:", err.message)
+);
 
 if (!BOT_TOKEN || ALLOWED_IDS.size === 0) {
   console.warn(
@@ -60,6 +65,10 @@ if (
         { command: "help", description: "Panduan lengkap perintah" },
         { command: "projects", description: "Daftar proyek coding di ./projects" },
         { command: "syncprojects", description: "Sinkronisasi peta arsitektur semua project" },
+        { command: "memories", description: "Daftar memori jangka panjang AI" },
+        { command: "remember", description: "Simpan fakta/aturan baru ke memori AI" },
+        { command: "skills", description: "Daftar skill & SOP AI" },
+        { command: "learn", description: "Ajarkan skill baru ke AI" },
         { command: "clean", description: "Bersihkan cache & file server tidak terpakai" },
         { command: "deploy", description: "Deploy aplikasi ke server" },
         { command: "autofix", description: "Auto-Fix issue & buat Draft PR" },
