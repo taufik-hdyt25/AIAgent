@@ -18,6 +18,7 @@ import {
 import { processNextQueue } from "./services/queue-service.js";
 import { loadMemories } from "./services/memory-service.js";
 import { initSkillStore } from "./services/skill-service.js";
+import { checkPendingUpdateNotification } from "./services/update-service.js";
 
 // Pastikan semua direktori kerja lokal siap & load persistent vector memory & dynamic skills
 await ensureDirectories();
@@ -84,6 +85,8 @@ if (
         { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
         { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
         { command: "compact", description: "Padatkan riwayat sesi agar token hemat" },
+        { command: "update", description: "Perbarui TH Agent langsung dari GitHub" },
+        { command: "cekupdate", description: "Cek pembaruan baru di GitHub" },
         { command: "engine", description: "Pilih engine (Antigravity / Claude / Universal)" },
         { command: "reset", description: "Mulai sesi percakapan baru" },
         { command: "cancel", description: "Hentikan tugas aktif atau antrean" },
@@ -112,6 +115,9 @@ if (
             retryAttempt = 0;
             console.log(`🤖 Bot @${botInfo.username} berhasil terhubung dan siap menerima pesan di Telegram!`);
             syncCommands();
+
+            // Notifikasi jika bot baru saja di-update via /update
+            checkPendingUpdateNotification(bot);
 
             if (!isWatcherStarted) {
               isWatcherStarted = true;

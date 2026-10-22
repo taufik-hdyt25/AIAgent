@@ -34,6 +34,8 @@ services:
       - ./claude_auth:/home/node/.claude
       # Akses Docker daemon host (DooD: kendalikan Docker host langsung dari bot)
       - /var/run/docker.sock:/var/run/docker.sock
+      # Source code mount (memungkinkan update instan tanpa rebuild ulang container)
+      - ./src:/app/src
 
     security_opt:
       - no-new-privileges:true

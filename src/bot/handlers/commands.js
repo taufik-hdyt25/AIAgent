@@ -74,6 +74,11 @@ import {
   saveSkill,
   deleteSkill,
 } from "../../services/skill-service.js";
+import {
+  checkForUpdates,
+  performSelfUpdate,
+  getCurrentCommit,
+} from "../../services/update-service.js";
 
 export function registerBasicCommands(bot) {
   // /start, /help
@@ -138,6 +143,8 @@ export function registerBasicCommands(bot) {
         "• `/model` - Pilih atau ganti model AI\n" +
         "• `/compact` - Padatkan konteks obrolan agar token input hemat\n" +
         "• `/clean` - Bersihkan build cache Docker & temporary files\n" +
+        "• `/update` - Perbarui TH Agent langsung dari GitHub tanpa instal ulang\n" +
+        "• `/cekupdate` - Cek apakah ada rilis/commit baru di GitHub\n" +
         "• `/reset` - Mulai sesi obrolan baru dari awal\n" +
         "• `/status` - Cek status bot, antrean, engine & model aktif\n" +
         "• `/cancel` - Hentikan tugas aktif / antrean",
@@ -1262,6 +1269,58 @@ export function registerBasicCommands(bot) {
     }
 
     await executeSwarm({ userMessage: raw, ctx });
+  });
+
+  // ==================== SELF-UPDATE COMMANDS ====================
+
+  // /cekupdate, /checkupdate
+  bot.command(["cekupdate", "checkupdate"], async (ctx) => {
+    const statusMsg = await ctx.reply("🔍 *Memeriksa pembaruan di GitHub...*", {
+      parse_mode: "Markdown",
+    });
+
+    const check = await checkForUpdates();
+    if (check.error) {
+      await ctx.api
+        .editMessageText(ctx.chat.id, statusMsg.message_id, `❌ Gagal memeriksa update: ${check.error}`)
+        .catch(() => {});
+      return;
+    }
+
+    if (!check.hasUpdate) {
+      const msg =
+        `✅ *TH Agent Sudah Versi Paling Mutakhir!*\n\n` +
+        `🆔 Commit Aktif: \`${check.currentCommit}\`\n` +
+        `🌐 Status: Sinkron dengan \`origin/main\` di GitHub.\n\n` +
+        `_Tidak ada pembaruan baru yang perlu diinstal._`;
+      await ctx.api
+        .editMessageText(ctx.chat.id, statusMsg.message_id, msg, {
+          parse_mode: "Markdown",
+        })
+        .catch(() => {});
+      return;
+    }
+
+    const msg =
+      `📦 *Pembaruan Ditemukan! (${check.commitCount} commit baru)*\n\n` +
+      `• Versi Sekarang: \`${check.currentCommit}\`\n` +
+      `• Versi Terbaru: \`${check.latestCommit}\`\n\n` +
+      `*Daftar Perubahan:*\n\`\`\`\n${truncate(check.changelog, 500)}\n\`\`\`\n` +
+      `💡 _Ketik \`/update\` untuk langsung memperbarui dan me-reload bot secara instan tanpa instal ulang!_`;
+
+    await ctx.api
+      .editMessageText(ctx.chat.id, statusMsg.message_id, msg, {
+        parse_mode: "Markdown",
+      })
+      .catch(() => {});
+  });
+
+  // /update, /upgrade
+  bot.command(["update", "upgrade"], async (ctx) => {
+    const arg = ctx.message?.text?.replace(/^\/(update|upgrade)(@\w+)?\s*/i, "").trim().toLowerCase();
+    const isForce = arg === "force" || arg === "--force";
+
+    await performSelfUpdate({ ctx, force: isForce });
   });
 
   // ==================== QUEUE CALLBACK QUERIES ====================
