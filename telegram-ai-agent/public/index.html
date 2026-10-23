@@ -625,22 +625,45 @@
               </div>
             </div>
 
-            <!-- Mode Pi Sandbox Toggle -->
+            <!-- Engine Workspace Access Role & Scope -->
             <div class="form-group">
-              <div class="toggle-card">
-                <div class="toggle-info">
-                  <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span class="toggle-title">🍓 Mode Raspberry Pi (Intiva Sandbox Scope)</span>
-                    <span class="switch-status-text off" id="piSandboxBadge">Nonaktif (Full Access)</span>
+              <div class="label-row">
+                <label class="form-label">WORKSPACE ACCESS SCOPE (ROLE ENGINE)</label>
+                <span class="label-hint" id="scopeRoleBadge" style="color: #34d399;">Root (Akses Penuh)</span>
+              </div>
+              <div class="engine-selector" style="margin-bottom: 0.75rem;">
+                <label class="engine-option" id="scopeRoleRootLabel">
+                  <input type="radio" name="scopeRole" value="root" id="scopeRoleRoot" checked>
+                  <div class="engine-info">
+                    <span class="engine-name">🌐 Root (Akses Penuh - Semua Folder)</span>
+                    <span class="engine-desc">AI bebas mengakses seluruh subfolder di dalam <code>./projects/</code> (Default).</span>
                   </div>
-                  <span class="toggle-desc">
-                    Batasi pengerjaan dan eksekusi proyek <strong>HANYA di dalam folder <code>projects/intiva/</code></strong>. Sangat aman saat bot dijalankan di Raspberry Pi.
-                  </span>
-                </div>
-                <label class="switch">
-                  <input type="checkbox" id="piSandboxToggle" name="piSandbox">
-                  <span class="slider"></span>
                 </label>
+                <label class="engine-option" id="scopeRoleCustomLabel">
+                  <input type="radio" name="scopeRole" value="custom" id="scopeRoleCustom">
+                  <div class="engine-info">
+                    <span class="engine-name">🔒 Custom (Akses Dibatasi ke Folder Tertentu)</span>
+                    <span class="engine-desc">AI hanya diizinkan membaca & mengeksekusi folder yang ditentukan di bawah.</span>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Custom Folders Input (Tampil jika Custom dipilih) -->
+              <div id="customFoldersContainer" style="display: none; margin-top: 0.5rem;">
+                <label for="customFoldersInput" class="form-label" style="font-size: 0.75rem; color: #94a3b8;">
+                  FOLDER YANG DIIZINKAN (Pisahkan dengan koma jika lebih dari satu)
+                </label>
+                <input 
+                  type="text" 
+                  id="customFoldersInput" 
+                  name="customFolders" 
+                  class="form-input font-mono" 
+                  placeholder="Contoh: projects/ai-podcast-live, projects/th-blog (Default: Kosong)"
+                  value=""
+                >
+                <span class="label-hint" style="margin-top: 0.35rem; display: block; font-size: 0.75rem; color: #64748b;">
+                  💡 Jika mode Custom aktif dan folder dibiarkan kosong, AI tidak dapat mengubah proyek di luar izin.
+                </span>
               </div>
             </div>
 

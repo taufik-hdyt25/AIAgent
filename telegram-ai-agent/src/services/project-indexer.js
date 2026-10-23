@@ -146,37 +146,20 @@ export async function syncProjectsSummary() {
   for (const name of projectDirs) {
     const fullPath = path.join(PROJECTS_DIR, name);
 
-    // Penanganan khusus folder intiva (Sandbox Raspberry Pi)
-    if (name === "intiva") {
-      try {
-        const intivaEntries = await readdir(fullPath, { withFileTypes: true });
-        const intivaSubDirs = intivaEntries
-          .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-          .map((e) => e.name);
-
-        if (intivaSubDirs.length > 0) {
-          for (const sub of intivaSubDirs) {
-            const subPath = path.join(fullPath, sub);
-            const info = await analyzeProject(`intiva/${sub}`, subPath);
-            info.name = `intiva/${sub}`;
-            info.path = `projects/intiva/${sub}`;
-            projectSummaries.push(info);
-            const localInfoMd = formatSingleProjectMarkdown(info);
-            await writeFile(path.join(subPath, "PROJECT_INFO.md"), localInfoMd, "utf8").catch(() => {});
-          }
-          continue;
-        }
-      } catch (_) {}
+    // Abaikan folder yang kosong (jangan di-init otomatis)
+    try {
+      const folderContents = await readdir(fullPath);
+      if (folderContents.length === 0) {
+        continue;
+      }
+    } catch {
+      continue;
     }
 
     const info = await analyzeProject(name, fullPath);
-    if (name === "intiva") {
-      info.framework = "Intiva Sandbox (Raspberry Pi)";
-      info.stack = ["Ruang Lingkup Eksekusi Proyek Raspberry Pi (projects/intiva)"];
-    }
     projectSummaries.push(info);
 
-    // Buat juga PROJECT_INFO.md lokal di masing-masing folder project
+    // Buat juga PROJECT_INFO.md lokal di masing-masing folder project yang aktif
     const localInfoMd = formatSingleProjectMarkdown(info);
     await writeFile(path.join(fullPath, "PROJECT_INFO.md"), localInfoMd, "utf8").catch(() => {});
   }
@@ -246,8 +229,17 @@ export async function ensureProjectsIndexed() {
     const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
     const currentDirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
 
-    // Cek apakah ada folder yang belum terdaftar di summary
-    const missing = currentDirs.some((dir) => !summaryText.includes(`## `) || !summaryText.includes(dir));
+    // Filter hanya direktori proyek yang memiliki isi / file
+    const activeDirs = [];
+    for (const d of currentDirs) {
+      try {
+        const contents = await readdir(path.join(PROJECTS_DIR, d));
+        if (contents.length > 0) activeDirs.push(d);
+      } catch (_) {}
+    }
+
+    // Cek apakah ada folder aktif yang belum terdaftar di summary
+    const missing = activeDirs.some((dir) => !summaryText.includes(`## `) || !summaryText.includes(dir));
 
     if (missing) {
       console.log("[Project Indexer] Terdeteksi proyek baru! Memperbarui PROJECTS_SUMMARY.md...");

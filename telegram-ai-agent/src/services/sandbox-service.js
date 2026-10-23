@@ -1,22 +1,33 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { DATA_DIR, IS_PI } from "../config/env.js";
+import { DATA_DIR } from "../config/env.js";
 
 const SANDBOX_CONFIG_FILE = path.join(DATA_DIR, "sandbox_config.json");
 let sandboxCache = null;
 
 /**
- * Mendapatkan konfigurasi sandbox Pi
+ * Mendapatkan konfigurasi scope / role akses workspace engine
+ * Default role: "root" (akses penuh seluruh folder projects)
+ * Default customFolders: "" (kosong)
  */
 export async function getSandboxConfig() {
   if (sandboxCache) return sandboxCache;
   try {
     const raw = await readFile(SANDBOX_CONFIG_FILE, "utf8");
-    sandboxCache = JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    sandboxCache = {
+      role: parsed.role || (parsed.piSandbox ? "custom" : "root"),
+      customFolders: parsed.customFolders ?? (parsed.restrictedDir || ""),
+      piSandbox: parsed.role === "custom" || Boolean(parsed.piSandbox),
+      restrictedDir: parsed.restrictedDir || "",
+      updatedAt: parsed.updatedAt || new Date().toISOString(),
+    };
   } catch {
     sandboxCache = {
-      piSandbox: IS_PI, // Default aktif jika hardware Pi terdeteksi, atau nonaktif jika di VPS/Mac
-      restrictedDir: "projects/intiva",
+      role: "root", // Default: root (akses penuh semua folder)
+      customFolders: "", // Default: kosong
+      piSandbox: false, // Backwards compatibility
+      restrictedDir: "",
       updatedAt: new Date().toISOString(),
     };
   }
@@ -24,28 +35,71 @@ export async function getSandboxConfig() {
 }
 
 /**
- * Memeriksa apakah mode Sandbox Pi (hanya projects/intiva) sedang aktif
+ * Memeriksa apakah mode custom scope (akses dibatasi ke folder tertentu) sedang aktif
  */
-export async function isPiSandboxActive() {
+export async function isCustomScopeActive() {
   const cfg = await getSandboxConfig();
-  return Boolean(cfg.piSandbox);
+  return cfg.role === "custom" || Boolean(cfg.piSandbox);
+}
+
+// Alias untuk backwards compatibility
+export const isPiSandboxActive = isCustomScopeActive;
+
+/**
+ * Mendapatkan daftar folder yang diizinkan untuk mode custom
+ */
+export async function getAllowedFolders() {
+  const cfg = await getSandboxConfig();
+  if (cfg.role !== "custom" && !cfg.piSandbox) return [];
+  const raw = cfg.customFolders || cfg.restrictedDir || "";
+  return raw
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 }
 
 /**
- * Simpan konfigurasi sandbox
+ * Simpan konfigurasi sandbox & role akses
  */
 export async function saveSandboxConfig(newConfig) {
   const current = await getSandboxConfig();
-  sandboxCache = { ...current, ...newConfig, updatedAt: new Date().toISOString() };
+  const role = newConfig.role || (newConfig.piSandbox !== undefined ? (newConfig.piSandbox ? "custom" : "root") : current.role);
+  const customFolders = newConfig.customFolders !== undefined ? newConfig.customFolders : current.customFolders;
+
+  sandboxCache = {
+    ...current,
+    ...newConfig,
+    role,
+    customFolders,
+    piSandbox: role === "custom",
+    updatedAt: new Date().toISOString(),
+  };
+
   await writeFile(SANDBOX_CONFIG_FILE, JSON.stringify(sandboxCache, null, 2), "utf8");
   return sandboxCache;
 }
 
 /**
- * Toggle Mode Pi Sandbox On / Off
+ * Mengubah role engine ('root' atau 'custom') dan daftar folder yang diizinkan
+ */
+export async function setEngineAccessRole(role = "root", customFolders = "") {
+  const cleanRole = role === "custom" ? "custom" : "root";
+  return await saveSandboxConfig({
+    role: cleanRole,
+    customFolders: typeof customFolders === "string" ? customFolders.trim() : "",
+    piSandbox: cleanRole === "custom",
+  });
+}
+
+/**
+ * Toggle Mode Pi Sandbox On / Off (backwards compatibility)
  */
 export async function togglePiSandbox(enabled = null) {
   const current = await getSandboxConfig();
-  const newState = enabled !== null ? Boolean(enabled) : !current.piSandbox;
-  return await saveSandboxConfig({ piSandbox: newState });
+  const isCustom = current.role === "custom" || current.piSandbox;
+  const newRole = enabled !== null ? (enabled ? "custom" : "root") : (isCustom ? "root" : "custom");
+  return await saveSandboxConfig({
+    role: newRole,
+    piSandbox: newRole === "custom",
+  });
 }

@@ -11,7 +11,11 @@ import {
   PROJECTS_DIR,
   IS_PI,
 } from "../config/env.js";
-import { isPiSandboxActive } from "../services/sandbox-service.js";
+import {
+  isPiSandboxActive,
+  getSandboxConfig,
+  getAllowedFolders,
+} from "../services/sandbox-service.js";
 import { syncPiModelDirectly } from "../services/pi-service.js";
 import {
   getUserConversationId,
@@ -260,12 +264,18 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
     const skillPrompt = formatSkillsForPrompt(matchingSkills);
 
-    const isPiActive = await isPiSandboxActive();
+    const sandboxCfg = await getSandboxConfig();
+    const isCustomRole = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
+    const allowedList = await getAllowedFolders();
+    const allowedDisplay = allowedList.length > 0
+      ? allowedList.map((f) => `'${f}'`).join(", ")
+      : "(Belum ditentukan folder kustom - Akses proyek dibatasi)";
+
     let prompt = "";
     if (isOngoingSession) {
-      const piOngoingRule = isPiActive
-        ? "- Aturan Sandbox Intiva (Aktif): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Jika proyek berada di luar folder tersebut, tolak dan minta agar diarahkan ke 'projects/intiva/<nama-proyek>' terlebih dahulu."
-        : "- Lingkungan Server/VPS (Akses Penuh): Akses penuh ke seluruh proyek di './projects/' (seperti th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva tidak berlaku saat ini.";
+      const scopeOngoingRule = isCustomRole
+        ? `- Aturan Scope Engine (Role Custom Aktif): Seluruh pengerjaan dan eksekusi coding DIBATASI HANYA di dalam folder: ${allowedDisplay}. Dilarang menyentuh atau memodifikasi file di luar folder tersebut.`
+        : "- Lingkungan Server/VPS (Akses Penuh): Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di './projects/' (seperti th-blog, wa-chat-bot, dll.).";
 
       // Sesi aktif berjalan: hemat token drastis tanpa mengulang puluhan baris persona boilerplate
       prompt = `
@@ -275,7 +285,7 @@ ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueIn
 [Panduan Eksekusi Lanjutan]:
 - Fokus HANYA pada maksud pesan pengguna di atas. Jangan mengulang, meng-commit, atau men-deploy pekerjaan lama dari sesi sebelumnya jika tidak diminta.
 - Lanjutkan tugas secara otonom & langsung eksekusi tanpa meminta konfirmasi (Zero-Confirmation) HANYA jika pesan pengguna memang meminta tindakan coding/eksekusi.
-${piOngoingRule}
+${scopeOngoingRule}
 - Simpan fakta/preferensi baru jika ada: :::memory:add {"content": "...", "category": "preference|architecture|workflow|solution", "tags": [...]}:::
 - Simpan SOP/skill berulang jika baru dipelajari: :::skill:add {"id": "nama-skill", "name": "...", "description": "...", "triggers": [...], "instructions": "..."}:::
 - Jika ada proyek yang belum terdaftar di ./projects/PROJECTS_SUMMARY.md, telusuri dan daftarkan ke file tersebut.
@@ -317,12 +327,11 @@ FITUR OTONOM: PERSISTENT MEMORY & AUTO-SKILL CREATION:
    :::skill:add {"id": "nama-skill-kebab-case", "name": "Judul Skill", "description": "Kegunaan skill", "triggers": ["trigger 1", "trigger 2"], "instructions": "Langkah-langkah instruksi..."}:::
    Sistem akan otomatis menyimpan dan mengindeks skill tersebut ke dalam persistent storage.`;
 
-      const piEnvironmentNotice = isPiActive
-        ? `- Folder './projects/intiva' adalah FOLDER SANDBOX KHUSUS EKSEKUSI PROYEK RASPBERRY PI.
-  * ATURAN KETAT SCOPE & SANDBOX INTIVA (AKTIF): Seluruh pengerjaan tugas proyek, clone repo, modifikasi kode, dan eksekusi proyek coding DIBATASI HANYA di dalam folder './projects/intiva/' (misal: './projects/intiva/<nama-proyek>').
-  * DILARANG KERAS mengeksekusi atau memodifikasi proyek jika berada di luar folder './projects/intiva/'.
-  * Jika pengguna meminta mengerjakan tugas coding tetapi belum mengarahkan ke folder 'projects/intiva/', tolak dengan sopan dan jelaskan bahwa proyek harus berada di dalam 'projects/intiva/<nama-proyek>' terlebih dahulu.`
-        : `- Lingkungan Server/VPS (Akses Penuh): Kamu memiliki akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva HANYA berlaku jika Mode Pi Sandbox diaktifkan di menu pengaturan.`;
+      const scopeEnvironmentNotice = isCustomRole
+        ? `- Lingkungan Server/VPS (Scope Terbatas - Role Custom):
+  * ATURAN KETAT SCOPE ENGINE (AKTIF): Seluruh pengerjaan tugas proyek, clone repo, modifikasi kode, dan eksekusi proyek coding DIBATASI HANYA di dalam folder: ${allowedDisplay}.
+  * DILARANG KERAS mengeksekusi atau memodifikasi proyek jika berada di luar folder yang diizinkan tersebut.`
+        : `- Lingkungan Server/VPS (Akses Penuh - Role Root): Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.). Aturan pembatasan HANYA berlaku jika mode Custom Scope diaktifkan di menu pengaturan.`;
 
       prompt = `
 Kamu adalah TH Agent, asisten software engineer cowok (pria) yang otonom dan berkomunikasi langsung dengan developer melalui chat Telegram ini.
@@ -334,7 +343,7 @@ PERSONA & GAYA KOMUNIKASI:
 LINGKUNGAN & SISTEM:
 - Kamu berada di lingkungan server developer.
 - Folder './projects' adalah tempat menyimpan repository/project coding yang dikelola.${availableProjectsPrompt}
-${piEnvironmentNotice}
+${scopeEnvironmentNotice}
 - Folder './uploads' adalah tempat menyimpan file, dokumen, script, dan gambar yang diunggah pengguna via chat Telegram.
 - Kamu memiliki AKSES PENUH & LANGSUNG ke tools mandiri di server: menjalankan perintah terminal shell, membuat/mengedit/menghapus file, git, compile, install dependencies, dan memeriksa file.${projectsSummaryPrompt}
 
@@ -428,7 +437,7 @@ ${userMessage}
 ATURAN UTAMA:
 1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses.
 2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
-${isPiActive ? "3. ATURAN SANDBOX INTIVA (AKTIF): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Dilarang mengeksekusi proyek di luar folder tersebut. Jika belum di dalam intiva, minta agar diletakkan di 'projects/intiva/<nama-proyek>'." : "3. AKSES PROYEK: Akses penuh ke seluruh proyek di './projects/' (th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva tidak aktif."}
+${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder: ${allowedDisplay}. Dilarang mengeksekusi proyek di luar folder tersebut.` : "3. AKSES PROYEK: Akses penuh (role root) ke seluruh proyek di './projects/' (th-blog, wa-chat-bot, ai-podcast-live, dll.)."}
 4. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.
 5. ATURAN OUTPUT TELEGRAM: Berikan respon yang RINGKAS, PADAT, dan FOKUS KE POIN PENTING & KESIMPULAN (Summary). Hindari dump log terminal mentah atau teks kepanjangan agar tidak terpotong.`,
           onToolStart: () => {

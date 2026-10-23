@@ -24,6 +24,11 @@ const groupAgyModel = document.getElementById("groupAgyModel");
 const groupClaudeModel = document.getElementById("groupClaudeModel");
 const groupUniversalModel = document.getElementById("groupUniversalModel");
 const autoApproveCheckbox = document.getElementById("autoApprove");
+const scopeRoleRootRadio = document.getElementById("scopeRoleRoot");
+const scopeRoleCustomRadio = document.getElementById("scopeRoleCustom");
+const scopeRoleBadge = document.getElementById("scopeRoleBadge");
+const customFoldersContainer = document.getElementById("customFoldersContainer");
+const customFoldersInput = document.getElementById("customFoldersInput");
 const piSandboxToggle = document.getElementById("piSandboxToggle");
 const piSandboxBadge = document.getElementById("piSandboxBadge");
 const timeoutInput = document.getElementById("timeoutMs");
@@ -307,13 +312,22 @@ async function loadSettings() {
       currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === "true" ||
       currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === true;
 
-    // Populate Pi Sandbox
-    if (piSandboxToggle && data.sandboxConfig) {
-      const isPiActive = Boolean(data.sandboxConfig.piSandbox);
-      piSandboxToggle.checked = isPiActive;
-      if (piSandboxBadge) {
-        piSandboxBadge.textContent = isPiActive ? "Aktif (Hanya intiva)" : "Nonaktif (Full Access)";
-        piSandboxBadge.className = `switch-status-text ${isPiActive ? "on" : "off"}`;
+    // Populate Workspace Access Role & Scope
+    if (data.sandboxConfig) {
+      const isCustom = data.sandboxConfig.role === "custom" || Boolean(data.sandboxConfig.piSandbox);
+      if (scopeRoleCustomRadio && scopeRoleRootRadio) {
+        scopeRoleCustomRadio.checked = isCustom;
+        scopeRoleRootRadio.checked = !isCustom;
+      }
+      if (customFoldersInput) {
+        customFoldersInput.value = data.sandboxConfig.customFolders || data.sandboxConfig.restrictedDir || "";
+      }
+      if (customFoldersContainer) {
+        customFoldersContainer.style.display = isCustom ? "block" : "none";
+      }
+      if (scopeRoleBadge) {
+        scopeRoleBadge.textContent = isCustom ? "Custom (Dibatasi)" : "Root (Akses Penuh)";
+        scopeRoleBadge.style.color = isCustom ? "#f59e0b" : "#34d399";
       }
     }
 
@@ -528,6 +542,20 @@ timeoutInput.addEventListener("input", (e) => {
   timeoutFormatted.textContent = formatMs(e.target.value);
 });
 
+function updateScopeView() {
+  const isCustom = scopeRoleCustomRadio?.checked;
+  if (customFoldersContainer) {
+    customFoldersContainer.style.display = isCustom ? "block" : "none";
+  }
+  if (scopeRoleBadge) {
+    scopeRoleBadge.textContent = isCustom ? "Custom (Dibatasi)" : "Root (Akses Penuh)";
+    scopeRoleBadge.style.color = isCustom ? "#f59e0b" : "#34d399";
+  }
+}
+
+if (scopeRoleRootRadio) scopeRoleRootRadio.addEventListener("change", updateScopeView);
+if (scopeRoleCustomRadio) scopeRoleCustomRadio.addEventListener("change", updateScopeView);
+
 if (piSandboxToggle) {
   piSandboxToggle.addEventListener("change", () => {
     const isPi = piSandboxToggle.checked;
@@ -649,7 +677,14 @@ form.addEventListener("submit", async (e) => {
     ANTHROPIC_API_KEY: anthropicApiKeyInput ? anthropicApiKeyInput.value.trim() : "",
     GEMINI_API_KEY: geminiApiKeyInput ? geminiApiKeyInput.value.trim() : "",
     AGY_AUTO_APPROVE_PERMISSIONS: autoApproveCheckbox.checked ? "true" : "false",
-    piSandbox: piSandboxToggle ? piSandboxToggle.checked : false,
+    scopeRole: scopeRoleCustomRadio?.checked ? "custom" : "root",
+    customFolders: customFoldersInput ? customFoldersInput.value.trim() : "",
+    sandboxConfig: {
+      role: scopeRoleCustomRadio?.checked ? "custom" : "root",
+      customFolders: customFoldersInput ? customFoldersInput.value.trim() : "",
+      piSandbox: Boolean(scopeRoleCustomRadio?.checked),
+    },
+    piSandbox: scopeRoleCustomRadio ? scopeRoleCustomRadio.checked : false,
     TASK_TIMEOUT_MS: timeoutInput.value.trim(),
     GITHUB_TOKEN: githubTokenInput ? githubTokenInput.value.trim() : "",
     DEPLOY_COMMAND: deployCommandInput ? deployCommandInput.value.trim() : "",

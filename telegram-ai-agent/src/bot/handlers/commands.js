@@ -105,6 +105,8 @@ import {
 import {
   getSandboxConfig,
   togglePiSandbox,
+  setEngineAccessRole,
+  getAllowedFolders,
 } from "../../services/sandbox-service.js";
 
 export function registerBasicCommands(bot) {
@@ -368,37 +370,16 @@ export function registerBasicCommands(bot) {
         return;
       }
 
-      let intivaSubDirs = [];
-      try {
-        const intivaEntries = await readdir(path.join(PROJECTS_DIR, "intiva"), { withFileTypes: true });
-        intivaSubDirs = intivaEntries
-          .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-          .map((e) => `intiva/${e.name}`);
-      } catch (_) {}
+      const sandboxCfg = await getSandboxConfig();
+      const isCustomScope = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
+      const scopeNotice = isCustomScope
+        ? `🔒 *Scope Akses (Custom):* Dibatasi ke \`${sandboxCfg.customFolders || "Folder Tertentu"}\`.`
+        : `🌐 *Scope Akses (Root):* Akses penuh ke seluruh subfolder di \`./projects/\`.`;
 
-      const displayList = [];
-      for (const d of dirs) {
-        if (d === "intiva") {
-          displayList.push(`• \`./projects/intiva\` *(Folder Sandbox Khusus Pi)*`);
-          if (intivaSubDirs.length > 0) {
-            intivaSubDirs.forEach((sub) => {
-              displayList.push(`    └─ \`./projects/${sub}\``);
-            });
-          } else {
-            displayList.push(`    └─ _(Belum ada sub-proyek di dalam intiva/)_`);
-          }
-        } else {
-          displayList.push(`• \`./projects/${d}\``);
-        }
-      }
-
-      const piNotice = IS_PI
-        ? "🔒 *Aturan Raspberry Pi:* Eksekusi proyek dibatasi HANYA di dalam folder `./projects/intiva/`."
-        : "🌐 *Mode Server/VPS:* Akses penuh ke seluruh proyek di `./projects/` (aturan intiva hanya aktif di perangkat model Raspberry Pi).";
-
+      const displayList = dirs.map((d) => `• \`./projects/${d}\``);
       const list = displayList.join("\n");
       await ctx.reply(
-        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n${piNotice}\n💡 *Tip:* Gunakan \`/syncprojects\` untuk memperbarui peta proyek.`,
+        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n${scopeNotice}\n💡 *Tip:* Gunakan \`/syncprojects\` untuk memperbarui peta proyek.`,
         { parse_mode: "Markdown" }
       );
     } catch (err) {
@@ -1647,6 +1628,11 @@ export function registerBasicCommands(bot) {
         `🔑 *API Key:* ${hasUniversalKey ? "`" + maskedUniversalKey + "` ✅" : "⚠️ Belum diatur (/setkey)"}\n`;
     }
 
+    const isCustomScope = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
+    const scopeLabel = isCustomScope
+      ? `🔒 Custom (${sandboxCfg.customFolders || "Folder Tertentu"})`
+      : "🌐 Root (Full Access Semua Folder)";
+
     const port = process.env.WEB_PORT || 3030;
     const text =
       `⚙️ *Pusat Pengaturan TH Agent*\n` +
@@ -1654,7 +1640,7 @@ export function registerBasicCommands(bot) {
       `🧠 *Engine AI:* \`${engineLabel}\`\n` +
       `🤖 *Model AI:* \`${activeModel}\`\n` +
       universalInfo +
-      `🍓 *Mode Pi (Intiva):* ${sandboxCfg.piSandbox ? "🔒 Aktif (Hanya projects/intiva)" : "🌐 Nonaktif (Full Access Semua Proyek)"}\n` +
+      `🛡️ *Scope Akses:* ${scopeLabel}\n` +
       `🩺 *Sentry 24/7:* ${sentryCfg.enabled ? "🟢 Aktif (" + (sentryCfg.checkIntervalMinutes || 5) + "m)" : "🔴 Nonaktif"}\n` +
       `🛠️ *Auto-Healing:* ${sentryCfg.autoHeal ? "✅ Aktif (Auto-restart)" : "❌ Nonaktif"}\n` +
       `🎙️ *Voice Whisper:* \`${voiceCfg.provider.toUpperCase()}\` (${hasVoiceKey ? "Siap 🎙️" : "Belum diatur ⚠️"})\n` +
@@ -1672,7 +1658,7 @@ export function registerBasicCommands(bot) {
     }
 
     keyboard
-      .text(sandboxCfg.piSandbox ? "🍓 Matikan Mode Pi" : "🍓 Nyalakan Mode Pi", "setting_toggle_pisandbox")
+      .text(isCustomScope ? "🌐 Ubah ke Role Root" : "🔒 Ubah ke Role Custom", "setting_toggle_scope")
       .row()
       .text(sentryCfg.enabled ? "🩺 Matikan Sentry" : "🩺 Nyalakan Sentry", "setting_toggle_sentry")
       .text(sentryCfg.autoHeal ? "🛠️ Matikan AutoHeal" : "🛠️ Nyalakan AutoHeal", "setting_toggle_heal")
@@ -1737,36 +1723,84 @@ export function registerBasicCommands(bot) {
       .catch(() => {});
   });
 
-  // Callback: setting_toggle_pisandbox
-  bot.callbackQuery("setting_toggle_pisandbox", async (ctx) => {
+  // Callback: setting_toggle_scope & setting_toggle_pisandbox
+  bot.callbackQuery(["setting_toggle_scope", "setting_toggle_pisandbox"], async (ctx) => {
     const current = await getSandboxConfig();
-    const newState = !current.piSandbox;
-    await togglePiSandbox(newState);
+    const isCustom = current.role === "custom" || current.piSandbox;
+    const newRole = isCustom ? "root" : "custom";
+    await setEngineAccessRole(newRole, current.customFolders || "");
     await ctx.answerCallbackQuery({
-      text: newState ? "🍓 Mode Pi Aktif: Hanya projects/intiva" : "🌐 Mode Pi Nonaktif: Full Access Semua Proyek",
+      text: newRole === "root" ? "🌐 Role Root Aktif: Full Access Semua Folder" : "🔒 Role Custom Aktif: Dibatasi ke folder pilihan",
     });
     await renderSettingsMenu(ctx, ctx.callbackQuery.message?.message_id);
   });
 
-  // /pisandbox, /modepi
+  // /scope, /role, /sandbox
+  bot.command(["scope", "role", "sandbox"], async (ctx) => {
+    const raw = ctx.match?.trim() || "";
+    const parts = raw.split(/\s+/);
+    const subCmd = parts[0]?.toLowerCase();
+
+    if (!subCmd) {
+      const cfg = await getSandboxConfig();
+      const isCustom = cfg.role === "custom" || cfg.piSandbox;
+      await ctx.reply(
+        `🛡️ *Workspace Access Scope (Role Engine)*\n\n` +
+          `• Role Aktif: *${isCustom ? "🔒 CUSTOM (Dibatasi)" : "🌐 ROOT (Akses Penuh)"}*\n` +
+          `• Folder Diizinkan: \`${cfg.customFolders || "(Semua folder di ./projects)"}\`\n\n` +
+          `💡 *Cara Mengubah:*\n` +
+          `• \`/scope root\` - Berikan akses penuh ke seluruh folder\n` +
+          `• \`/scope custom [folder1,folder2]\` - Batasi akses hanya ke folder tertentu\n` +
+          `• Atau atur lewat Web Settings di \`http://localhost:${process.env.WEB_PORT || 3030}\``,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (subCmd === "root" || subCmd === "all" || subCmd === "full") {
+      await setEngineAccessRole("root");
+      await ctx.reply(
+        "🌐 *Role Berhasil Diubah ke ROOT (Akses Penuh)!*\n\n🔓 TH Agent kini bebas mengakses dan mengeksekusi seluruh proyek di dalam `./projects/`.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (subCmd === "custom" || subCmd === "restrict") {
+      const folders = parts.slice(1).join(" ").trim();
+      const cur = await getSandboxConfig();
+      const targetFolders = folders || cur.customFolders || "";
+      await setEngineAccessRole("custom", targetFolders);
+      await ctx.reply(
+        `🔒 *Role Berhasil Diubah ke CUSTOM (Akses Dibatasi)!*\n\n` +
+          `📁 Folder yang diizinkan:\n\`${targetFolders || "(Belum ditentukan / kosong)"}\`\n\n` +
+          `_TH Agent hanya diizinkan mengakses folder tersebut saat mengeksekusi instruksi koding._`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+  });
+
+  // /pisandbox, /modepi (backwards compatibility)
   bot.command(["pisandbox", "modepi"], async (ctx) => {
     const arg = ctx.match?.trim().toLowerCase();
-    let newState = null;
-    if (arg === "on" || arg === "aktif" || arg === "1") newState = true;
-    else if (arg === "off" || arg === "nonaktif" || arg === "0") newState = false;
+    let newRole = null;
+    if (arg === "on" || arg === "aktif" || arg === "1") newRole = "custom";
+    else if (arg === "off" || arg === "nonaktif" || arg === "0") newRole = "root";
     else {
       const cur = await getSandboxConfig();
-      newState = !cur.piSandbox;
+      newRole = (cur.role === "custom" || cur.piSandbox) ? "root" : "custom";
     }
-    const updated = await togglePiSandbox(newState);
-    if (updated.piSandbox) {
+    const cur = await getSandboxConfig();
+    const updated = await setEngineAccessRole(newRole, cur.customFolders || "");
+    if (updated.role === "custom") {
       await ctx.reply(
-        "🍓 *Mode Pi (Intiva Sandbox) Aktif!*\n\n🔒 Sekarang TH Agent hanya diizinkan mengeksekusi proyek di dalam folder `./projects/intiva/`.",
+        `🔒 *Mode Custom Scope Aktif!*\n\nAI dibatasi pada folder: \`${updated.customFolders || "Belum ditentukan"}\`.`,
         { parse_mode: "Markdown" }
       );
     } else {
       await ctx.reply(
-        "🌐 *Mode Pi Dinonaktifkan (Full Access)!*\n\n🔓 TH Agent sekarang bebas mengeksekusi seluruh proyek di `./projects/` (th-blog, wa-chat-bot, dll.).",
+        "🌐 *Role ROOT Aktif (Akses Penuh)!*\n\n🔓 AI bebas mengakses seluruh folder di `./projects/`.",
         { parse_mode: "Markdown" }
       );
     }

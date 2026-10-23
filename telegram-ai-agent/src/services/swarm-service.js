@@ -13,7 +13,7 @@ import { searchMemories, formatMemoriesForPrompt } from "./memory-service.js";
 import { findMatchingSkills, formatSkillsForPrompt } from "./skill-service.js";
 import { processNextQueue } from "./queue-service.js";
 import { truncate, sendSmartReply } from "./telegram-files.js";
-import { isPiSandboxActive } from "./sandbox-service.js";
+import { isPiSandboxActive, getAllowedFolders, getSandboxConfig } from "./sandbox-service.js";
 
 export const WORKER_PROFILES = [
   { name: "Alpha", emoji: "🐺", label: "Worker 1" },
@@ -205,12 +205,16 @@ export async function executeSwarm({
     const workerConvId = `${swarmId.toLowerCase()}-${worker.name.toLowerCase()}`;
 
     try {
-      // 1. Retrieval memory & skill khusus tugas worker ini
-      const [memories, skills, isPiActive] = await Promise.all([
+      // 1. Retrieval memory, skill, dan role access scope
+      const [memories, skills, sandboxCfg, allowedFolders] = await Promise.all([
         searchMemories(worker.task.instruction, { limit: 2, minScore: 0.2 }).catch(() => []),
         findMatchingSkills(worker.task.instruction, { limit: 2, minScore: 0.25 }).catch(() => []),
-        isPiSandboxActive().catch(() => false),
+        getSandboxConfig().catch(() => ({ role: "root" })),
+        getAllowedFolders().catch(() => []),
       ]);
+
+      const isCustomRole = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
+      const allowedDisplay = allowedFolders.length > 0 ? allowedFolders.map((f) => `'${f}'`).join(", ") : "(Belum ditentukan folder kustom)";
 
       const memPrompt = formatMemoriesForPrompt(memories);
       const skillPrompt = formatSkillsForPrompt(skills);
@@ -227,7 +231,7 @@ ${fileContext}${memPrompt ? `\n${memPrompt}\n` : ""}${skillPrompt ? `\n${skillPr
 PANDUAN EKSEKUSI OTONOM:
 1. Kamu fokus 100% menyelesaikan HANYA tugas spesifik kamu di atas.
 2. Gunakan tools terminal, git, dan manajemen file server secara nyata (Zero-Confirmation).
-${isPiActive ? "3. Aturan Sandbox Intiva (Aktif): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Dilarang mengeksekusi di luar folder tersebut." : "3. Akses Penuh: Kamu memiliki akses penuh ke seluruh proyek di './projects/'."}
+${isCustomRole ? `3. Aturan Scope Engine (Role Custom Aktif): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder: ${allowedDisplay}. Dilarang menyentuh folder di luar scope tersebut.` : "3. Akses Penuh: Kamu memiliki role root dengan akses penuh ke seluruh proyek di './projects/'."}
 4. Setelah selesai, berikan laporan hasil eksekusi yang jelas, ringkas, terstruktur, dan to the point.
 `.trim();
 

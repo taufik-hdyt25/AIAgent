@@ -63,6 +63,8 @@ import {
 } from "./services/sentry-service.js";
 import {
   getSandboxConfig,
+  saveSandboxConfig,
+  setEngineAccessRole,
   togglePiSandbox,
 } from "./services/sandbox-service.js";
 import {
@@ -403,7 +405,11 @@ export function createWebServer() {
           if (payload.GITHUB_TOKEN !== undefined) {
             updates.GITHUB_TOKEN = String(payload.GITHUB_TOKEN).trim();
           }
-          if (payload.piSandbox !== undefined) {
+          if (payload.sandboxConfig) {
+            await saveSandboxConfig(payload.sandboxConfig);
+          } else if (payload.scopeRole !== undefined || payload.customFolders !== undefined) {
+            await setEngineAccessRole(payload.scopeRole || "root", payload.customFolders || "");
+          } else if (payload.piSandbox !== undefined) {
             await togglePiSandbox(Boolean(payload.piSandbox));
           }
           if (payload.DEPLOY_COMMAND !== undefined) {
