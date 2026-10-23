@@ -31,7 +31,6 @@ telegram-ai-agent/uploads/*
 # Projects directory (subprojects are separate repos)
 projects/*
 !projects/.gitkeep
-!projects/PROJECTS_SUMMARY.md
 !projects/intiva/
 !projects/intiva/.gitkeep
 !projects/intiva/README.md
@@ -51,3 +50,7 @@ telegram-ai-agent/docker-compose.override.yml
 /uploads
 /claude_auth
 /gemini_auth
+
+# Local project summary registry (do not track on github)
+projects/PROJECTS_SUMMARY.md
+PROJECTS_SUMMARY.md
