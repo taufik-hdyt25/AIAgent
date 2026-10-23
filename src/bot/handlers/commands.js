@@ -93,6 +93,10 @@ import {
   removeWatchedContainer,
   getDockerContainers,
 } from "../../services/sentry-service.js";
+import {
+  getSandboxConfig,
+  togglePiSandbox,
+} from "../../services/sandbox-service.js";
 
 export function registerBasicCommands(bot) {
   // /start, /help
@@ -1613,12 +1617,15 @@ export function registerBasicCommands(bot) {
       ? Boolean(voiceCfg.groqApiKey || process.env.GROQ_API_KEY)
       : Boolean(voiceCfg.openaiApiKey || process.env.OPENAI_API_KEY);
 
+    const sandboxCfg = await getSandboxConfig();
+
     const port = process.env.WEB_PORT || 3030;
     const text =
       `⚙️ *Pusat Pengaturan TH Agent*\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `🧠 *Engine AI:* \`${engineLabel}\`\n` +
       `🤖 *Model AI:* \`${activeModel}\`\n` +
+      `🍓 *Mode Pi (Intiva):* ${sandboxCfg.piSandbox ? "🔒 Aktif (Hanya projects/intiva)" : "🌐 Nonaktif (Full Access Semua Proyek)"}\n` +
       `🩺 *Sentry 24/7:* ${sentryCfg.enabled ? "🟢 Aktif (" + (sentryCfg.checkIntervalMinutes || 5) + "m)" : "🔴 Nonaktif"}\n` +
       `🛠️ *Auto-Healing:* ${sentryCfg.autoHeal ? "✅ Aktif (Auto-restart)" : "❌ Nonaktif"}\n` +
       `🎙️ *Voice Whisper:* \`${voiceCfg.provider.toUpperCase()}\` (${hasVoiceKey ? "Siap 🎙️" : "Belum diatur ⚠️"})\n` +
@@ -1629,6 +1636,8 @@ export function registerBasicCommands(bot) {
     const keyboard = new InlineKeyboard()
       .text("🔄 Ganti Engine", "setting_engine")
       .text("🤖 Ganti Model", "setting_model")
+      .row()
+      .text(sandboxCfg.piSandbox ? "🍓 Matikan Mode Pi" : "🍓 Nyalakan Mode Pi", "setting_toggle_pisandbox")
       .row()
       .text(sentryCfg.enabled ? "🩺 Matikan Sentry" : "🩺 Nyalakan Sentry", "setting_toggle_sentry")
       .text(sentryCfg.autoHeal ? "🛠️ Matikan AutoHeal" : "🛠️ Nyalakan AutoHeal", "setting_toggle_heal")
@@ -1691,6 +1700,41 @@ export function registerBasicCommands(bot) {
         }
       )
       .catch(() => {});
+  });
+
+  // Callback: setting_toggle_pisandbox
+  bot.callbackQuery("setting_toggle_pisandbox", async (ctx) => {
+    const current = await getSandboxConfig();
+    const newState = !current.piSandbox;
+    await togglePiSandbox(newState);
+    await ctx.answerCallbackQuery({
+      text: newState ? "🍓 Mode Pi Aktif: Hanya projects/intiva" : "🌐 Mode Pi Nonaktif: Full Access Semua Proyek",
+    });
+    await renderSettingsMenu(ctx, ctx.callbackQuery.message?.message_id);
+  });
+
+  // /pisandbox, /modepi
+  bot.command(["pisandbox", "modepi"], async (ctx) => {
+    const arg = ctx.match?.trim().toLowerCase();
+    let newState = null;
+    if (arg === "on" || arg === "aktif" || arg === "1") newState = true;
+    else if (arg === "off" || arg === "nonaktif" || arg === "0") newState = false;
+    else {
+      const cur = await getSandboxConfig();
+      newState = !cur.piSandbox;
+    }
+    const updated = await togglePiSandbox(newState);
+    if (updated.piSandbox) {
+      await ctx.reply(
+        "🍓 *Mode Pi (Intiva Sandbox) Aktif!*\n\n🔒 Sekarang TH Agent hanya diizinkan mengeksekusi proyek di dalam folder `./projects/intiva/`.",
+        { parse_mode: "Markdown" }
+      );
+    } else {
+      await ctx.reply(
+        "🌐 *Mode Pi Dinonaktifkan (Full Access)!*\n\n🔓 TH Agent sekarang bebas mengeksekusi seluruh proyek di `./projects/` (th-blog, wa-chat-bot, dll.).",
+        { parse_mode: "Markdown" }
+      );
+    }
   });
 
   // Callback: setting_toggle_sentry

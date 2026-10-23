@@ -44,6 +44,10 @@ import {
   removeWatchedContainer,
   setWatchedContainers,
 } from "./services/sentry-service.js";
+import {
+  getSandboxConfig,
+  togglePiSandbox,
+} from "./services/sandbox-service.js";
 
 
 // Helper membaca dan parse file .env
@@ -170,6 +174,7 @@ export function createWebServer() {
         const agySessionActive = await stat(path.join(os.homedir(), ".gemini")).then(() => true).catch(() => false);
         const voiceConfig = await getVoiceConfig();
         const sentryConfig = await getSentryConfig();
+        const sandboxConfig = await getSandboxConfig();
         const dockerStatus = await getDockerContainers();
 
         return sendJson(200, {
@@ -196,6 +201,7 @@ export function createWebServer() {
             GROQ_API_KEY: parsed.GROQ_API_KEY || process.env.GROQ_API_KEY || voiceConfig.groqApiKey || "",
             OPENAI_API_KEY: parsed.OPENAI_API_KEY || process.env.OPENAI_API_KEY || voiceConfig.openaiApiKey || "",
           },
+          sandboxConfig,
           authStatus: {
             claudeSessionActive,
             agySessionActive,
@@ -444,6 +450,9 @@ export function createWebServer() {
           }
           if (payload.GITHUB_TOKEN !== undefined) {
             updates.GITHUB_TOKEN = String(payload.GITHUB_TOKEN).trim();
+          }
+          if (payload.piSandbox !== undefined) {
+            await togglePiSandbox(Boolean(payload.piSandbox));
           }
           if (payload.DEPLOY_COMMAND !== undefined) {
             updates.DEPLOY_COMMAND = String(payload.DEPLOY_COMMAND).trim();

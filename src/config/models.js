@@ -37,6 +37,8 @@ export const DEFAULT_UNIVERSAL_MODELS = [
   { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cepat & Ringkas)", badge: "Cepat" },
   { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (Super Cepat)", badge: "Kilat" },
   { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B (Spesialis Koding)", badge: "Open" },
+  { id: "inflection/inflection-3-pi", name: "Inflection 3 Pi (Conversational Assistant)", badge: "Pi AI" },
+  { id: "inflection/inflection-3-productivity", name: "Inflection 3 Productivity (Pi Code & Task)", badge: "Pi AI" },
 ];
 
 export const AVAILABLE_AGY_MODELS = DEFAULT_AGY_MODELS;

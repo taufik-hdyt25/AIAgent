@@ -11,6 +11,7 @@ import {
   PROJECTS_DIR,
   IS_PI,
 } from "../config/env.js";
+import { isPiSandboxActive } from "../services/sandbox-service.js";
 import {
   getUserConversationId,
   getUserAgyConversationId,
@@ -256,11 +257,12 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
     const skillPrompt = formatSkillsForPrompt(matchingSkills);
 
+    const isPiActive = await isPiSandboxActive();
     let prompt = "";
     if (isOngoingSession) {
-      const piOngoingRule = IS_PI
-        ? "- Aturan Sandbox Intiva (Khusus Model Raspberry Pi): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Jika proyek berada di luar folder tersebut, tolak dan minta agar diarahkan ke 'projects/intiva/<nama-proyek>' terlebih dahulu."
-        : "- Lingkungan Server/VPS (Non-Pi): Akses penuh ke seluruh proyek di './projects/' (seperti th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva tidak berlaku di sini.";
+      const piOngoingRule = isPiActive
+        ? "- Aturan Sandbox Intiva (Aktif): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Jika proyek berada di luar folder tersebut, tolak dan minta agar diarahkan ke 'projects/intiva/<nama-proyek>' terlebih dahulu."
+        : "- Lingkungan Server/VPS (Akses Penuh): Akses penuh ke seluruh proyek di './projects/' (seperti th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva tidak berlaku saat ini.";
 
       // Sesi aktif berjalan: hemat token drastis tanpa mengulang puluhan baris persona boilerplate
       prompt = `
@@ -308,12 +310,12 @@ FITUR OTONOM: PERSISTENT MEMORY & AUTO-SKILL CREATION:
    :::skill:add {"id": "nama-skill-kebab-case", "name": "Judul Skill", "description": "Kegunaan skill", "triggers": ["trigger 1", "trigger 2"], "instructions": "Langkah-langkah instruksi..."}:::
    Sistem akan otomatis menyimpan dan mengindeks skill tersebut ke dalam persistent storage.`;
 
-      const piEnvironmentNotice = IS_PI
+      const piEnvironmentNotice = isPiActive
         ? `- Folder './projects/intiva' adalah FOLDER SANDBOX KHUSUS EKSEKUSI PROYEK RASPBERRY PI.
-  * ATURAN KETAT SCOPE & SANDBOX INTIVA (AKTIF KHUSUS MODEL RASPBERRY PI): Seluruh pengerjaan tugas proyek, clone repo, modifikasi kode, dan eksekusi proyek coding DIBATASI HANYA di dalam folder './projects/intiva/' (misal: './projects/intiva/<nama-proyek>').
+  * ATURAN KETAT SCOPE & SANDBOX INTIVA (AKTIF): Seluruh pengerjaan tugas proyek, clone repo, modifikasi kode, dan eksekusi proyek coding DIBATASI HANYA di dalam folder './projects/intiva/' (misal: './projects/intiva/<nama-proyek>').
   * DILARANG KERAS mengeksekusi atau memodifikasi proyek jika berada di luar folder './projects/intiva/'.
   * Jika pengguna meminta mengerjakan tugas coding tetapi belum mengarahkan ke folder 'projects/intiva/', tolak dengan sopan dan jelaskan bahwa proyek harus berada di dalam 'projects/intiva/<nama-proyek>' terlebih dahulu.`
-        : `- Lingkungan Server/VPS (Akses Penuh): Kamu memiliki akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva HANYA berlaku jika bot berjalan di perangkat model Raspberry Pi.`;
+        : `- Lingkungan Server/VPS (Akses Penuh): Kamu memiliki akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva HANYA berlaku jika Mode Pi Sandbox diaktifkan di menu pengaturan.`;
 
       prompt = `
 Kamu adalah TH Agent, asisten software engineer cowok (pria) yang otonom dan berkomunikasi langsung dengan developer melalui chat Telegram ini.
@@ -390,7 +392,7 @@ ${userMessage}
 ATURAN UTAMA:
 1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses.
 2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
-${IS_PI ? "3. ATURAN SANDBOX INTIVA (AKTIF KHUSUS MODEL RASPBERRY PI): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Dilarang mengeksekusi proyek di luar folder tersebut. Jika belum di dalam intiva, minta agar diletakkan di 'projects/intiva/<nama-proyek>'." : "3. AKSES PROYEK: Akses penuh ke seluruh proyek di './projects/' (th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva tidak berlaku di VPS ini."}
+${isPiActive ? "3. ATURAN SANDBOX INTIVA (AKTIF): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Dilarang mengeksekusi proyek di luar folder tersebut. Jika belum di dalam intiva, minta agar diletakkan di 'projects/intiva/<nama-proyek>'." : "3. AKSES PROYEK: Akses penuh ke seluruh proyek di './projects/' (th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva tidak aktif."}
 4. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.`,
           onToolStart: () => {
             sendTyping();

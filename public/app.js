@@ -24,6 +24,8 @@ const groupAgyModel = document.getElementById("groupAgyModel");
 const groupClaudeModel = document.getElementById("groupClaudeModel");
 const groupUniversalModel = document.getElementById("groupUniversalModel");
 const autoApproveCheckbox = document.getElementById("autoApprove");
+const piSandboxToggle = document.getElementById("piSandboxToggle");
+const piSandboxBadge = document.getElementById("piSandboxBadge");
 const timeoutInput = document.getElementById("timeoutMs");
 const timeoutFormatted = document.getElementById("timeoutFormatted");
 
@@ -285,6 +287,16 @@ async function loadSettings() {
       currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === "true" ||
       currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === true;
 
+    // Populate Pi Sandbox
+    if (piSandboxToggle && data.sandboxConfig) {
+      const isPiActive = Boolean(data.sandboxConfig.piSandbox);
+      piSandboxToggle.checked = isPiActive;
+      if (piSandboxBadge) {
+        piSandboxBadge.textContent = isPiActive ? "Aktif (Hanya intiva)" : "Nonaktif (Full Access)";
+        piSandboxBadge.className = `switch-status-text ${isPiActive ? "on" : "off"}`;
+      }
+    }
+
     // Populate Auth Mode & API Keys
     const claudeAuth = currentSettings.CLAUDE_AUTH_TYPE || "oauth";
     for (const r of claudeAuthRadios) {
@@ -496,6 +508,16 @@ timeoutInput.addEventListener("input", (e) => {
   timeoutFormatted.textContent = formatMs(e.target.value);
 });
 
+if (piSandboxToggle) {
+  piSandboxToggle.addEventListener("change", () => {
+    const isPi = piSandboxToggle.checked;
+    if (piSandboxBadge) {
+      piSandboxBadge.textContent = isPi ? "Aktif (Hanya intiva)" : "Nonaktif (Full Access)";
+      piSandboxBadge.className = `switch-status-text ${isPi ? "on" : "off"}`;
+    }
+  });
+}
+
 // Preset buttons
 document.querySelectorAll(".btn-preset").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -572,6 +594,7 @@ form.addEventListener("submit", async (e) => {
     ANTHROPIC_API_KEY: anthropicApiKeyInput ? anthropicApiKeyInput.value.trim() : "",
     GEMINI_API_KEY: geminiApiKeyInput ? geminiApiKeyInput.value.trim() : "",
     AGY_AUTO_APPROVE_PERMISSIONS: autoApproveCheckbox.checked ? "true" : "false",
+    piSandbox: piSandboxToggle ? piSandboxToggle.checked : false,
     TASK_TIMEOUT_MS: timeoutInput.value.trim(),
     GITHUB_TOKEN: githubTokenInput ? githubTokenInput.value.trim() : "",
     DEPLOY_COMMAND: deployCommandInput ? deployCommandInput.value.trim() : "",
