@@ -32,7 +32,7 @@ import {
   killProcessTree,
   runProcess,
 } from "../services/cli-runner.js";
-import { truncate } from "../services/telegram-files.js";
+import { truncate, sendSmartReply, stripAnsi } from "../services/telegram-files.js";
 import { runUniversalAgent } from "../universal-agent.js";
 import {
   GITHUB_ISSUE_REGEX,
@@ -276,7 +276,10 @@ ${piOngoingRule}
 - Simpan fakta/preferensi baru jika ada: :::memory:add {"content": "...", "category": "preference|architecture|workflow|solution", "tags": [...]}:::
 - Simpan SOP/skill berulang jika baru dipelajari: :::skill:add {"id": "nama-skill", "name": "...", "description": "...", "triggers": [...], "instructions": "..."}:::
 - Jika ada proyek yang belum terdaftar di ./projects/PROJECTS_SUMMARY.md, telusuri dan daftarkan ke file tersebut.
-- Format respon dalam Markdown rapi untuk chat Telegram.
+- Format respon dalam Markdown rapi untuk chat Telegram:
+  * 🎯 ATURAN UTAMA: Jawaban WAJIB RINGKAS, PADAT, dan LANGSUNG KE POIN PENTING / KESIMPULAN (Summary).
+  * DILARANG KERAS men-dump log terminal panjang, seluruh baris kode, atau rincian berbelit-belit yang membuat pesan terpotong!
+  * Cukup sampaikan: (1) Apa yang dilakukan/diperbaiki, (2) Poin perubahan penting, (3) Kesimpulan status akhir.
 `.trim();
     } else {
       await ensureProjectsIndexed().catch((err) =>
@@ -349,8 +352,14 @@ ${memorySkillInstructions}
 
 PANDUAN INTERAKSI:
 1. Respon Natural & Cerdas: Mengobrollah dengan ramah, santai, dan profesional dalam bahasa Indonesia layaknya rekan programmer senior cowok.
-2. Percakapan / Pertanyaan Umum: Jika pengguna bertanya umum atau berdiskusi teknis seputar arsitektur/sistem, jawablah secara langsung, natural, dan akurat.
-3. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
+2. 🎯 ATURAN FORMAT OUTPUT TELEGRAM (RINGKAS & TO-THE-POINT):
+   - Pengguna membaca pesan di aplikasi Telegram (layar ponsel): JANGAN PERNAH men-dump log terminal panjang, potongan kode ratusan baris, atau penjelasan berbelit-belit yang menyebabkan teks terpotong!
+   - Langsung ke poin penting & kesimpulan (Summary).
+   - Gunakan bullet points ringkas untuk poin-poin yang dikerjakan / diubah.
+   - Laporkan hasil akhir: apakah berhasil, file mana saja yang disentuh, dan status deploy/git.
+   - Buat jawaban padat dan tuntas agar pas dalam layar chat Telegram tanpa ada yang terpotong.
+3. Percakapan / Pertanyaan Umum: Jika pengguna bertanya umum atau berdiskusi teknis seputar arsitektur/sistem, jawablah secara langsung, natural, dan akurat.
+4. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
 4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
 5. Format: Gunakan format Markdown yang rapi agar enak dibaca di Telegram.
 6. Alur Development: Setiap selesai mengerjakan kode, WAJIB review perubahan dan jalankan test/pengecekan dulu. Hanya jika semua lolos, lanjut build (bila ada) lalu commit & push. Jika test/build gagal, perbaiki secara mandiri sampai beres.
@@ -417,7 +426,8 @@ ATURAN UTAMA:
 1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses.
 2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
 ${isPiActive ? "3. ATURAN SANDBOX INTIVA (AKTIF): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Dilarang mengeksekusi proyek di luar folder tersebut. Jika belum di dalam intiva, minta agar diletakkan di 'projects/intiva/<nama-proyek>'." : "3. AKSES PROYEK: Akses penuh ke seluruh proyek di './projects/' (th-blog, wa-chat-bot, dll.). Aturan pembatasan intiva tidak aktif."}
-4. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.`,
+4. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.
+5. ATURAN OUTPUT TELEGRAM: Berikan respon yang RINGKAS, PADAT, dan FOKUS KE POIN PENTING & KESIMPULAN (Summary). Hindari dump log terminal mentah atau teks kepanjangan agar tidak terpotong.`,
           onToolStart: () => {
             sendTyping();
           },
@@ -428,11 +438,7 @@ ${isPiActive ? "3. ATURAN SANDBOX INTIVA (AKTIF): Seluruh pengerjaan dan eksekus
         clearInterval(typingInterval);
         clearActiveTask(taskId);
 
-        try {
-          await ctx.reply(truncate(cleanedText, 3800), { parse_mode: "Markdown" });
-        } catch {
-          await ctx.reply(truncate(cleanedText, 3800));
-        }
+        await sendSmartReply(ctx, cleanedText);
 
         // Lanjutkan antrean tugas berikutnya
         processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
@@ -635,13 +641,8 @@ ${isPiActive ? "3. ATURAN SANDBOX INTIVA (AKTIF): Seluruh pengerjaan dan eksekus
           responseText = `ℹ️ ${engineLabel} telah selesai memproses instruksi, namun tidak ada teks balasan yang dihasilkan.`;
         }
 
-        try {
-          await ctx.reply(truncate(responseText, 3800), {
-            parse_mode: "Markdown",
-          });
-        } catch {
-          await ctx.reply(truncate(responseText, 3800));
-        }
+        responseText = stripAnsi(responseText);
+        await sendSmartReply(ctx, responseText);
 
         // Lanjutkan antrean tugas berikutnya
         processNextQueue().catch((err) => console.error("[Queue] Error next:", err));

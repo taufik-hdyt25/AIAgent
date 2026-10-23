@@ -12,7 +12,7 @@ import { runAgentAutonomous, processAutonomousOutput } from "../bot/dispatcher.j
 import { searchMemories, formatMemoriesForPrompt } from "./memory-service.js";
 import { findMatchingSkills, formatSkillsForPrompt } from "./skill-service.js";
 import { processNextQueue } from "./queue-service.js";
-import { truncate } from "./telegram-files.js";
+import { truncate, sendSmartReply } from "./telegram-files.js";
 import { isPiSandboxActive } from "./sandbox-service.js";
 
 export const WORKER_PROFILES = [
@@ -308,11 +308,7 @@ Eksekusi tugas khususmu secara nyata, tuntas, dan berikan laporan ringkas.`;
       let workerMsg = `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
       workerMsg += `${w.emoji} *[Agent-${w.index + 1}: ${w.name}]* — _${w.task.title}_\n\n`;
       workerMsg += `${w.output}`;
-      try {
-        await ctx.reply(truncate(workerMsg, 3800), { parse_mode: "Markdown" });
-      } catch {
-        await ctx.reply(truncate(workerMsg, 3800));
-      }
+      await sendSmartReply(ctx, workerMsg);
     }
 
     await ctx.reply(`🎯 *Semua ${workerStates.length} sub-agent selesai bekerja secara paralel.*`);

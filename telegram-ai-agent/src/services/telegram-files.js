@@ -10,10 +10,99 @@ export function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 }
 
+/**
+ * Menghapus ANSI escape sequences (warna terminal, cursor controls, spinner codes)
+ */
+export function stripAnsi(str) {
+  if (!str || typeof str !== "string") return "";
+  return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+}
+
+/**
+ * Memotong teks secara aman tanpa merusak tampilan.
+ */
 export function truncate(text, max = 3500) {
   if (!text) return "";
-  if (text.length <= max) return text;
-  return text.slice(0, max) + "\n...[output dipotong]";
+  const clean = stripAnsi(text);
+  if (clean.length <= max) return clean;
+  return clean.slice(0, max).trim() + "\n\n_...[poin lanjutan diringkas agar rapi]_";
+}
+
+/**
+ * Membagi atau meringkas teks panjang agar SELURUH poin penting & kesimpulan
+ * tampil utuh di chat Telegram tanpa terpotong mendadak di tengah jalan.
+ *
+ * - Jika <= 3800 karakter: Kembalikan 1 pesan utuh.
+ * - Jika 3800 - 7600 karakter: Bagi secara rapi di batas paragraf (2 pesan bersambung).
+ * - Jika > 7600 karakter: Ambil poin awal (~3500 char) dan kesimpulan akhir (~3500 char)
+ *   sehingga intisari awal dan kesimpulan akhir TIDAK HILANG.
+ */
+export function smartSummaryOrSplit(text, maxPerMessage = 3800) {
+  if (!text) return [""];
+  const clean = stripAnsi(text).trim();
+  if (clean.length <= maxPerMessage) return [clean];
+
+  // Jika pesan muat dalam 2 bubble chat Telegram (<= 7600 karakter)
+  if (clean.length <= maxPerMessage * 2) {
+    let splitIdx = clean.lastIndexOf("\n\n", maxPerMessage);
+    if (splitIdx === -1 || splitIdx < maxPerMessage * 0.4) {
+      splitIdx = clean.lastIndexOf("\n", maxPerMessage);
+    }
+    if (splitIdx === -1 || splitIdx < maxPerMessage * 0.4) {
+      splitIdx = clean.lastIndexOf(" ", maxPerMessage);
+    }
+    if (splitIdx === -1) splitIdx = maxPerMessage;
+
+    const part1 = clean.slice(0, splitIdx).trim();
+    const part2 = clean.slice(splitIdx).trim();
+    return [part1, part2].filter(Boolean);
+  }
+
+  // Jika teks sangat panjang (> 7600 karakter, misal log terminal tebal)
+  // Pertahankan pembuka/poin perubahan di awal dan KESIMPULAN di bagian akhir
+  const part1Limit = Math.floor(maxPerMessage * 0.9);
+  let p1Split = clean.lastIndexOf("\n\n", part1Limit);
+  if (p1Split === -1 || p1Split < part1Limit * 0.4) {
+    p1Split = clean.lastIndexOf("\n", part1Limit);
+  }
+  if (p1Split === -1) p1Split = part1Limit;
+
+  const part1 = clean.slice(0, p1Split).trim();
+
+  const part2Limit = Math.floor(maxPerMessage * 0.9);
+  const endSlice = clean.slice(-part2Limit);
+  let p2Split = endSlice.indexOf("\n\n");
+  if (p2Split === -1 || p2Split > part2Limit * 0.4) {
+    p2Split = endSlice.indexOf("\n");
+  }
+  if (p2Split === -1) p2Split = 0;
+
+  const part2 = "💡 *[Kesimpulan & Poin Akhir]*:\n\n" + endSlice.slice(p2Split).trim();
+  return [part1, part2];
+}
+
+/**
+ * Mengirim pesan ke Telegram secara cerdas dan elegan:
+ * Mencoba parse Markdown terlebih dahulu, fallback ke plain text jika ada formatting error.
+ * Jika teks panjang, dikirim berurutan (maksimal 2 bagian) dengan delay 200ms.
+ */
+export async function sendSmartReply(ctx, text) {
+  if (!text || !text.trim()) {
+    return ctx.reply("ℹ️ Tugas telah selesai diproses.");
+  }
+
+  const parts = smartSummaryOrSplit(text, 3800);
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    try {
+      await ctx.reply(part, { parse_mode: "Markdown" });
+    } catch {
+      await ctx.reply(part);
+    }
+    if (i < parts.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
 }
 
 export async function downloadTelegramFile(
