@@ -144,6 +144,10 @@ cat << EOF > "$PLIST_PATH"
     <string>$GLOBAL_AGENT_DIR/logs/mac-error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
+        <key>PUBLIC_DIR</key>
+        <string>$GLOBAL_AGENT_DIR/public</string>
+        <key>ENV_FILE</key>
+        <string>$GLOBAL_AGENT_DIR/.env</string>
         <key>PROJECTS_DIR</key>
         <string>$PROJECTS_DIR</string>
         <key>WORKSPACE_DIR</key>

@@ -1,18 +1,39 @@
 import { readFile, writeFile } from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, "../..");
-const ENV_PATH = path.join(ROOT_DIR, ".env");
+
+export function getEnvPath() {
+  if (process.env.ENV_FILE && fs.existsSync(process.env.ENV_FILE)) {
+    return process.env.ENV_FILE;
+  }
+  const candidates = [
+    path.join(__dirname, ".env"),
+    path.join(process.cwd(), ".env"),
+    path.resolve(__dirname, "..", ".env"),
+    path.resolve(__dirname, "../..", ".env"),
+    path.resolve(process.cwd(), "telegram-ai-agent", ".env"),
+    path.join(os.homedir(), ".th-agent", ".env"),
+  ];
+  for (const file of candidates) {
+    if (fs.existsSync(file)) {
+      return file;
+    }
+  }
+  return candidates[0];
+}
 
 /**
  * Membaca dan mem-parse file .env
  */
 export async function readEnvFile() {
+  const envPath = getEnvPath();
   try {
-    const raw = await readFile(ENV_PATH, "utf8");
+    const raw = await readFile(envPath, "utf8");
     const parsed = {};
     const lines = raw.split(/\r?\n/);
     for (const line of lines) {
@@ -38,9 +59,10 @@ export async function readEnvFile() {
  * Memperbarui nilai file .env secara atomik dengan mempertahankan komentar
  */
 export async function updateEnvFile(updates) {
+  const envPath = getEnvPath();
   let content = "";
   try {
-    content = await readFile(ENV_PATH, "utf8");
+    content = await readFile(envPath, "utf8");
   } catch {
     content = "";
   }
@@ -81,7 +103,15 @@ export async function updateEnvFile(updates) {
   }
 
   const finalContent = newLines.join("\n") + "\n";
-  await writeFile(ENV_PATH, finalContent, { mode: 0o600 });
+  await writeFile(envPath, finalContent, { mode: 0o600 });
+
+  // Sinkronkan ke workspace/telegram-ai-agent/.env jika berbeda agar file project juga up-to-date
+  if (process.env.WORKSPACE_DIR) {
+    const wsEnv = path.join(process.env.WORKSPACE_DIR, "telegram-ai-agent", ".env");
+    if (wsEnv !== envPath && fs.existsSync(path.dirname(wsEnv))) {
+      await writeFile(wsEnv, finalContent, { mode: 0o600 }).catch(() => {});
+    }
+  }
 }
 
 /**

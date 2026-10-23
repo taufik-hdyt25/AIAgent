@@ -724,6 +724,10 @@ EOF
     <string>$global_dir/logs/error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
+        <key>PUBLIC_DIR</key>
+        <string>$global_dir/public</string>
+        <key>ENV_FILE</key>
+        <string>$global_dir/.env</string>
         <key>PROJECTS_DIR</key>
         <string>$workspace_dir/projects</string>
         <key>WORKSPACE_DIR</key>
@@ -763,6 +767,8 @@ RestartSec=5
 StandardOutput=append:$global_dir/logs/bot.log
 StandardError=append:$global_dir/logs/error.log
 Environment=NODE_ENV=production
+Environment=PUBLIC_DIR=$global_dir/public
+Environment=ENV_FILE=$global_dir/.env
 Environment=PROJECTS_DIR=$workspace_dir/projects
 Environment=WORKSPACE_DIR=$workspace_dir
 Environment=WEB_PORT=$web_port

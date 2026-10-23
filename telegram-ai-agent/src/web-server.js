@@ -1,4 +1,5 @@
 import http from "node:http";
+import fs from "node:fs";
 import { readFile, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
@@ -6,9 +7,25 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const ROOT_DIR = path.resolve(__dirname, "..");
-const ENV_PATH = path.join(ROOT_DIR, ".env");
-const PUBLIC_DIR = path.join(ROOT_DIR, "public");
+
+function resolvePublicDir() {
+  if (process.env.PUBLIC_DIR && fs.existsSync(process.env.PUBLIC_DIR)) {
+    return process.env.PUBLIC_DIR;
+  }
+  const candidates = [
+    path.join(__dirname, "public"),
+    path.join(process.cwd(), "public"),
+    path.resolve(__dirname, "..", "public"),
+    path.resolve(process.cwd(), "telegram-ai-agent", "public"),
+    path.join(os.homedir(), ".th-agent", "public"),
+  ];
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) {
+      return dir;
+    }
+  }
+  return candidates[0];
+}
 
 import {
   AVAILABLE_AGY_MODELS,
@@ -486,9 +503,10 @@ export function createWebServer() {
     }
 
     // Sajikan File Statis dari folder public/
+    const currentPublicDir = resolvePublicDir();
     let safePath = pathname === "/" ? "/index.html" : pathname;
     safePath = path.normalize(safePath).replace(/^(\.\.[/\\])+/, "");
-    const filePath = path.join(PUBLIC_DIR, safePath);
+    const filePath = path.join(currentPublicDir, safePath);
 
     try {
       const stats = await stat(filePath);
