@@ -249,6 +249,40 @@ export async function runUniversalAgent({
       } catch {
         errMsg = errText;
       }
+
+      // Fallback jika endpoint/server lokal tidak mendukung function calling / tools
+      if (
+        payload.tools &&
+        (errMsg.toLowerCase().includes("tool") ||
+          errMsg.toLowerCase().includes("function") ||
+          res.status === 400)
+      ) {
+        delete payload.tools;
+        delete payload.tool_choice;
+        try {
+          const retryRes = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+              "HTTP-Referer": "https://github.com/taufik-hdyt25/AIAgent",
+              "X-Title": "TH Agent Telegram",
+            },
+            body: JSON.stringify(payload),
+          });
+          if (retryRes.ok) {
+            const retryData = await retryRes.json();
+            const retryChoice = retryData.choices?.[0];
+            if (retryChoice?.message) {
+              messages.push(retryChoice.message);
+              return retryChoice.message.content || "[Pesan kosong]";
+            }
+          }
+        } catch {
+          // Lanjut lempar error asli jika retry gagal
+        }
+      }
+
       throw new Error(`Gagal memanggil API (${cleanBaseUrl}): ${errMsg}`);
     }
 

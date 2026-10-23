@@ -265,11 +265,23 @@ async function loadSettings() {
     // Populate Universal Models Select
     if (universalModelSelect) {
       universalModelSelect.innerHTML = "";
-      for (const m of (availableOptions.universalModels || [])) {
+      const models = availableOptions.universalModels || [];
+      const currentUniModel = currentSettings.UNIVERSAL_MODEL || "deepseek-chat";
+      const exists = models.some((m) => m.id === currentUniModel);
+
+      if (!exists && currentUniModel) {
+        const customOpt = document.createElement("option");
+        customOpt.value = currentUniModel;
+        customOpt.textContent = `${currentUniModel} [Custom]`;
+        customOpt.selected = true;
+        universalModelSelect.appendChild(customOpt);
+      }
+
+      for (const m of models) {
         const opt = document.createElement("option");
         opt.value = m.id;
         opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
-        opt.selected = m.id === (currentSettings.UNIVERSAL_MODEL || "deepseek-chat");
+        opt.selected = m.id === currentUniModel;
         universalModelSelect.appendChild(opt);
       }
     }

@@ -372,7 +372,7 @@ ${userMessage}
           clearInterval(typingInterval);
           clearActiveTask(taskId);
           await ctx.reply(
-            "⚠️ *API Key Universal belum diisi!*\n\nUntuk menggunakan engine Universal API (Zero-CLI), silakan buka Web Control Panel di http://localhost:3030 dan isi *UNIVERSAL_API_KEY*.",
+            "⚠️ *API Key Universal belum diisi!*\n\nUntuk menggunakan engine Universal API (Zero-CLI), gunakan perintah:\n👉 `/setkey <api_key>`\n_Atau buka Web Control Panel di http://localhost:3030 (jika server custom/lokal tidak butuh auth, isi dummy seperti `sk-local`)._",
             { parse_mode: "Markdown" }
           );
           processNextQueue().catch(() => {});

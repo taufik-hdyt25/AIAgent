@@ -1806,35 +1806,43 @@ export function registerBasicCommands(bot) {
     const parts = rawArgs.split(/\s+/);
     let targetUrl = "https://openrouter.ai/api/v1";
     let targetKey = "";
+    let targetModel = "inflection/inflection-3-pi";
 
     if (parts.length === 1) {
       targetKey = parts[0];
+    } else if (parts.length === 2) {
+      targetUrl = parts[0];
+      targetKey = parts[1];
     } else {
       targetUrl = parts[0];
       targetKey = parts[1];
+      targetModel = parts[2];
     }
 
     if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
-      targetUrl = "https://" + targetUrl;
+      targetUrl = (targetUrl.includes(":") || targetUrl.includes("localhost") || targetUrl.startsWith("192.") || targetUrl.startsWith("10.") || targetUrl.startsWith("172."))
+        ? "http://" + targetUrl
+        : "https://" + targetUrl;
     }
+    targetUrl = targetUrl.replace(/\/+$/, "");
 
     await updateEnvFile({
       UNIVERSAL_BASE_URL: targetUrl,
       UNIVERSAL_API_KEY: targetKey,
       CLI_ENGINE: "universal",
-      UNIVERSAL_MODEL: "inflection/inflection-3-pi",
+      UNIVERSAL_MODEL: targetModel,
     });
 
     await setUserEngine(userId, "universal");
-    await setUserUniversalModel(userId, "inflection/inflection-3-pi");
+    await setUserUniversalModel(userId, targetModel);
 
     await ctx.reply(
-      `🎉 *Setup Model Pi Berhasil!*\n` +
+      `🎉 *Setup Custom Pi Berhasil!*\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `✅ *Engine Aktif:* \`Universal API (Zero-CLI)\`\n` +
-      `✅ *Model Aktif:* \`Inflection 3 Pi\` (\`inflection/inflection-3-pi\`)\n` +
       `✅ *Base URL:* \`${targetUrl}\`\n` +
-      `✅ *API Key:* \`${maskSecret(targetKey)}\` (Tersimpan aman di .env)\n\n` +
+      `✅ *API Key:* \`${maskSecret(targetKey)}\` (Tersimpan aman di .env)\n` +
+      `✅ *Model Aktif:* \`${targetModel}\`\n\n` +
       `🍓 *Kombinasi Sandbox Intiva:*\n` +
       `Jika ingin membatasi coding HANYA di dalam folder \`projects/intiva/\`:\n` +
       `👉 \`/pisandbox on\`\n\n` +
@@ -1854,6 +1862,7 @@ export function registerBasicCommands(bot) {
         `Untuk mengubah, gunakan:\n` +
         `👉 \`/seturl <URL>\`\n\n` +
         `Contoh:\n` +
+        `• Custom Server: \`/seturl http://192.168.1.50:8000/v1\`\n` +
         `• OpenRouter: \`/seturl https://openrouter.ai/api/v1\`\n` +
         `• DeepSeek: \`/seturl https://api.deepseek.com/v1\`\n` +
         `• OpenAI: \`/seturl https://api.openai.com/v1\``,
@@ -1864,8 +1873,11 @@ export function registerBasicCommands(bot) {
 
     let finalUrl = url;
     if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
-      finalUrl = "https://" + finalUrl;
+      finalUrl = (finalUrl.includes(":") || finalUrl.includes("localhost") || finalUrl.startsWith("192.") || finalUrl.startsWith("10.") || finalUrl.startsWith("172."))
+        ? "http://" + finalUrl
+        : "https://" + finalUrl;
     }
+    finalUrl = finalUrl.replace(/\/+$/, "");
 
     await updateEnvFile({ UNIVERSAL_BASE_URL: finalUrl });
     await ctx.reply(`✅ *Base URL API berhasil diubah ke:*\n\`${finalUrl}\``, {
