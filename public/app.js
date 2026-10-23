@@ -394,6 +394,20 @@ async function loadSettings() {
 
     // Update Badges
     updateBadges(currentSettings, data.system);
+    updateToggleBadges();
+
+    if (badgeVoice) {
+      const hasVoice = Boolean(
+        currentSettings.GROQ_API_KEY ||
+        data.voiceConfig?.groqApiKey ||
+        currentSettings.OPENAI_API_KEY ||
+        data.voiceConfig?.openaiApiKey
+      );
+      badgeVoice.textContent = hasVoice
+        ? `${(data.voiceConfig?.provider || "groq").toUpperCase()} Siap`
+        : "Belum Ada Key";
+      badgeVoice.style.color = hasVoice ? "var(--accent-emerald)" : "var(--accent-amber)";
+    }
 
     // Otomatis test token jika sudah ada
     if (currentSettings.BOT_TOKEN && currentSettings.BOT_TOKEN.length > 25) {
@@ -661,6 +675,7 @@ if (btnAuditSentry) {
       if (data.ok && data.summary) {
         if (sentryAuditResult) sentryAuditResult.style.display = "block";
         if (sentryAuditText) sentryAuditText.textContent = data.summary;
+        if (data.health) updateContainerDots(data.health);
         showToast(
           data.health?.healthy ? "✅ Seluruh kontainer & disk prima!" : "⚠️ Peringatan kesehatan server terdeteksi",
           data.health?.healthy ? "success" : "warning",
@@ -677,6 +692,86 @@ if (btnAuditSentry) {
     }
   });
 }
+
+// Update live dots untuk status kontainer
+function updateContainerDots(healthResult) {
+  if (!healthResult) return;
+  const containerNames = [
+    "ai-podcast-live",
+    "wa-dashboard",
+    "wa-bot",
+    "th-blogs-app",
+    "th-blogs-db",
+  ];
+  const incidentTargets = new Set((healthResult.incidents || []).map((i) => i.target));
+
+  for (const name of containerNames) {
+    const dot = document.getElementById(`dot-${name}`);
+    if (dot) {
+      const isDown = incidentTargets.has(name);
+      dot.className = `container-status-dot ${isDown ? "exited" : ""}`;
+      dot.title = isDown ? "Down / Exited" : "Healthy & Running";
+    }
+  }
+}
+
+// Dynamic Switch Badges
+const sentryStatusBadge = document.getElementById("sentryStatusBadge");
+const healStatusBadge = document.getElementById("healStatusBadge");
+const badgeSentry = document.getElementById("badgeSentry");
+const badgeVoice = document.getElementById("badgeVoice");
+
+function updateToggleBadges() {
+  if (sentryStatusBadge && sentryEnabledCheckbox) {
+    const isOn = sentryEnabledCheckbox.checked;
+    sentryStatusBadge.textContent = isOn ? "Aktif" : "Nonaktif";
+    sentryStatusBadge.className = `switch-status-text ${isOn ? "on" : "off"}`;
+    if (badgeSentry) {
+      badgeSentry.textContent = isOn ? "🟢 24/7 Aktif" : "🔴 Nonaktif";
+      badgeSentry.style.color = isOn ? "var(--accent-emerald)" : "var(--accent-rose)";
+    }
+  }
+  if (healStatusBadge && sentryAutoHealCheckbox) {
+    const isOn = sentryAutoHealCheckbox.checked;
+    healStatusBadge.textContent = isOn ? "Aktif" : "Nonaktif";
+    healStatusBadge.className = `switch-status-text ${isOn ? "on" : "off"}`;
+  }
+}
+
+if (sentryEnabledCheckbox) {
+  sentryEnabledCheckbox.addEventListener("change", updateToggleBadges);
+}
+if (sentryAutoHealCheckbox) {
+  sentryAutoHealCheckbox.addEventListener("change", updateToggleBadges);
+}
+
+// Tab Switching Navigation (Segmented Control)
+const tabButtons = document.querySelectorAll(".tab-btn");
+const cards = document.querySelectorAll(".card[data-section]");
+
+function activateTab(tabId) {
+  tabButtons.forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-tab") === tabId);
+  });
+
+  cards.forEach((card) => {
+    const section = card.getAttribute("data-section");
+    if (tabId === "all" || section === tabId) {
+      card.style.display = "";
+      card.classList.add("tab-content-panel");
+    } else {
+      card.style.display = "none";
+      card.classList.remove("tab-content-panel");
+    }
+  });
+}
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const tabId = btn.getAttribute("data-tab");
+    activateTab(tabId);
+  });
+});
 
 // Initialize on page load
 loadSettings();

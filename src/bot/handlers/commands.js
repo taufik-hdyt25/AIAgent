@@ -1397,8 +1397,9 @@ export function registerBasicCommands(bot) {
       .text("🌐 Web Control Panel", "menu_web_info");
 
     await ctx.reply(
-      "🎛️ *Quick-Action Dashboard TH Agent*\n\n" +
-        "Pilih tindakan operasional di bawah ini secara instan tanpa perlu mengetik perintah manual:",
+      "🎛️ *Quick-Action Dashboard TH Agent*\n" +
+        "━━━━━━━━━━━━━━━━━━━━\n" +
+        "Pilih tindakan operasional di bawah ini secara instan tanpa perlu mengetik manual:",
       {
         parse_mode: "Markdown",
         reply_markup: keyboard,
@@ -1582,14 +1583,16 @@ export function registerBasicCommands(bot) {
 
     const port = process.env.WEB_PORT || 3030;
     const text =
-      `⚙️ *Panel Pengaturan & Konfigurasi TH Agent*\n\n` +
-      `• *Engine AI:* \`${engineLabel}\`\n` +
-      `• *Model AI:* \`${activeModel}\`\n` +
-      `• *Sentry 24/7:* ${sentryCfg.enabled ? "🟢 Aktif (Tiap " + (sentryCfg.checkIntervalMinutes || 5) + "m)" : "🔴 Nonaktif"}\n` +
-      `• *Auto-Healing:* ${sentryCfg.autoHeal ? "✅ Aktif (Auto-restart)" : "❌ Nonaktif"}\n` +
-      `• *Voice Whisper:* \`${voiceCfg.provider.toUpperCase()}\` (${hasVoiceKey ? "Siap 🎙️" : "Belum diatur ⚠️"})\n` +
-      `• *Web Dashboard:* \`http://localhost:${port}\`\n\n` +
-      `_Pilih tombol di bawah untuk mengubah pengaturan langsung:_`;
+      `⚙️ *Pusat Pengaturan TH Agent*\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `🧠 *Engine AI:* \`${engineLabel}\`\n` +
+      `🤖 *Model AI:* \`${activeModel}\`\n` +
+      `🩺 *Sentry 24/7:* ${sentryCfg.enabled ? "🟢 Aktif (" + (sentryCfg.checkIntervalMinutes || 5) + "m)" : "🔴 Nonaktif"}\n` +
+      `🛠️ *Auto-Healing:* ${sentryCfg.autoHeal ? "✅ Aktif (Auto-restart)" : "❌ Nonaktif"}\n` +
+      `🎙️ *Voice Whisper:* \`${voiceCfg.provider.toUpperCase()}\` (${hasVoiceKey ? "Siap 🎙️" : "Belum diatur ⚠️"})\n` +
+      `🌐 *Web Dashboard:* \`http://localhost:${port}\`\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `_Tekan tombol di bawah untuk toggle atau ubah konfigurasi langsung:_`;
 
     const keyboard = new InlineKeyboard()
       .text("🔄 Ganti Engine", "setting_engine")

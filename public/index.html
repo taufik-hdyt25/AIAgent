@@ -49,6 +49,14 @@
         <div class="metric-value font-mono" id="badgeModel">--</div>
       </div>
       <div class="metric-card">
+        <span class="metric-label">Server Sentry</span>
+        <div class="metric-value font-mono" id="badgeSentry" style="color: var(--accent-emerald);">🟢 24/7 Aktif</div>
+      </div>
+      <div class="metric-card">
+        <span class="metric-label">Voice Whisper</span>
+        <div class="metric-value font-mono" id="badgeVoice" style="color: #60a5fa;">Groq Ready</div>
+      </div>
+      <div class="metric-card">
         <span class="metric-label">Status Token</span>
         <div class="metric-value" id="badgeToken">--</div>
       </div>
@@ -58,12 +66,46 @@
       </div>
     </section>
 
+    <!-- Sleek Navigation Tabs (Segmented Control) -->
+    <nav class="nav-tabs-wrapper" aria-label="Settings Categories">
+      <div class="nav-tabs" id="navTabs">
+        <button type="button" class="tab-btn active" data-tab="all">
+          <span class="tab-icon">📋</span>
+          <span>Semua Pengaturan</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="bot">
+          <span class="tab-icon">🤖</span>
+          <span>Bot & Kredensial</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="ai">
+          <span class="tab-icon">🧠</span>
+          <span>Engine & Model</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="sentry">
+          <span class="tab-icon">🩺</span>
+          <span>Sentry & Kesehatan</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="voice">
+          <span class="tab-icon">🎙️</span>
+          <span>Voice Notes</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="automation">
+          <span class="tab-icon">🚀</span>
+          <span>Otomasi & Deploy</span>
+        </button>
+        <button type="button" class="tab-btn" data-tab="runtime">
+          <span class="tab-icon">⚙️</span>
+          <span>Runtime & Limit</span>
+        </button>
+      </div>
+    </nav>
+
     <!-- Main Settings Form -->
     <main class="main-content">
       <form id="settingsForm" class="settings-form" novalidate>
         
         <!-- SECTION 1: Telegram Configuration -->
-        <div class="card">
+        <div class="card" data-section="bot">
           <div class="card-header">
             <div class="card-icon blue">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -146,7 +188,7 @@
         </div>
 
         <!-- SECTION 2: Model & Engine AI -->
-        <div class="card">
+        <div class="card" data-section="ai">
           <div class="card-header">
             <div class="card-icon purple">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -235,7 +277,7 @@
         </div>
 
         <!-- SECTION: Metode Autentikasi (OAuth vs API Key) -->
-        <div class="card">
+        <div class="card" data-section="ai">
           <div class="card-header">
             <div class="card-icon amber">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -425,7 +467,7 @@
         </div>
 
         <!-- SECTION: Full Automation (GitHub Issue & Server Deployment) -->
-        <div class="card">
+        <div class="card" data-section="automation">
           <div class="card-header">
             <div class="card-icon cyan" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -551,7 +593,7 @@
         </div>
 
         <!-- SECTION 3: Keamanan & Timeout Runtime -->
-        <div class="card">
+        <div class="card" data-section="runtime">
           <div class="card-header">
             <div class="card-icon emerald">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -608,7 +650,7 @@
         </div>
 
         <!-- SECTION 4: Server Sentry & Proactive Auto-Healing -->
-        <div class="card">
+        <div class="card" data-section="sentry">
           <div class="card-header">
             <div class="card-icon emerald">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -616,8 +658,11 @@
               </svg>
             </div>
             <div>
-              <h2 class="card-title">Server Sentry & Proactive Auto-Healing</h2>
-              <p class="card-description">Pengawasan kesehatan server 24/7 dan pemulihan otomatis saat kontainer crash atau disk menipis.</p>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <h2 class="card-title" style="margin-bottom: 0;">Server Sentry & Proactive Auto-Healing</h2>
+                <span class="badge-recom">24/7 Shield</span>
+              </div>
+              <p class="card-description" style="margin-top: 0.25rem;">Pengawasan kesehatan server 24/7 dan pemulihan otomatis saat kontainer crash atau disk menipis.</p>
             </div>
           </div>
 
@@ -626,7 +671,10 @@
             <div class="form-group">
               <div class="toggle-card">
                 <div class="toggle-info">
-                  <span class="toggle-title">Server Sentry Monitoring (24/7)</span>
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="toggle-title">Server Sentry Monitoring (24/7)</span>
+                    <span class="switch-status-text on" id="sentryStatusBadge">Aktif</span>
+                  </div>
                   <span class="toggle-desc">
                     Memantau siklus hidup kontainer Docker dan metrik storage secara berkala di latar belakang.
                   </span>
@@ -642,7 +690,10 @@
             <div class="form-group">
               <div class="toggle-card">
                 <div class="toggle-info">
-                  <span class="toggle-title">Proactive Auto-Healing (Auto Restart)</span>
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="toggle-title">Proactive Auto-Healing (Auto Restart)</span>
+                    <span class="switch-status-text on" id="healStatusBadge">Aktif</span>
+                  </div>
                   <span class="toggle-desc">
                     Otomatis me-restart kontainer yang exited/mati, mengambil log error, dan membersihkan disk darurat bila kapasitas kritis.
                   </span>
@@ -675,18 +726,56 @@
             <!-- Monitored Containers List & Live Audit -->
             <div class="form-group">
               <div class="label-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                <label class="form-label" style="margin-bottom: 0;">KONTAINER YANG DIPANTAU</label>
-                <button type="button" class="btn btn-secondary btn-sm" id="btnAuditSentry" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">
-                  <span>🩺 Jalankan Audit Server Sekarang</span>
+                <label class="form-label" style="margin-bottom: 0;">STATUS KONTAINER YANG DIPANTAU (5 SERVICES)</label>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnAuditSentry">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <polyline points="1 20 1 14 7 14"></polyline>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                  </svg>
+                  <span>Audit Server Sekarang</span>
                 </button>
               </div>
-              <div class="chips-wrapper" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
-                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">ai-podcast-live</span>
-                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">wa-dashboard</span>
-                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">wa-bot</span>
-                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">th-blogs-app</span>
-                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">th-blogs-db</span>
+
+              <!-- Interactive Container Health Grid -->
+              <div class="container-health-grid" id="containerHealthGrid">
+                <div class="container-health-card">
+                  <div class="container-health-info">
+                    <span class="container-health-name font-mono">ai-podcast-live</span>
+                    <span class="container-health-desc">Port 3005 • Stream</span>
+                  </div>
+                  <span class="container-status-dot" id="dot-ai-podcast-live" title="Running"></span>
+                </div>
+                <div class="container-health-card">
+                  <div class="container-health-info">
+                    <span class="container-health-name font-mono">wa-dashboard</span>
+                    <span class="container-health-desc">Port 3333 • Dashboard</span>
+                  </div>
+                  <span class="container-status-dot" id="dot-wa-dashboard" title="Running"></span>
+                </div>
+                <div class="container-health-card">
+                  <div class="container-health-info">
+                    <span class="container-health-name font-mono">wa-bot</span>
+                    <span class="container-health-desc">Port 3001 • Bot</span>
+                  </div>
+                  <span class="container-status-dot" id="dot-wa-bot" title="Running"></span>
+                </div>
+                <div class="container-health-card">
+                  <div class="container-health-info">
+                    <span class="container-health-name font-mono">th-blogs-app</span>
+                    <span class="container-health-desc">Port 3000 • Next.js</span>
+                  </div>
+                  <span class="container-status-dot" id="dot-th-blogs-app" title="Running"></span>
+                </div>
+                <div class="container-health-card">
+                  <div class="container-health-info">
+                    <span class="container-health-name font-mono">th-blogs-db</span>
+                    <span class="container-health-desc">Port 5433 • PostgreSQL</span>
+                  </div>
+                  <span class="container-status-dot" id="dot-th-blogs-db" title="Running"></span>
+                </div>
               </div>
+
               <div id="sentryAuditResult" class="test-result" style="display: none; margin-top: 1rem;">
                 <div class="result-box font-mono" id="sentryAuditText" style="white-space: pre-wrap; font-size: 0.85rem; max-height: 250px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-subtle);"></div>
               </div>
@@ -695,7 +784,7 @@
         </div>
 
         <!-- SECTION 5: Voice Notes & Whisper Transcription -->
-        <div class="card">
+        <div class="card" data-section="voice">
           <div class="card-header">
             <div class="card-icon blue">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
