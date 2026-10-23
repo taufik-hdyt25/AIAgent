@@ -68,19 +68,34 @@ export async function getModelList(engine) {
   return custom?.agyModels || AVAILABLE_AGY_MODELS;
 }
 
-// Fetch model real-time dari provider OpenAI-compatible (misal OpenRouter / v1/models)
+// Fetch model real-time dari provider OpenAI-compatible (misal OpenRouter / custom http://ip:port/v1/models)
 export async function fetchRemoteModels(baseUrl, apiKey) {
-  if (!baseUrl || !apiKey) return [];
+  if (!baseUrl) return [];
   const cleanUrl = baseUrl.replace(/\/+$/, "");
-  const res = await fetch(`${cleanUrl}/models`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  });
-  if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
-  const data = await res.json();
-  const list = Array.isArray(data?.data) ? data.data : [];
-  return list.map((item) => ({
-    id: item.id,
-    name: item.name || item.id,
-    description: item.description || "",
-  }));
+  const headers = {};
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const res = await fetch(`${cleanUrl}/models`, {
+      headers,
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    const data = await res.json();
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
+    return list.map((item) => ({
+      id: typeof item === "string" ? item : (item.id || item.name || "unknown"),
+      name: typeof item === "object" ? (item.name || item.id || "Unknown") : String(item),
+      badge: "Server",
+      description: (typeof item === "object" && item.description) || "",
+    }));
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }

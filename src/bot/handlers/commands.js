@@ -7,6 +7,7 @@ import {
   AVAILABLE_AGY_MODELS,
   AVAILABLE_CLAUDE_MODELS,
   AVAILABLE_UNIVERSAL_MODELS,
+  fetchRemoteModels,
 } from "../../config/models.js";
 import {
   getUserEngine,
@@ -171,6 +172,7 @@ export function registerBasicCommands(bot) {
         "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
+        "• `/detectmodels` - Pindai & deteksi otomatis daftar model di server\n" +
         "• `/setpi <key>` - Setup instan model Pi via OpenRouter / OpenAI URL\n" +
         "• `/pisandbox` - Toggle mode sandbox folder projects/intiva\n" +
         "• `/compact` - Padatkan konteks obrolan agar token input hemat\n" +
@@ -1826,6 +1828,28 @@ export function registerBasicCommands(bot) {
     }
     targetUrl = targetUrl.replace(/\/+$/, "");
 
+    // Coba deteksi model secara otomatis dari endpoint /models
+    let detectedModels = [];
+    try {
+      detectedModels = await fetchRemoteModels(targetUrl, targetKey);
+    } catch {
+      detectedModels = [];
+    }
+
+    if (detectedModels.length > 0) {
+      if (parts.length < 3) {
+        // Jika user tidak menentukan model spesifik, cari yang ada 'pi' atau pakai model pertama
+        const piMatch = detectedModels.find((m) =>
+          m.id.toLowerCase().includes("pi") || m.name.toLowerCase().includes("pi")
+        );
+        if (piMatch) {
+          targetModel = piMatch.id;
+        } else {
+          targetModel = detectedModels[0].id;
+        }
+      }
+    }
+
     await updateEnvFile({
       UNIVERSAL_BASE_URL: targetUrl,
       UNIVERSAL_API_KEY: targetKey,
@@ -1836,19 +1860,91 @@ export function registerBasicCommands(bot) {
     await setUserEngine(userId, "universal");
     await setUserUniversalModel(userId, targetModel);
 
+    let detectionSection = "";
+    if (detectedModels.length > 0) {
+      const modelItems = detectedModels
+        .slice(0, 8)
+        .map((m) => `• \`${m.id}\`${m.id === targetModel ? " *(Aktif ✅)*" : ""}`)
+        .join("\n");
+      const more =
+        detectedModels.length > 8
+          ? `\n_...dan ${detectedModels.length - 8} model lainnya._`
+          : "";
+      detectionSection =
+        `\n🔍 *Auto-Detect Server (${detectedModels.length} Model Ditemukan):*\n` +
+        modelItems +
+        more +
+        `\n💡 _Ganti model kapan saja dengan \`/model\`_\n`;
+    }
+
     await ctx.reply(
       `🎉 *Setup Custom Pi Berhasil!*\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `✅ *Engine Aktif:* \`Universal API (Zero-CLI)\`\n` +
       `✅ *Base URL:* \`${targetUrl}\`\n` +
       `✅ *API Key:* \`${maskSecret(targetKey)}\` (Tersimpan aman di .env)\n` +
-      `✅ *Model Aktif:* \`${targetModel}\`\n\n` +
-      `🍓 *Kombinasi Sandbox Intiva:*\n` +
+      `✅ *Model Aktif:* \`${targetModel}\`\n` +
+      detectionSection +
+      `\n🍓 *Kombinasi Sandbox Intiva:*\n` +
       `Jika ingin membatasi coding HANYA di dalam folder \`projects/intiva/\`:\n` +
       `👉 \`/pisandbox on\`\n\n` +
       `Sekarang kamu sudah bisa langsung chat atau kirim tugas koding ke bot bro! 🚀`,
       { parse_mode: "Markdown" }
     );
+  });
+
+  // /detectmodels, /syncmodels, /cekmodels
+  bot.command(["detectmodels", "syncmodels", "cekmodels"], async (ctx) => {
+    const userId = ctx.from?.id;
+    const url = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+    const key = process.env.UNIVERSAL_API_KEY || "";
+
+    const loadingMsg = await ctx.reply(
+      `🔍 *Menghubungi server:* \`${url}/models\`...\n_Mohon tunggu sebentar..._`,
+      { parse_mode: "Markdown" }
+    );
+
+    const models = await fetchRemoteModels(url, key);
+
+    if (models.length === 0) {
+      await ctx.api
+        .editMessageText(
+          ctx.chat.id,
+          loadingMsg.message_id,
+          `⚠️ *Tidak ada model yang terdeteksi di server:*\n\`${url}/models\`\n\n` +
+          `Kemungkinan penyebab:\n` +
+          `1. Server custom belum menyediakan endpoint \`/models\` (standar OpenAI).\n` +
+          `2. Server offline atau API Key salah.\n\n` +
+          `💡 *Tenang!* Kamu tetap bisa menentukan model secara manual dengan mengetik:\n` +
+          `👉 \`/model <NAMA_MODEL>\` (contoh: \`/model pi\`)`,
+          { parse_mode: "Markdown" }
+        )
+        .catch(() => {});
+      return;
+    }
+
+    const currentModel = await getUserUniversalModel(userId);
+    const keyboard = new InlineKeyboard();
+    for (const m of models.slice(0, 15)) {
+      const isCurrent = m.id === currentModel;
+      keyboard.text(`${isCurrent ? "🔘 " : "⚪ "}${m.name || m.id}`, `set_model:${m.id}`).row();
+    }
+
+    await ctx.api
+      .editMessageText(
+        ctx.chat.id,
+        loadingMsg.message_id,
+        `🎯 *Berhasil Mendeteksi ${models.length} Model di Server!*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `🌐 *Server:* \`${url}\`\n` +
+        `👉 *Model Aktif:* \`${currentModel}\`\n\n` +
+        `Silakan tap salah satu model di bawah untuk langsung mengaktifkannya:`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: keyboard,
+        }
+      )
+      .catch(() => {});
   });
 
   // /seturl <URL>

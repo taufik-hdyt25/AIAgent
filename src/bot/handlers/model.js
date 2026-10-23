@@ -3,6 +3,7 @@ import {
   AVAILABLE_AGY_MODELS,
   AVAILABLE_CLAUDE_MODELS,
   AVAILABLE_UNIVERSAL_MODELS,
+  fetchRemoteModels,
 } from "../../config/models.js";
 import {
   getUserEngine,
@@ -21,7 +22,7 @@ export function registerModelHandlers(bot) {
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
-    const modelList = isClaude
+    let modelList = isClaude
       ? AVAILABLE_CLAUDE_MODELS
       : isUniversal
       ? AVAILABLE_UNIVERSAL_MODELS
@@ -37,6 +38,19 @@ export function registerModelHandlers(bot) {
       ? "Universal API (Zero-CLI)"
       : "Antigravity CLI";
 
+    let detectedCount = 0;
+    if (isUniversal) {
+      const uniUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+      const uniKey = process.env.UNIVERSAL_API_KEY || "";
+      const remote = await fetchRemoteModels(uniUrl, uniKey);
+      if (remote.length > 0) {
+        detectedCount = remote.length;
+        const remoteIds = new Set(remote.map((r) => r.id));
+        const filteredDefault = AVAILABLE_UNIVERSAL_MODELS.filter((d) => !remoteIds.has(d.id));
+        modelList = [...remote, ...filteredDefault];
+      }
+    }
+
     if (arg) {
       const matched = modelList.find(
         (m) => m.id.toLowerCase() === arg.toLowerCase()
@@ -45,6 +59,7 @@ export function registerModelHandlers(bot) {
 
       if (!chosenId) {
         const listStr = modelList
+          .slice(0, 15)
           .map((m) => `• \`${m.id}\` (${m.name})`)
           .join("\n");
         await ctx.reply(
@@ -71,20 +86,33 @@ export function registerModelHandlers(bot) {
     }
 
     const keyboard = new InlineKeyboard();
-    for (const model of modelList) {
+    const displayModels = modelList.slice(0, 15);
+    for (const model of displayModels) {
       const isCurrent = model.id === currentModel;
-      const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;
+      const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}${model.badge ? ` [${model.badge}]` : ""}`;
       keyboard.text(label, `set_model:${model.id}`).row();
     }
 
     const activeName =
       modelList.find((m) => m.id === currentModel)?.name || currentModel;
 
+    const detectedInfo =
+      detectedCount > 0
+        ? `\n🔍 *Auto-Detect Server:* \`${detectedCount}\` model ditemukan di \`${process.env.UNIVERSAL_BASE_URL || ""}\`\n`
+        : "";
+
+    const moreHint =
+      modelList.length > 15
+        ? `\n_Menampilkan 15 dari ${modelList.length} model. Ketik /model <id> untuk memilih model lainnya._\n`
+        : "";
+
     await ctx.reply(
       `🤖 *Pilihan Model AI*\n\n` +
         `⚙️ Engine aktif: *${engineLabel}*\n` +
-        `👉 Model aktif saat ini:\n*${activeName}* (\`${currentModel}\`)\n\n` +
-        `Silakan pilih model khusus *${engineLabel}* di bawah ini:`,
+        `👉 Model aktif saat ini:\n*${activeName}* (\`${currentModel}\`)\n` +
+        detectedInfo +
+        moreHint +
+        `\nSilakan pilih model khusus *${engineLabel}* di bawah ini:`,
       {
         reply_markup: keyboard,
         parse_mode: "Markdown",
@@ -98,7 +126,7 @@ export function registerModelHandlers(bot) {
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
-    const modelList = isClaude
+    let modelList = isClaude
       ? AVAILABLE_CLAUDE_MODELS
       : isUniversal
       ? AVAILABLE_UNIVERSAL_MODELS
@@ -108,6 +136,17 @@ export function registerModelHandlers(bot) {
       : isUniversal
       ? "Universal API (Zero-CLI)"
       : "Antigravity CLI";
+
+    if (isUniversal) {
+      const uniUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+      const uniKey = process.env.UNIVERSAL_API_KEY || "";
+      const remote = await fetchRemoteModels(uniUrl, uniKey);
+      if (remote.length > 0) {
+        const remoteIds = new Set(remote.map((r) => r.id));
+        const filteredDefault = AVAILABLE_UNIVERSAL_MODELS.filter((d) => !remoteIds.has(d.id));
+        modelList = [...remote, ...filteredDefault];
+      }
+    }
 
     const matched = modelList.find((m) => m.id === modelId);
 

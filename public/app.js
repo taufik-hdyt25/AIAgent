@@ -579,6 +579,41 @@ if (universalModelSelect) {
   });
 }
 
+const btnDetectRemoteModels = document.getElementById("btnDetectRemoteModels");
+if (btnDetectRemoteModels) {
+  btnDetectRemoteModels.addEventListener("click", async () => {
+    const baseUrl = universalBaseUrlInput ? universalBaseUrlInput.value.trim() : "";
+    const apiKey = universalApiKeyInput ? universalApiKeyInput.value.trim() : "";
+    btnDetectRemoteModels.disabled = true;
+    btnDetectRemoteModels.textContent = "⏳ Memindai...";
+    try {
+      const q = new URLSearchParams({ baseUrl, apiKey });
+      const res = await fetch(`/api/models/remote?${q.toString()}`);
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Gagal menghubungi server");
+      const models = data.models || [];
+      if (models.length === 0) {
+        showToast("Tidak ada model ditemukan di server (/models)", "warning");
+        return;
+      }
+      universalModelSelect.innerHTML = "";
+      for (const m of models) {
+        const opt = document.createElement("option");
+        opt.value = m.id;
+        opt.textContent = `${m.name} [Server]`;
+        universalModelSelect.appendChild(opt);
+      }
+      badgeModel.textContent = universalModelSelect.value;
+      showToast(`🎯 Berhasil mendeteksi ${models.length} model dari server!`, "success");
+    } catch (err) {
+      showToast(`Gagal deteksi model: ${err.message}`, "error");
+    } finally {
+      btnDetectRemoteModels.disabled = false;
+      btnDetectRemoteModels.textContent = "🔄 Deteksi dari Server";
+    }
+  });
+}
+
 btnReload.addEventListener("click", () => {
   loadSettings();
   showToast("Pengaturan disegarkan.", "info");

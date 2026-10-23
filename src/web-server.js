@@ -162,17 +162,22 @@ export function createWebServer() {
       }
     }
 
-    // API: Tarik remote models dari provider (DeepSeek / OpenAI-compatible)
+    // API: Tarik remote models dari provider (DeepSeek / OpenAI-compatible / custom server)
     if (pathname === "/api/models/remote" && req.method === "GET") {
       try {
         const { parsed } = await readEnvFile();
-        const baseUrl = parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-        const apiKey = parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY;
-        if (!apiKey) {
-          return sendError(400, "API Key belum diisi untuk mengambil model dari provider.");
-        }
+        const baseUrl =
+          urlObj.searchParams.get("baseUrl") ||
+          parsed.UNIVERSAL_BASE_URL ||
+          process.env.UNIVERSAL_BASE_URL ||
+          "https://api.deepseek.com/v1";
+        const apiKey =
+          urlObj.searchParams.get("apiKey") !== null
+            ? urlObj.searchParams.get("apiKey")
+            : (parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "");
+
         const models = await fetchRemoteModels(baseUrl, apiKey);
-        return sendJson(200, { ok: true, models });
+        return sendJson(200, { ok: true, models, count: models.length });
       } catch (err) {
         return sendError(500, err.message);
       }
