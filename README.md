@@ -74,7 +74,7 @@ Ini akan otomatis menambahkan flag `--dangerously-skip-permissions` saat memangg
 
 ## ⚡ Instalasi Cepat Sekali Jalan (One-Line Installer)
 
-Cukup salin dan jalankan satu perintah ini di terminal **macOS** atau **Linux VPS**:
+Cukup salin dan jalankan satu perintah ini di terminal **macOS**, **Linux VPS**, atau **Raspberry Pi**:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh)"
@@ -90,8 +90,8 @@ Atau jika sudah melakukan git clone:
 2. Memeriksa & memasang runtime **Node.js**, **Antigravity CLI (`agy`)**, **Claude Code CLI (`claude`)**, dan **PM2 Process Manager**.
 3. Menyiapkan folder kerja, file `.env`, dan model AI default.
 4. **Auto-Start & Background Service:** Mengonfigurasi bot agar langsung berjalan di latar belakang dan otomatis aktif kembali saat komputer/VPS menyala (*auto-start on boot*).
-5. Di Linux VPS: Memberikan opsi instalasi **Native PM2** (ringan untuk VPS 1GB) atau **Docker Container**.
-6. Mengaktifkan **Web UI Control Panel** di `http://localhost:3030` (atau IP VPS Anda).
+5. Di Linux VPS & Raspberry Pi: Memberikan opsi instalasi **Native PM2** (sangat ringan ~60MB RAM) atau **Docker Container**.
+6. Mengaktifkan **Web UI Control Panel** di `http://localhost:3030` (atau IP server Anda).
 
 ### Autentikasi / Login CLI:
 Cukup jalankan:
@@ -99,6 +99,28 @@ Cukup jalankan:
 ./auth.sh
 ```
 Sesi login Anda akan tersimpan secara persisten sehingga tidak perlu login berulang kali.
+
+---
+
+### 🍓 Menjalankan 24/7 di Raspberry Pi (Pi 3 / 4 / 5 / Zero 2W)
+
+TH Agent sangat hemat daya dan RAM (~60MB), menjadikannya sangat ideal dijalankan 24/7 di Raspberry Pi tanpa perlu membiarkan laptop/Mac terus menyala:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/taufik-hdyt25/AIAgent.git
+cd AIAgent
+
+# 2. Pasang dependensi
+npm install
+
+# 3. Aktifkan auto-start systemd 24/7 (otomatis hidup saat Raspberry Pi dinyalakan)
+bash scripts/setup-pi-autostart.sh
+```
+* **Cek status bot:** `sudo systemctl status th-agent`
+* **Cek live logs:** `tail -f logs/pi-service.log`
+* **Restart bot:** `sudo systemctl restart th-agent`
+* **Hentikan bot:** `sudo systemctl stop th-agent`
 
 ---
 

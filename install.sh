@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}======================================================${NC}"
 echo -e "${BLUE}🤖 Setup Otomatis: Telegram AI Coding Agent           ${NC}"
-echo -e "${BLUE}   Mendukung Local Mac & Linux VPS (Sekali Install)   ${NC}"
+echo -e "${BLUE}   Mendukung Mac, Linux VPS & Raspberry Pi            ${NC}"
 echo -e "${BLUE}======================================================${NC}"
 
 REPO_URL="https://github.com/taufik-hdyt25/AIAgent.git"
@@ -23,7 +23,21 @@ INSTALL_DIR="telegram-ai-agent"
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
-echo -e "${CYAN}Sistem Terdeteksi: ${OS} (${ARCH})${NC}"
+
+IS_PI=false
+if [ -f "/proc/device-tree/model" ] && grep -qi "Raspberry Pi" /proc/device-tree/model 2>/dev/null; then
+    IS_PI=true
+elif grep -qi "Raspberry Pi" /proc/cpuinfo 2>/dev/null; then
+    IS_PI=true
+elif [ -f "/etc/rpi-issue" ]; then
+    IS_PI=true
+fi
+
+if [ "$IS_PI" = true ]; then
+    echo -e "${GREEN}🍓 Sistem Terdeteksi: Raspberry Pi (Linux ${ARCH})${NC}"
+else
+    echo -e "${CYAN}Sistem Terdeteksi: ${OS} (${ARCH})${NC}"
+fi
 
 # ==============================================================================
 # Helper Fungsi
@@ -708,16 +722,24 @@ elif [ "$OS" = "Linux" ]; then
         pm2 save || true
 
         echo -e "\n${GREEN}======================================================${NC}"
-        echo -e "${GREEN}🎉 INSTALASI VPS BERHASIL SELESAI!                    ${NC}"
+        if [ "$IS_PI" = true ]; then
+            echo -e "${GREEN}🎉 INSTALASI RASPBERRY PI BERHASIL SELESAI!          ${NC}"
+        else
+            echo -e "${GREEN}🎉 INSTALASI VPS / LINUX BERHASIL SELESAI!            ${NC}"
+        fi
         echo -e "${GREEN}======================================================${NC}"
         echo -e "Status Process:"
         pm2 status
         echo ""
         WEB_PORT_VAL="$(grep -E "^WEB_PORT=" .env | cut -d '=' -f2- | tr -d ' ' || echo "3030")"
         WEB_PORT_VAL="${WEB_PORT_VAL:-3030}"
-        echo -e "${CYAN}Web UI Control Panel:${NC} ${BLUE}http://IP_VPS_ANDA:${WEB_PORT_VAL}${NC}"
+        echo -e "${CYAN}Web UI Control Panel:${NC} ${BLUE}http://IP_SERVER_ANDA:${WEB_PORT_VAL}${NC}"
         echo -e "• Cek log live:   ${BLUE}pm2 logs telegram-coding-agent${NC}"
         echo -e "• Restart bot:    ${BLUE}pm2 restart telegram-coding-agent${NC}"
         echo -e "• Hentikan bot:   ${BLUE}pm2 stop telegram-coding-agent${NC}"
+        if [ "$IS_PI" = true ]; then
+            echo -e "\n${CYAN}🍓 Ingin bot aktif otomatis 24/7 via systemd saat Raspberry Pi dinyalakan?${NC}"
+            echo -e "   Cukup jalankan: ${BLUE}bash scripts/setup-pi-autostart.sh${NC}"
+        fi
     fi
 fi
