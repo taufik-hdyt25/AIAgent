@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DATA_DIR } from "../config/env.js";
-import { getActiveTask } from "./cli-runner.js";
+import { getActiveTask, getActiveWorkers, getLockedProjects } from "./cli-runner.js";
 import { truncate } from "./telegram-files.js";
 
 // Antrean tugas AI yang menunggu giliran eksekusi (FIFO Queue)
@@ -59,6 +59,7 @@ export async function syncQueueStatusToFile() {
         position: index + 1,
         id: item.id,
         preview: item.preview,
+        targetProject: item.targetProject || null,
         username: item.username,
         enqueuedAt: item.enqueuedAt,
       })),
@@ -81,7 +82,7 @@ export function registerQueueExecutor(fn) {
 /**
  * Menambahkan instruksi baru ke dalam antrean
  */
-export function enqueueTask({ userMessage, ctx, fileInfo = null }) {
+export function enqueueTask({ userMessage, ctx, fileInfo = null, targetProject = null }) {
   // Generate ID antrean yang mudah dibaca, contoh: Q-1042
   const qId = `Q-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
   const item = {
@@ -89,6 +90,7 @@ export function enqueueTask({ userMessage, ctx, fileInfo = null }) {
     userMessage,
     ctx,
     fileInfo,
+    targetProject: targetProject || null,
     userId: ctx.from?.id,
     chatId: ctx.chat?.id,
     username: ctx.from?.username || ctx.from?.first_name || "User",
@@ -119,6 +121,7 @@ export function getQueue() {
     id: item.id,
     userMessage: item.userMessage,
     preview: item.preview,
+    targetProject: item.targetProject || null,
     userId: item.userId,
     chatId: item.chatId,
     username: item.username,
@@ -188,9 +191,6 @@ export async function processNextQueue() {
   if (isPaused) {
     return false;
   }
-  if (getActiveTask()) {
-    return false;
-  }
   if (taskQueue.length === 0) {
     return false;
   }
@@ -202,8 +202,36 @@ export async function processNextQueue() {
     return false;
   }
 
+  // Cari item antrean yang proyeknya tidak sedang sibuk
+  const lockedProjects = getLockedProjects();
+  const currentTask = getActiveTask();
+  const activeWorkers = getActiveWorkers();
+  const maxConcurrent = 3;
+
+  let candidateIndex = -1;
+  for (let i = 0; i < taskQueue.length; i++) {
+    const item = taskQueue[i];
+    if (item.targetProject) {
+      if (!lockedProjects.has(item.targetProject)) {
+        if (!currentTask || activeWorkers.length + 1 < maxConcurrent) {
+          candidateIndex = i;
+          break;
+        }
+      }
+    } else {
+      if (!currentTask && activeWorkers.length === 0) {
+        candidateIndex = i;
+        break;
+      }
+    }
+  }
+
+  if (candidateIndex === -1) {
+    return false;
+  }
+
   isProcessing = true;
-  const nextItem = taskQueue.shift();
+  const nextItem = taskQueue.splice(candidateIndex, 1)[0];
   syncQueueStatusToFile().catch(() => {});
   if (!nextItem) {
     isProcessing = false;

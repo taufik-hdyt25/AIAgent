@@ -33,6 +33,24 @@ export function getActiveWorkers() {
   return Array.from(activeWorkers.values());
 }
 
+export function getLockedProjects() {
+  const locked = new Set();
+  if (activeTask && activeTask.targetProject) {
+    locked.add(activeTask.targetProject);
+  }
+  for (const w of activeWorkers.values()) {
+    if (w.targetProject) {
+      locked.add(w.targetProject);
+    }
+  }
+  return locked;
+}
+
+export function isProjectBusy(projectName) {
+  if (!projectName) return false;
+  return getLockedProjects().has(projectName);
+}
+
 export function killAllWorkers(signal = "SIGTERM") {
   const count = activeWorkers.size;
   for (const worker of activeWorkers.values()) {

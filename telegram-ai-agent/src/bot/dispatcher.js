@@ -35,6 +35,11 @@ import {
   appendLog,
   killProcessTree,
   runProcess,
+  registerWorker,
+  unregisterWorker,
+  getActiveWorkers,
+  getLockedProjects,
+  isProjectBusy,
 } from "../services/cli-runner.js";
 import { truncate, sendSmartReply, stripAnsi } from "../services/telegram-files.js";
 import { runUniversalAgent } from "../universal-agent.js";
@@ -68,8 +73,10 @@ import {
 import {
   isMultiTaskRequest,
   executeSwarm,
+  WORKER_PROFILES,
 } from "../services/swarm-service.js";
 import { resolveDynamicUniversalModel } from "../config/models.js";
+import { detectTargetProject } from "../services/project-detector.js";
 
 /**
  * Memproses tag otonom dari output AI (Hermes-like self-learning & persistent memory):
@@ -151,9 +158,10 @@ export async function processAutonomousOutput(rawText) {
 }
 
 // Fungsi inti eksekusi instruksi AI (CLI atau Universal API)
-export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null }) {
+export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null, targetProject = null }) {
   const userId = ctx.from?.id;
   const taskId = id || randomUUID().slice(0, 8);
+  const resolvedProject = targetProject || await detectTargetProject(userMessage, fileInfo);
 
   const task = {
     id: taskId,
@@ -164,6 +172,7 @@ export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, i
     userId,
     chatId: ctx.chat?.id,
     userMessage,
+    targetProject: resolvedProject,
   };
   setActiveTask(task);
 
@@ -704,34 +713,120 @@ registerQueueExecutor(async (item) => {
 });
 
 /**
+ * Eksekusi instruksi paralel dengan Subagent Worker untuk proyek yang berbeda
+ */
+export async function executeParallelProjectTask({ userMessage, ctx, fileInfo = null, targetProject }) {
+  const userId = ctx.from?.id;
+  const activeWorkers = getActiveWorkers();
+  const usedNames = new Set(activeWorkers.map((w) => w.name));
+  const profile = WORKER_PROFILES.find((p) => !usedNames.has(p.name)) || WORKER_PROFILES[activeWorkers.length % WORKER_PROFILES.length];
+  const workerId = `sub-${targetProject.slice(0, 10)}-${randomUUID().slice(0, 4)}`;
+
+  const worker = {
+    id: workerId,
+    name: profile.name,
+    emoji: profile.emoji,
+    title: userMessage,
+    targetProject,
+    process: null,
+    startedAt: Date.now(),
+  };
+
+  registerWorker(workerId, worker);
+
+  // Beritahu pengguna di Telegram bahwa subagent paralel aktif
+  await ctx.reply(
+    `🚀 *Smart Concurrency: Subagent Worker Diaktifkan!*\n\n` +
+      `${profile.emoji} *[Subagent ${profile.name}]* ditugaskan khusus:\n` +
+      `📁 *Target Proyek:* \`projects/${targetProject}\`\n` +
+      `📌 _"${truncate(userMessage, 90)}"_\n\n` +
+      `⚡ _Tugas ini dieksekusi secara independen & paralel bersamaan di server._`,
+    { parse_mode: "Markdown" }
+  ).catch(() => {});
+
+  // Send typing indicator
+  const sendTyping = () => {
+    if (ctx.chat?.id) ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => {});
+  };
+  sendTyping();
+  const typingTimer = setInterval(sendTyping, 4000);
+
+  try {
+    const workerConvId = `${userId || "u"}-${targetProject}`;
+
+    // Prompt terarah khusus untuk proyek ini
+    const projectNotice = `
+FOKUS TARGET PROYEK (SUBAGENT WORKER ${profile.name} ${profile.emoji}):
+- Kamu adalah Subagent khusus yang ditugaskan secara spesifik untuk proyek: './projects/${targetProject}'.
+- Seluruh pemeriksaan kode, pengeditan file, testing, dan perintah terminal WAJIB difokuskan di dalam direktori './projects/${targetProject}'.
+- DILARANG menyentuh atau memodifikasi file di luar folder proyek './projects/${targetProject}'.
+`.trim();
+
+    let fileInfoPrompt = "";
+    if (fileInfo) {
+      fileInfoPrompt = `
+INFORMASI FILE DARI PENGGUNA:
+- Nama File: ${fileInfo.fileName}
+- Lokasi: ${fileInfo.absolutePath}
+${fileInfo.textContent ? `\n--- ISI DOKUMEN ---\n${truncate(fileInfo.textContent, 8000)}\n--- AKHIR ---` : ""}
+`.trim();
+    }
+
+    const [relevantMemories, matchingSkills] = await Promise.all([
+      searchMemories(userMessage, { limit: 2, minScore: 0.2 }).catch(() => []),
+      findMatchingSkills(userMessage, { limit: 2, minScore: 0.25 }).catch(() => []),
+    ]);
+    const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
+    const skillPrompt = formatSkillsForPrompt(matchingSkills);
+
+    const workerPrompt = `
+[Pesan dari Pengguna]:
+${userMessage}
+${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}
+${projectNotice}
+${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}
+[Panduan Eksekusi Subagent]:
+- Fokus langsung pada pengerjaan tugas di './projects/${targetProject}' tanpa meminta konfirmasi (Zero-Confirmation).
+- Simpan fakta baru jika ada: :::memory:add {"content": "...", "category": "preference|architecture|workflow|solution", "tags": [...]}:::
+- Format output: Ringkas, padat, laporkan hasil jadinya secara langsung.
+`.trim();
+
+    const res = await runAgentAutonomous({
+      prompt: workerPrompt,
+      convId: workerConvId,
+      userId,
+      cwd: path.join(PROJECTS_DIR, targetProject),
+      systemPrompt: `Kamu adalah Subagent [${profile.name} ${profile.emoji}] dari TH Agent, khusus menangani proyek ./projects/${targetProject}. Bersikap ramah, senior programmer, dan solutif.`,
+      onSpawn: (child) => {
+        worker.process = child;
+      },
+    });
+
+    clearInterval(typingTimer);
+    unregisterWorker(workerId);
+
+    const { cleanedText } = await processAutonomousOutput(res.output || "");
+    const header = `${profile.emoji} *[Subagent ${profile.name}] Proyek \`projects/${targetProject}\` Selesai!*\n\n`;
+    await sendSmartReply(ctx, header + cleanedText);
+
+    // Lanjutkan antrean jika ada tugas yang menunggu
+    processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
+  } catch (err) {
+    clearInterval(typingTimer);
+    unregisterWorker(workerId);
+    await ctx.reply(`❌ *[Subagent ${profile.name}]* Mengalami kendala pada proyek \`${targetProject}\`:\n${err.message}`);
+    processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
+  }
+}
+
+/**
  * Entry point utama menerima pesan/file untuk TH Agent.
- * Jika AI sedang sibuk menjalankan instruksi lain, pesan dimasukkan ke antrean.
+ * Mendukung Smart Concurrency: eksekusi paralel instan jika target proyek berbeda!
  */
 export async function sendToAgent(userMessage, ctx, fileInfo = null) {
   // Jika antrean sedang di-pause tapi user mengirim pesan baru, unpause otomatis
   if (isQueuePaused()) {
     resumeQueue();
-  }
-
-  const currentTask = getActiveTask();
-  if (currentTask) {
-    const queueItem = enqueueTask({ userMessage, ctx, fileInfo });
-    const position = getQueuePosition(queueItem.id);
-    const activePreview = currentTask.preview
-      ? `\n_“${truncate(currentTask.preview, 70)}”_`
-      : "";
-
-    await ctx.reply(
-      `📥 *Instruksi Dimasukkan ke Antrean (Urutan #${position})*\n\n` +
-        `⏳ TH Agent sedang memproses tugas sebelumnya (\`${currentTask.id}\`):${activePreview}\n\n` +
-        `Instruksi Anda telah dicatat dan akan *otomatis dijalankan* saat gilirannya tiba.\n\n` +
-        `💬 *Instruksi:*\n_"${truncate(userMessage, 120)}"_${
-          fileInfo ? `\n📎 *File:* \`${fileInfo.fileName}\`` : ""
-        }\n\n` +
-        `💡 _Ketik /queue untuk melihat daftar antrean atau /clearqueue untuk membatalkan._`,
-      { parse_mode: "Markdown" }
-    );
-    return { queued: true, id: queueItem.id, position };
   }
 
   // Jika terdeteksi multi-task request, langsung delegasikan ke Multi-Agent Swarm!
@@ -740,7 +835,55 @@ export async function sendToAgent(userMessage, ctx, fileInfo = null) {
     return;
   }
 
-  await executeTaskInternal({ userMessage, ctx, fileInfo });
+  const targetProject = await detectTargetProject(userMessage, fileInfo);
+  const currentTask = getActiveTask();
+  const activeWorkers = getActiveWorkers();
+  const totalActive = (currentTask ? 1 : 0) + activeWorkers.length;
+
+  // 1. Jika sistem sedang benar-benar idle, langsung eksekusi sebagai tugas utama
+  if (!currentTask && activeWorkers.length === 0) {
+    await executeTaskInternal({ userMessage, ctx, fileInfo, targetProject });
+    return;
+  }
+
+  // 2. SMART PROJECT-AWARE CONCURRENCY:
+  // Jika ada tugas yang sedang jalan, cek apakah target proyeknya BERBEDA & TIDAK SEDANG SIBUK
+  const lockedProjects = getLockedProjects();
+  const isTargetBusy = targetProject && lockedProjects.has(targetProject);
+  const maxConcurrent = 3; // Menjaga batas RAM & CPU VPS tetap aman
+
+  if (targetProject && !isTargetBusy && totalActive < maxConcurrent) {
+    console.log(`[Smart Concurrency] Target proyek '${targetProject}' bebas. Menjalankan subagent paralel!`);
+    await executeParallelProjectTask({ userMessage, ctx, fileInfo, targetProject });
+    return;
+  }
+
+  // 3. JIKA PROYEK SAMA ATAU GLOBAL ATAU WORKER PENUH -> MASUKKAN KE ANTREAN (FIFO)
+  const queueItem = enqueueTask({ userMessage, ctx, fileInfo, targetProject });
+  const position = getQueuePosition(queueItem.id);
+
+  let reasonNotice = "";
+  if (targetProject && isTargetBusy) {
+    reasonNotice = `🔒 *Proyek \`${targetProject}\` sedang dikerjakan oleh tugas aktif.*\nUntuk mencegah konflik git & file overwriting, tugas ini diantrekan secara aman.`;
+  } else if (totalActive >= maxConcurrent) {
+    reasonNotice = `⚡ Kapasitas subagent paralel (${maxConcurrent} tugas) sedang penuh.`;
+  } else {
+    reasonNotice = `⏳ TH Agent sedang memproses tugas sebelumnya (\`${currentTask?.id || "Worker"}\`).`;
+  }
+
+  await ctx.reply(
+    `📥 *Instruksi Dimasukkan ke Antrean (Urutan #${position})*\n\n` +
+      `${reasonNotice}\n\n` +
+      `Instruksi Anda telah dicatat dan akan *otomatis dijalankan* saat gilirannya tiba.\n\n` +
+      `💬 *Instruksi:*\n_"${truncate(userMessage, 120)}"_${
+        fileInfo ? `\n📎 *File:* \`${fileInfo.fileName}\`` : ""
+      }\n` +
+      (targetProject ? `📁 *Target Proyek:* \`projects/${targetProject}\`\n` : "") +
+      `\n💡 _Ketik /queue untuk melihat daftar antrean atau /cancel untuk membatalkan._`,
+    { parse_mode: "Markdown" }
+  );
+
+  return { queued: true, id: queueItem.id, position, targetProject };
 }
 
 // Fungsi eksekusi AI mandiri untuk background task / autonomous agent (Auto-Analyze, Auto-Fix)

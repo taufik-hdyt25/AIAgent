@@ -245,8 +245,8 @@ export function registerBasicCommands(bot) {
     const activeWorkers = getActiveWorkers();
     let swarmSection = "";
     if (activeWorkers.length > 0) {
-      swarmSection = `\n\n🐝 *Sub-Agents Aktif (${activeWorkers.length} Worker):*\n` +
-        activeWorkers.map((w) => `• *[${w.name}]* _"${truncate(w.title, 45)}"_`).join("\n");
+      swarmSection = `\n\n🐝 *Sub-Agents Paralel Aktif (${activeWorkers.length} Worker):*\n` +
+        activeWorkers.map((w) => `• *[${w.name} ${w.emoji || ""}]* _"${truncate(w.title, 45)}"_${w.targetProject ? ` (\`projects/${w.targetProject}\`)` : ""}`).join("\n");
     }
 
     await ctx.reply(
@@ -269,16 +269,27 @@ export function registerBasicCommands(bot) {
 
     let text = `📋 *Status Antrean Instruksi TH Agent*\n\n`;
 
+    const activeWorkers = getActiveWorkers();
+    if (activeWorkers.length > 0) {
+      text += `⚡ *Subagent Paralel Sedang Berjalan (${activeWorkers.length}):*\n`;
+      for (const w of activeWorkers) {
+        const wElapsed = Math.floor((Date.now() - w.startedAt) / 1000);
+        text += `• *[${w.name} ${w.emoji || ""}]* ${w.targetProject ? `(\`projects/${w.targetProject}\`) ` : ""}(${wElapsed}s)\n`;
+        text += `  💬 _“${truncate(w.title, 60)}”_\n`;
+      }
+      text += "\n";
+    }
+
     if (activeTask) {
       const elapsed = Math.floor((Date.now() - activeTask.startedAt) / 1000);
-      text += `⚡ *Tugas Sedang Berjalan:*\n`;
-      text += `• ID: \`${activeTask.id}\`\n`;
+      text += `⚡ *Tugas Utama Sedang Berjalan:*\n`;
+      text += `• ID: \`${activeTask.id}\`${activeTask.targetProject ? ` (\`projects/${activeTask.targetProject}\`)` : ""}\n`;
       text += `• Durasi: ${elapsed} detik\n`;
       if (activeTask.preview) {
         text += `• Instruksi: _“${truncate(activeTask.preview, 80)}”_\n`;
       }
       text += "\n";
-    } else {
+    } else if (activeWorkers.length === 0) {
       text += `🟢 *Status AI:* Idle (siap menerima instruksi)\n\n`;
     }
 
@@ -307,6 +318,9 @@ export function registerBasicCommands(bot) {
       const waitStr = waitSec >= 60 ? `${Math.floor(waitSec / 60)}m ${waitSec % 60}s` : `${waitSec}s`;
       text += `*#${item.position}* [\`${item.id}\`] (@${item.username}) _(${waitStr} lalu)_\n`;
       text += `  💬 _"${truncate(item.userMessage, 70)}"_\n`;
+      if (item.targetProject) {
+        text += `  📁 _Proyek: \`projects/${item.targetProject}\`_\n`;
+      }
       if (item.hasFile) {
         text += `  📎 _File: \`${item.fileName}\`_\n`;
       }

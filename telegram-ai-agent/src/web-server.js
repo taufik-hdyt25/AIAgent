@@ -40,7 +40,7 @@ import {
   saveDeployConfig,
   executeDeployment,
 } from "./services/deploy-service.js";
-import { getActiveTask } from "./services/cli-runner.js";
+import { getActiveTask, getActiveWorkers } from "./services/cli-runner.js";
 import {
   getQueue,
   getQueueLength,
@@ -206,6 +206,7 @@ export function createWebServer() {
     if (pathname === "/api/queue" && req.method === "GET") {
       try {
         const active = getActiveTask();
+        const workers = getActiveWorkers();
         return sendJson(200, {
           ok: true,
           activeTask: active
@@ -213,9 +214,18 @@ export function createWebServer() {
                 id: active.id,
                 startedAt: active.startedAt,
                 preview: active.preview || null,
+                targetProject: active.targetProject || null,
                 userId: active.userId || null,
               }
             : null,
+          activeWorkers: workers.map((w) => ({
+            id: w.id,
+            name: w.name,
+            emoji: w.emoji,
+            title: w.title,
+            targetProject: w.targetProject || null,
+            startedAt: w.startedAt,
+          })),
           queue: getQueue(),
           queueLength: getQueueLength(),
           isPaused: isQueuePaused(),
