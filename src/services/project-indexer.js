@@ -145,7 +145,35 @@ export async function syncProjectsSummary() {
 
   for (const name of projectDirs) {
     const fullPath = path.join(PROJECTS_DIR, name);
+
+    // Penanganan khusus folder intiva (Sandbox Raspberry Pi)
+    if (name === "intiva") {
+      try {
+        const intivaEntries = await readdir(fullPath, { withFileTypes: true });
+        const intivaSubDirs = intivaEntries
+          .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+          .map((e) => e.name);
+
+        if (intivaSubDirs.length > 0) {
+          for (const sub of intivaSubDirs) {
+            const subPath = path.join(fullPath, sub);
+            const info = await analyzeProject(`intiva/${sub}`, subPath);
+            info.name = `intiva/${sub}`;
+            info.path = `projects/intiva/${sub}`;
+            projectSummaries.push(info);
+            const localInfoMd = formatSingleProjectMarkdown(info);
+            await writeFile(path.join(subPath, "PROJECT_INFO.md"), localInfoMd, "utf8").catch(() => {});
+          }
+          continue;
+        }
+      } catch (_) {}
+    }
+
     const info = await analyzeProject(name, fullPath);
+    if (name === "intiva") {
+      info.framework = "Intiva Sandbox (Raspberry Pi)";
+      info.stack = ["Ruang Lingkup Eksekusi Proyek Raspberry Pi (projects/intiva)"];
+    }
     projectSummaries.push(info);
 
     // Buat juga PROJECT_INFO.md lokal di masing-masing folder project

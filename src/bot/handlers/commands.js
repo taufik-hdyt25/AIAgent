@@ -346,9 +346,34 @@ export function registerBasicCommands(bot) {
         await ctx.reply("📁 Belum ada project di folder `./projects`.");
         return;
       }
-      const list = dirs.map((d, i) => `${i + 1}. \`./projects/${d}\``).join("\n");
+
+      let intivaSubDirs = [];
+      try {
+        const intivaEntries = await readdir(path.join(PROJECTS_DIR, "intiva"), { withFileTypes: true });
+        intivaSubDirs = intivaEntries
+          .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+          .map((e) => `intiva/${e.name}`);
+      } catch (_) {}
+
+      const displayList = [];
+      for (const d of dirs) {
+        if (d === "intiva") {
+          displayList.push(`• \`./projects/intiva\` *(Folder Sandbox Khusus Pi)*`);
+          if (intivaSubDirs.length > 0) {
+            intivaSubDirs.forEach((sub) => {
+              displayList.push(`    └─ \`./projects/${sub}\``);
+            });
+          } else {
+            displayList.push(`    └─ _(Belum ada sub-proyek di dalam intiva/)_`);
+          }
+        } else {
+          displayList.push(`• \`./projects/${d}\``);
+        }
+      }
+
+      const list = displayList.join("\n");
       await ctx.reply(
-        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n💡 *Tip:* Semua project sudah terindeks otomatis di \`./projects/PROJECTS_SUMMARY.md\` agar hemat token AI. Ketik \`/syncprojects\` jika ingin re-index ulang.`,
+        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n🔒 *Aturan Raspberry Pi:* Eksekusi proyek dibatasi HANYA di dalam folder \`./projects/intiva/\`.\n💡 *Tip:* Gunakan \`/syncprojects\` untuk memperbarui peta proyek.`,
         { parse_mode: "Markdown" }
       );
     } catch (err) {

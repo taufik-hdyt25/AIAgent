@@ -10,6 +10,9 @@ gemini_auth/
 projects/*
 !projects/.gitkeep
 !projects/PROJECTS_SUMMARY.md
+!projects/intiva/
+!projects/intiva/.gitkeep
+!projects/intiva/README.md
 uploads/*
 !uploads/.gitkeep
 .DS_Store

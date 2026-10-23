@@ -225,7 +225,8 @@ ${fileContext}${memPrompt ? `\n${memPrompt}\n` : ""}${skillPrompt ? `\n${skillPr
 PANDUAN EKSEKUSI OTONOM:
 1. Kamu fokus 100% menyelesaikan HANYA tugas spesifik kamu di atas.
 2. Gunakan tools terminal, git, dan manajemen file server secara nyata (Zero-Confirmation).
-3. Setelah selesai, berikan laporan hasil eksekusi yang jelas, ringkas, terstruktur, dan to the point.
+3. Aturan Sandbox Intiva: Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Dilarang mengeksekusi di luar folder tersebut.
+4. Setelah selesai, berikan laporan hasil eksekusi yang jelas, ringkas, terstruktur, dan to the point.
 `.trim();
 
       const systemPrompt = `Kamu adalah Sub-Agent ${worker.name} (${worker.emoji}) yang bekerja di bawah TH Agent (Lead Orchestrator).

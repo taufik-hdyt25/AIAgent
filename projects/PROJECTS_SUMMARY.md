@@ -1,45 +1,31 @@
-# 📁 Projects Summary & Directory Index
+# Projects Summary & Architecture Registry
 
-Dokumen ini merangkum daftar seluruh proyek dan layanan yang dikelola di server.
-
----
-
-## 🚀 Proyek Terdaftar
-
-### 1. `th-blog`
-- **Lokasi:** `./projects/th-blog`
-- **Stack:** Next.js (App Router), TypeScript, Tailwind CSS, Prisma / PostgreSQL
-- **Port:**
-  - Web App: `3000` (Container: `th-blogs-app`)
-  - Database: `5433` (Container: `th-blogs-db` Postgres)
-- **Deskripsi:** Website personal blog & showcase portofolio terintegrasi database PostgreSQL.
+> ⚡ *Dokumen ini otomatis diperbarui oleh TH Agent Project Indexer.*
+> Berfungsi sebagai peta arsitektur instan agar AI tidak perlu membaca proyek dari nol.
 
 ---
 
-### 2. `wa-chat-bot`
-- **Lokasi:** `./projects/wa-chat-bot`
-- **Struktur:**
-  - `whatsapp-bot/`: Service Bot WhatsApp (Baileys / Node.js)
-  - `chat-dashboard/`: Web Dashboard Next.js untuk monitoring & blast
-- **Port:**
-  - Bot: `3001` (Container: `wa-bot`)
-  - Dashboard: `3333` (Container: `wa-dashboard`)
-- **Deskripsi:** Bot WhatsApp otomatis untuk auto-reply customer & broadcast pesan dengan manajemen dashboard.
+## 1. intiva
+* **Direktori:** `projects/intiva`
+* **Stack:** Ruang Lingkup Eksekusi Proyek Raspberry Pi (projects/intiva)
 
 ---
 
-### 3. `ai-podcast-live`
-- **Lokasi Host:** `/home/ai-podcast-live` (Docker container)
-- **Stack:** Node.js, AI Voice Generation, Live Stream
-- **Port:** `3005` (Container: `ai-podcast-live`)
-- **Deskripsi:** Layanan AI otomatis untuk pembuatan audio podcast dinamis dan live broadcast stream.
+## 2. th-blog
+* **Direktori:** `projects/th-blog`
+* **Stack:** Next.js 16 (App Router), React, TypeScript, Tailwind CSS, Prisma ORM
+* **Docker Containers:** `th-blogs-app`, `th-blogs-db` (Port: `3000:3000`, `5433:5432`, `3000`)
+* **Git:** Branch `th-blog` (https://github.com/taufik-hdyt25/th-blog.git)
+* **Perintah Penting:** `npm run dev`, `npm run build`, `npm run start`
 
 ---
 
-### 4. `AIAgent` (TH Agent)
-- **Lokasi:** `/app` (Host: `/home/AIAgent`)
-- **Stack:** Node.js v26, grammY Telegram Bot, Antigravity CLI (`agy`), Claude Code CLI (`claude`), Vanilla JS/CSS Dashboard
-- **Port:**
-  - Control Panel: `3030`
-  - Internal Web: `3002`
-- **Deskripsi:** Lead Autonomous AI Coding Assistant dengan kemampuan Multi-Agent Swarm, FIFO Task Queue, dan manajemen server otomatis via Telegram.
+## 3. wa-chat-bot
+* **Direktori:** `projects/wa-chat-bot`
+* **Stack:** Node.js / Web Application
+* **Docker Containers:** `wa-bot`, `wa-dashboard` (Port: `3001:3001`, `3333:3000`)
+* **Git:** Branch `main` (https://github.com/taufik-hdyt25/wa-chat-bot.git)
+
+---
+
+*Terakhir diperbarui: 2026-10-23T11:22:07.632Z*
