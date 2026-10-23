@@ -16,6 +16,21 @@
 
 ---
 
+## ⚡ Instalasi Cepat Sekali Jalan (Universal One-Line Installer)
+
+Cukup salin dan jalankan satu baris perintah ini di terminal **macOS**, **Linux VPS / Server**, atau **Raspberry Pi**:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh | bash
+```
+
+Installer otomatis mendeteksi sistem operasi dan lingkungan kerja Anda:
+- 🍏 **Di macOS (Local):** Otomatis membuat folder kerja `th-agent/`, mem-bundle bot ke direktori terisolasi `~/.th-agent/`, mendaftarkan background service macOS LaunchAgent 24/7 (anti-sleep `caffeinate -ims`), dan menjaga workspace `th-agent/projects/` **100% bersih tanpa `node_modules`**.
+- 🐧 **Di Linux VPS / Server:** Mengonfigurasi container Docker (`docker compose up -d`) atau Native PM2 secara otomatis dengan port dan resource terisolasi.
+- 🍓 **Di Raspberry Pi:** Menyiapkan konfigurasi ringan yang dioptimalkan untuk resource ARM.
+
+---
+
 ## 🏗️ Struktur Arsitektur Workspace
 
 Workspace **TH Agent** disusun secara bersih dan modular agar alur kerja (*flow*) koding, isolasi proyek, dan pengoperasian bot mudah dibaca:
@@ -38,9 +53,11 @@ th-agent/
 
 ---
 
-## 🚀 Cara Menjalankan
+## 🛠️ Cara Menjalankan Manual (Alternatif)
 
-### 1. 🌐 Di VPS Server (Docker Mode - Direkomendasikan)
+Jika Anda sudah meng-clone repositori ini secara manual (`git clone https://github.com/taufik-hdyt25/AIAgent.git th-agent`):
+
+### 1. 🌐 Di Linux VPS / Server (Docker Mode - Direkomendasikan)
 Dari root workspace `th-agent/`:
 ```bash
 docker compose up -d
@@ -51,18 +68,14 @@ cd telegram-ai-agent
 docker compose up -d
 ```
 
-### 2. 💻 Di Local Mac (Clean Isolated Workspace - Zero node_modules!)
-Di Mac, jalankan single-command setup berikut dari root:
+### 2. 💻 Di Local Mac (Manual Isolated Setup)
+Di Mac, jalankan skrip setup berikut dari root:
 ```bash
 ./setup-mac.sh
 ```
-Script ini otomatis:
-1. Mem-bundle engine bot menjadi single-file bundle ke `~/.th-agent/`.
-2. Mendaftarkan bot ke **macOS LaunchAgent** dengan `caffeinate -ims` (layar boleh mati/lock, bot tetap aktif 24/7).
-3. Mengarahkan workspace koding ke `th-agent/projects/` sehingga Anda bisa membuka VS Code / Cursor murni hanya folder proyek tanpa tumpukan `node_modules` bot.
-4. Untuk uninstall service kapan saja: `./uninstall-mac.sh`.
+*(Untuk menghapus background service di Mac kapan saja: `./uninstall-mac.sh`)*
 
-### 3. 🛠️ Mode Native Node.js (Dev / Debug)
+### 3. ⚙️ Mode Native Node.js (Dev / Debug)
 ```bash
 cd telegram-ai-agent
 npm install
