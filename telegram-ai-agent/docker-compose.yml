@@ -1,0 +1,42 @@
+services:
+  telegram-coding-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-coding-agent
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-3030}:${WEB_PORT:-3030}"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - WEB_PORT=${WEB_PORT:-3030}
+      - AGY_BIN=/home/node/.local/bin/agy
+      - CLAUDE_BIN=/usr/local/bin/claude
+      - CLI_ENGINE=${CLI_ENGINE:-agy}
+      - PROJECTS_DIR=/home/node/projects
+      - PROJECTS_FILE=/app/data/projects.json
+      - TASK_TIMEOUT_MS=${TASK_TIMEOUT_MS:-900000}
+      - MAX_TASK_OUTPUT=${MAX_TASK_OUTPUT:-12000}
+      - AGY_AUTO_APPROVE_PERMISSIONS=${AGY_AUTO_APPROVE_PERMISSIONS:-true}
+    volumes:
+      # Data konfigurasi dan status project
+      - ./data:/app/data
+      # Log aktivitas task
+      - ./logs:/app/logs
+      # Folder kerja repositori di host (hasil coding AI langsung tersimpan di host)
+      - ../projects:/home/node/projects
+      # File dan gambar yang diunggah dari chat Telegram
+      - ./uploads:/app/uploads
+      # Persistensi sesi login & setting Antigravity CLI
+      - ./gemini_auth:/home/node/.gemini
+      # Persistensi sesi login & config Claude Code CLI
+      - ./claude_auth:/home/node/.claude
+      # Akses Docker daemon host (DooD)
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Source code mount
+      - ./src:/app/src
+
+    security_opt:
+      - no-new-privileges:true

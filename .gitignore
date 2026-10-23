@@ -1,19 +1,53 @@
+# Node & dependencies
 node_modules/
+telegram-ai-agent/node_modules/
+
+# Environment files
 .env
-logs/*.log
-logs/*.json
+telegram-ai-agent/.env
+
+# Logs
+logs/
+telegram-ai-agent/logs/
+
+# Runtime data & auth
 data/*
 !data/projects.json
 !data/.gitkeep
 claude_auth/
 gemini_auth/
+telegram-ai-agent/claude_auth/
+telegram-ai-agent/gemini_auth/
+telegram-ai-agent/data/*
+!telegram-ai-agent/data/projects.json
+!telegram-ai-agent/data/.gitkeep
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+telegram-ai-agent/uploads/*
+!telegram-ai-agent/uploads/.gitkeep
+
+# Projects directory (subprojects are separate repos)
 projects/*
 !projects/.gitkeep
 !projects/PROJECTS_SUMMARY.md
 !projects/intiva/
 !projects/intiva/.gitkeep
 !projects/intiva/README.md
-uploads/*
-!uploads/.gitkeep
+!projects/intiva/PROJECT_INFO.md
+
+# OS & Docker overrides
 .DS_Store
 docker-compose.override.yml
+telegram-ai-agent/docker-compose.override.yml
+
+# Backward compatibility root symlinks
+/src
+/public
+/scripts
+/data
+/logs
+/uploads
+/claude_auth
+/gemini_auth

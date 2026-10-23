@@ -6,7 +6,13 @@ import { mkdir } from "node:fs/promises";
 export const ROOT_DIR = process.cwd();
 export const DATA_DIR = path.resolve(ROOT_DIR, "data");
 export const LOG_DIR = path.resolve(ROOT_DIR, "logs");
-export const PROJECTS_DIR = path.resolve(ROOT_DIR, "projects");
+export const PROJECTS_DIR = process.env.PROJECTS_DIR
+  ? path.resolve(process.env.PROJECTS_DIR)
+  : (fs.existsSync(path.resolve(ROOT_DIR, "../projects"))
+      ? path.resolve(ROOT_DIR, "../projects")
+      : (fs.existsSync("/home/node/projects")
+          ? "/home/node/projects"
+          : path.resolve(ROOT_DIR, "projects")));
 export const UPLOADS_DIR = path.resolve(ROOT_DIR, process.env.UPLOADS_DIR || "uploads");
 export const CONTEXT_FILE = path.join(DATA_DIR, "context.json");
 

@@ -6,8 +6,7 @@ import { randomUUID } from "node:crypto";
 
 const execAsync = promisify(exec);
 
-const DATA_DIR = path.resolve("./data");
-const PROJECTS_DIR = path.resolve("./projects");
+import { DATA_DIR, PROJECTS_DIR } from "./config/env.js";
 const CONFIG_FILE = path.join(DATA_DIR, "github_poller.json");
 
 let pollerInterval = null;

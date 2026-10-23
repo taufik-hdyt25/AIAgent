@@ -5,9 +5,7 @@ import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
-const ROOT_DIR = process.cwd();
-const PROJECTS_DIR = path.resolve(ROOT_DIR, "projects");
-const UPLOADS_DIR = path.resolve(ROOT_DIR, process.env.UPLOADS_DIR || "uploads");
+import { ROOT_DIR, PROJECTS_DIR, UPLOADS_DIR } from "./config/env.js";
 
 // Definisi Tools untuk OpenAI-compatible Tool Calling
 export const AGENT_TOOLS = [
