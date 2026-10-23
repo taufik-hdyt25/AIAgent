@@ -27,6 +27,7 @@ import {
   getUserUniversalModel,
   isClaudeSessionStarted,
   markClaudeSessionStarted,
+  getUserModel,
 } from "../services/context-store.js";
 import {
   getActiveTask,
@@ -465,6 +466,8 @@ ${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan e
     const executeCli = async (sessionFlagOverride = null) => {
       let binToRun = AGY_BIN;
       let cliArgs = [];
+      // Simpan model saat task dimulai untuk guard race condition saat task selesai
+      let taskStartModel = null;
 
       if (isClaude) {
         binToRun = CLAUDE_BIN;
@@ -487,6 +490,7 @@ ${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan e
       } else {
         binToRun = AGY_BIN;
         const userModel = await getUserAgyModel(userId);
+        taskStartModel = userModel; // Catat model saat task mulai
         const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
         cliArgs = [
           "--model",
@@ -586,7 +590,14 @@ ${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan e
 
           if (parsed) {
             if (parsed.conversation_id && userId) {
-              await setUserAgyConversationId(userId, parsed.conversation_id);
+              // Guard: hanya simpan conversation ID jika model belum berubah
+              // Mencegah race condition di mana user switch model saat task masih jalan
+              const currentModel = await getUserAgyModel(userId);
+              if (!taskStartModel || currentModel === taskStartModel) {
+                await setUserAgyConversationId(userId, parsed.conversation_id);
+              } else {
+                console.log(`[Dispatcher] Model berubah saat task berjalan (${taskStartModel} → ${currentModel}). Conversation ID lama TIDAK disimpan untuk mencegah rate-limit leak.`);
+              }
             }
             if (parsed.status === "SUCCESS") {
               responseText = parsed.response || "";

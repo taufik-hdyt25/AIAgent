@@ -106,12 +106,23 @@ export async function setUserAgyModel(userId, modelId) {
   if (!context.models) context.models = {};
   context.models[String(userId)] = modelId;
 
-  // Jika berganti model, reset session conversation ID agar model baru
-  // tidak mewarisi riwayat token besar dari model lama yang memicu Rate Limit / Kuota
+  // Jika berganti model, reset SEMUA session agar model baru
+  // tidak mewarisi riwayat token / rate-limit dari model lama
   if (prevModel && prevModel !== modelId) {
+    // Reset AGY conversation ID
     if (context.agyConversations) {
       delete context.agyConversations[String(userId)];
     }
+    // Reset general conversation UUID untuk fresh session penuh
+    if (context.conversations) {
+      context.conversations[String(userId)] = randomUUID();
+    }
+    // Reset Claude session flag jika ada (cross-engine sync)
+    if (context.claudeSessions) {
+      const oldConvId = context.conversations?.[String(userId)];
+      if (oldConvId) delete context.claudeSessions[oldConvId];
+    }
+    console.log(`[Context] Model switch: ${prevModel} → ${modelId} for user ${userId}. All sessions reset.`);
   }
 
   await saveContext(context);
@@ -131,9 +142,19 @@ export async function setUserClaudeModel(userId, modelId) {
   context.claudeModels[String(userId)] = modelId;
 
   if (prevModel && prevModel !== modelId) {
+    // Reset conversation UUID untuk fresh session
+    const newConvId = randomUUID();
     if (context.conversations) {
-      context.conversations[String(userId)] = randomUUID();
+      const oldConvId = context.conversations[String(userId)];
+      context.conversations[String(userId)] = newConvId;
+      // Reset Claude session flag
+      if (oldConvId && context.claudeSessions) {
+        delete context.claudeSessions[oldConvId];
+      }
     }
+    // Reset session history di memory
+    resetSessionHistory(newConvId);
+    console.log(`[Context] Claude model switch: ${prevModel} → ${modelId} for user ${userId}. Session reset.`);
   }
 
   await saveContext(context);
@@ -149,7 +170,18 @@ export async function setUserUniversalModel(userId, modelId) {
   if (!userId) return;
   const context = await loadContext();
   if (!context.universalModels) context.universalModels = {};
+  const prevModel = context.universalModels[String(userId)];
   context.universalModels[String(userId)] = modelId;
+
+  // Reset session jika model berubah agar tidak mewarisi rate-limit / context lama
+  if (prevModel && prevModel !== modelId && modelId) {
+    const convId = context.conversations?.[String(userId)];
+    if (convId) {
+      resetSessionHistory(convId);
+    }
+    console.log(`[Context] Universal model switch: ${prevModel} → ${modelId} for user ${userId}. Session history reset.`);
+  }
+
   await saveContext(context);
 }
 
