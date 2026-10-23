@@ -30,6 +30,16 @@ import {
   clearQueue,
   isQueuePaused,
 } from "./services/queue-service.js";
+import {
+  getVoiceConfig,
+  saveVoiceConfig,
+} from "./services/voice-service.js";
+import {
+  getSentryConfig,
+  saveSentryConfig,
+  checkServerHealth,
+  formatSentryStatus,
+} from "./services/sentry-service.js";
 
 
 // Helper membaca dan parse file .env
@@ -154,6 +164,8 @@ export function createWebServer() {
         const { parsed } = await readEnvFile();
         const claudeSessionActive = await stat(path.join(os.homedir(), ".claude")).then(() => true).catch(() => false);
         const agySessionActive = await stat(path.join(os.homedir(), ".gemini")).then(() => true).catch(() => false);
+        const voiceConfig = await getVoiceConfig();
+        const sentryConfig = await getSentryConfig();
 
         return sendJson(200, {
           ok: true,
@@ -176,6 +188,8 @@ export function createWebServer() {
             UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL || process.env.UNIVERSAL_MODEL || "deepseek-chat",
             GITHUB_TOKEN: parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
             DEPLOY_COMMAND: parsed.DEPLOY_COMMAND || process.env.DEPLOY_COMMAND || "git pull && npm install && pm2 reload all || pm2 reload ecosystem.config.cjs",
+            GROQ_API_KEY: parsed.GROQ_API_KEY || process.env.GROQ_API_KEY || voiceConfig.groqApiKey || "",
+            OPENAI_API_KEY: parsed.OPENAI_API_KEY || process.env.OPENAI_API_KEY || voiceConfig.openaiApiKey || "",
           },
           authStatus: {
             claudeSessionActive,
@@ -184,7 +198,11 @@ export function createWebServer() {
             hasGeminiKey: Boolean(parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
             hasUniversalKey: Boolean(parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY),
             hasGithubToken: Boolean(parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN),
+            hasGroqKey: Boolean(parsed.GROQ_API_KEY || process.env.GROQ_API_KEY || voiceConfig.groqApiKey),
+            hasOpenaiKey: Boolean(parsed.OPENAI_API_KEY || process.env.OPENAI_API_KEY || voiceConfig.openaiApiKey),
           },
+          voiceConfig,
+          sentryConfig,
           options: {
             agyModels: await getModelList("agy"),
             claudeModels: await getModelList("claude"),
@@ -345,6 +363,22 @@ export function createWebServer() {
       return;
     }
 
+    // API: Audit Kesehatan Server Sentry Langsung
+    if (pathname === "/api/sentry/check" && req.method === "POST") {
+      try {
+        const health = await checkServerHealth(null, true);
+        const config = await getSentryConfig();
+        return sendJson(200, {
+          ok: true,
+          health,
+          config,
+          summary: formatSentryStatus(config, health),
+        });
+      } catch (err) {
+        return sendError(500, `Gagal audit Sentry: ${err.message}`);
+      }
+    }
+
     // API: Simpan Pengaturan
     if (pathname === "/api/settings" && req.method === "POST") {
       let body = "";
@@ -406,12 +440,43 @@ export function createWebServer() {
           if (payload.DEPLOY_COMMAND !== undefined) {
             updates.DEPLOY_COMMAND = String(payload.DEPLOY_COMMAND).trim();
           }
+          if (payload.GROQ_API_KEY !== undefined) {
+            updates.GROQ_API_KEY = String(payload.GROQ_API_KEY).trim();
+          }
+          if (payload.OPENAI_API_KEY !== undefined) {
+            updates.OPENAI_API_KEY = String(payload.OPENAI_API_KEY).trim();
+          }
 
+          // Simpan konfigurasi file .env
           await updateEnvFile(updates);
+
+          // Simpan konfigurasi Voice Whisper jika ada
+          if (payload.voiceConfig) {
+            await saveVoiceConfig(payload.voiceConfig);
+          } else if (payload.GROQ_API_KEY !== undefined || payload.VOICE_PROVIDER !== undefined) {
+            await saveVoiceConfig({
+              provider: payload.VOICE_PROVIDER || "groq",
+              groqApiKey: payload.GROQ_API_KEY || updates.GROQ_API_KEY || "",
+              openaiApiKey: payload.OPENAI_API_KEY || updates.OPENAI_API_KEY || "",
+              language: payload.VOICE_LANGUAGE || "id",
+            });
+          }
+
+          // Simpan konfigurasi Sentry jika ada
+          if (payload.sentryConfig) {
+            await saveSentryConfig(payload.sentryConfig);
+          } else if (payload.sentryEnabled !== undefined || payload.sentryAutoHeal !== undefined) {
+            await saveSentryConfig({
+              enabled: Boolean(payload.sentryEnabled),
+              autoHeal: Boolean(payload.sentryAutoHeal),
+              checkIntervalMinutes: Number(payload.sentryIntervalMinutes) || 5,
+              diskThresholdPercent: Number(payload.sentryDiskThreshold) || 88,
+            });
+          }
 
           return sendJson(200, {
             ok: true,
-            message: "Pengaturan berhasil disimpan ke .env!",
+            message: "Pengaturan & konfigurasi Agent berhasil disimpan!",
             savedSettings: updates,
           });
         } catch (err) {

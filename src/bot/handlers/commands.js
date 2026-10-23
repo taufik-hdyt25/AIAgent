@@ -130,6 +130,7 @@ export function registerBasicCommands(bot) {
         "• *Kirim Gambar / Foto:* Kirim screenshot error terminal, mockup UI, atau diagram untuk dianalisis AI.\n\n" +
         "Perintah bantuan:\n" +
         "• `/menu` - Quick-Action Dashboard interaktif (tombol 1-klik)\n" +
+        "• `/settings` - Panel pengaturan Agent interaktif langsung via chat\n" +
         "• `/sentry [check|on|off]` - Pantau kesehatan container & auto-healing 24/7\n" +
         "• `/setwhisper <key> [provider]` - Konfigurasi API Whisper untuk voice note\n" +
         "• `/deploy` - Deploy aplikasi ke server langsung via chat\n" +
@@ -1390,7 +1391,10 @@ export function registerBasicCommands(bot) {
       .text("🔄 Cek Update", "menu_update")
       .row()
       .text("📁 Daftar Proyek", "menu_projects")
-      .text("📋 Cek Antrean", "menu_queue");
+      .text("📋 Cek Antrean", "menu_queue")
+      .row()
+      .text("⚙️ Pengaturan Agent", "menu_settings")
+      .text("🌐 Web Control Panel", "menu_web_info");
 
     await ctx.reply(
       "🎛️ *Quick-Action Dashboard TH Agent*\n\n" +
@@ -1551,6 +1555,175 @@ export function registerBasicCommands(bot) {
     await ctx.reply(`📋 *Daftar Antrean Tugas (${queue.length}):*\n\n${lines}`, {
       parse_mode: "Markdown",
     });
+  });
+
+  // Helper render Panel Pengaturan Agent
+  const renderSettingsMenu = async (ctx, editMessageId = null) => {
+    const userId = ctx.from?.id;
+    const currentEngine = await getUserEngine(userId);
+    const isClaude = currentEngine === "claude";
+    const isUniversal = currentEngine === "universal";
+    const engineLabel = isClaude ? "Claude Code" : isUniversal ? "Universal API" : "Antigravity";
+
+    let activeModel = "";
+    if (isClaude) {
+      activeModel = await getUserClaudeModel(userId);
+    } else if (isUniversal) {
+      activeModel = await getUserUniversalModel(userId);
+    } else {
+      activeModel = await getUserAgyModel(userId);
+    }
+
+    const sentryCfg = await getSentryConfig();
+    const voiceCfg = await getVoiceConfig();
+    const hasVoiceKey = voiceCfg.provider === "groq"
+      ? Boolean(voiceCfg.groqApiKey || process.env.GROQ_API_KEY)
+      : Boolean(voiceCfg.openaiApiKey || process.env.OPENAI_API_KEY);
+
+    const port = process.env.WEB_PORT || 3030;
+    const text =
+      `⚙️ *Panel Pengaturan & Konfigurasi TH Agent*\n\n` +
+      `• *Engine AI:* \`${engineLabel}\`\n` +
+      `• *Model AI:* \`${activeModel}\`\n` +
+      `• *Sentry 24/7:* ${sentryCfg.enabled ? "🟢 Aktif (Tiap " + (sentryCfg.checkIntervalMinutes || 5) + "m)" : "🔴 Nonaktif"}\n` +
+      `• *Auto-Healing:* ${sentryCfg.autoHeal ? "✅ Aktif (Auto-restart)" : "❌ Nonaktif"}\n` +
+      `• *Voice Whisper:* \`${voiceCfg.provider.toUpperCase()}\` (${hasVoiceKey ? "Siap 🎙️" : "Belum diatur ⚠️"})\n` +
+      `• *Web Dashboard:* \`http://localhost:${port}\`\n\n` +
+      `_Pilih tombol di bawah untuk mengubah pengaturan langsung:_`;
+
+    const keyboard = new InlineKeyboard()
+      .text("🔄 Ganti Engine", "setting_engine")
+      .text("🤖 Ganti Model", "setting_model")
+      .row()
+      .text(sentryCfg.enabled ? "🩺 Matikan Sentry" : "🩺 Nyalakan Sentry", "setting_toggle_sentry")
+      .text(sentryCfg.autoHeal ? "🛠️ Matikan AutoHeal" : "🛠️ Nyalakan AutoHeal", "setting_toggle_heal")
+      .row()
+      .text("🎙️ Konfigurasi Voice", "setting_voice")
+      .text("🌐 Web Control Panel", "menu_web_info")
+      .row()
+      .text("🔙 Kembali ke Menu Utama", "menu_main");
+
+    if (editMessageId) {
+      await ctx.api
+        .editMessageText(ctx.chat.id, editMessageId, text, {
+          parse_mode: "Markdown",
+          reply_markup: keyboard,
+        })
+        .catch(() => {});
+    } else {
+      await ctx.reply(text, {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      });
+    }
+  };
+
+  // /settings, /pengaturan
+  bot.command(["settings", "pengaturan"], async (ctx) => {
+    await renderSettingsMenu(ctx);
+  });
+
+  // Callback: menu_settings
+  bot.callbackQuery("menu_settings", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await renderSettingsMenu(ctx, ctx.callbackQuery.message?.message_id);
+  });
+
+  // Callback: menu_main (Kembali ke menu dashboard awal)
+  bot.callbackQuery("menu_main", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const keyboard = new InlineKeyboard()
+      .text("📊 Status Server", "menu_status")
+      .text("🧹 Bersihkan Cache", "menu_clean")
+      .row()
+      .text("🩺 Sentry Health", "menu_sentry")
+      .text("🔄 Cek Update", "menu_update")
+      .row()
+      .text("📁 Daftar Proyek", "menu_projects")
+      .text("📋 Cek Antrean", "menu_queue")
+      .row()
+      .text("⚙️ Pengaturan Agent", "menu_settings")
+      .text("🌐 Web Control Panel", "menu_web_info");
+
+    await ctx.api
+      .editMessageText(
+        ctx.chat.id,
+        ctx.callbackQuery.message?.message_id,
+        "🎛️ *Quick-Action Dashboard TH Agent*\n\nPilih tindakan operasional di bawah ini secara instan tanpa perlu mengetik perintah manual:",
+        {
+          parse_mode: "Markdown",
+          reply_markup: keyboard,
+        }
+      )
+      .catch(() => {});
+  });
+
+  // Callback: setting_toggle_sentry
+  bot.callbackQuery("setting_toggle_sentry", async (ctx) => {
+    const current = await getSentryConfig();
+    const newState = !current.enabled;
+    await toggleSentry(newState);
+    await ctx.answerCallbackQuery({ text: newState ? "🩺 Sentry diaktifkan" : "🩺 Sentry dinonaktifkan" });
+    await renderSettingsMenu(ctx, ctx.callbackQuery.message?.message_id);
+  });
+
+  // Callback: setting_toggle_heal
+  bot.callbackQuery("setting_toggle_heal", async (ctx) => {
+    const current = await getSentryConfig();
+    const newState = !current.autoHeal;
+    await toggleAutoHeal(newState);
+    await ctx.answerCallbackQuery({ text: newState ? "🛠️ Auto-Heal diaktifkan" : "🛠️ Auto-Heal dinonaktifkan" });
+    await renderSettingsMenu(ctx, ctx.callbackQuery.message?.message_id);
+  });
+
+  // Callback: setting_engine
+  bot.callbackQuery("setting_engine", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      "🔄 *Pilih Engine AI:*\n\nKetik `/engine` untuk memilih engine (Antigravity CLI / Claude Code / Universal API).",
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // Callback: setting_model
+  bot.callbackQuery("setting_model", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      "🤖 *Pilih Model AI:*\n\nKetik `/model` untuk memilih model yang tersedia.",
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // Callback: setting_voice
+  bot.callbackQuery("setting_voice", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const cfg = await getVoiceConfig();
+    await ctx.reply(
+      `🎙️ *Pengaturan Voice Whisper*\n\n` +
+        `• Provider: *${cfg.provider.toUpperCase()}*\n` +
+        `• Model: \`${cfg.model}\`\n\n` +
+        `💡 *Cara Mengubah:*\nKetik perintah: \`/setwhisper <api-key> [groq|openai]\`\n\n` +
+        `_Dapatkan kunci Groq kilat gratis di console.groq.com/keys._`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // Callback: menu_web_info
+  bot.callbackQuery("menu_web_info", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const port = process.env.WEB_PORT || 3030;
+    await ctx.reply(
+      `🌐 *Web Control Panel & Settings Dashboard*\n\n` +
+        `Dashboard web grafis aktif di port \`${port}\`:\n` +
+        `• Localhost: \`http://localhost:${port}\`\n\n` +
+        `💡 *Fitur Web Dashboard:*\n` +
+        `• Form konfigurasi lengkap (Token, Keys, Model, Engine)\n` +
+        `• Audit kesehatan kontainer & disk secara visual\n` +
+        `• Kontrol Sentry & Proactive Auto-Healing\n` +
+        `• Pengaturan Voice Note Whisper & bahasa\n\n` +
+        `_Akses via SSH Tunnel jika remote VPS:_\n\`ssh -L ${port}:localhost:${port} user@server-ip\``,
+      { parse_mode: "Markdown" }
+    );
   });
 
   // ==================== SERVER SENTRY & AUTO-HEALING ====================

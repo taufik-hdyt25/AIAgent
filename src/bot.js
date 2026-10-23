@@ -64,6 +64,7 @@ if (
     bot.api
       .setMyCommands([
         { command: "menu", description: "Quick-Action Dashboard interaktif" },
+        { command: "settings", description: "Panel pengaturan Agent interaktif" },
         { command: "start", description: "Sambutan & info bot" },
         { command: "help", description: "Panduan lengkap perintah" },
         { command: "sentry", description: "Kesehatan container & auto-healing" },

@@ -58,6 +58,25 @@ const autoFixCheckbox = document.getElementById("autoFix");
 const deployCommandInput = document.getElementById("deployCommand");
 const btnTestDeploy = document.getElementById("btnTestDeploy");
 
+// Sentry & Server Health Elements
+const sentryEnabledCheckbox = document.getElementById("sentryEnabled");
+const sentryAutoHealCheckbox = document.getElementById("sentryAutoHeal");
+const sentryIntervalSelect = document.getElementById("sentryInterval");
+const sentryDiskThresholdInput = document.getElementById("sentryDiskThreshold");
+const btnAuditSentry = document.getElementById("btnAuditSentry");
+const sentryAuditResult = document.getElementById("sentryAuditResult");
+const sentryAuditText = document.getElementById("sentryAuditText");
+
+// Voice / Whisper Elements
+const voiceProviderSelect = document.getElementById("voiceProvider");
+const voiceLanguageSelect = document.getElementById("voiceLanguage");
+const groqApiKeyInput = document.getElementById("groqApiKey");
+const openaiApiKeyInput = document.getElementById("openaiApiKey");
+const toggleGroqKeyBtn = document.getElementById("toggleGroqKey");
+const toggleOpenaiKeyBtn = document.getElementById("toggleOpenaiKey");
+const badgeGroqKey = document.getElementById("badgeGroqKey");
+const badgeOpenaiKey = document.getElementById("badgeOpenaiKey");
+
 const statusPill = document.getElementById("statusPill");
 const statusText = document.getElementById("statusText");
 const btnReload = document.getElementById("btnReload");
@@ -328,6 +347,29 @@ async function loadSettings() {
       deployCommandInput.value = currentSettings.DEPLOY_COMMAND || "";
     }
 
+    // Populate Sentry Config
+    if (data.sentryConfig) {
+      if (sentryEnabledCheckbox) sentryEnabledCheckbox.checked = data.sentryConfig.enabled !== false;
+      if (sentryAutoHealCheckbox) sentryAutoHealCheckbox.checked = data.sentryConfig.autoHeal !== false;
+      if (sentryIntervalSelect) sentryIntervalSelect.value = String(data.sentryConfig.checkIntervalMinutes || 5);
+      if (sentryDiskThresholdInput) sentryDiskThresholdInput.value = String(data.sentryConfig.diskThresholdPercent || 88);
+    }
+
+    // Populate Voice Config
+    if (data.voiceConfig) {
+      if (voiceProviderSelect) voiceProviderSelect.value = data.voiceConfig.provider || "groq";
+      if (voiceLanguageSelect) voiceLanguageSelect.value = data.voiceConfig.language || "id";
+      if (groqApiKeyInput) groqApiKeyInput.value = currentSettings.GROQ_API_KEY || data.voiceConfig.groqApiKey || "";
+      if (openaiApiKeyInput) openaiApiKeyInput.value = currentSettings.OPENAI_API_KEY || data.voiceConfig.openaiApiKey || "";
+    }
+
+    if (badgeGroqKey) {
+      badgeGroqKey.style.display = (currentSettings.GROQ_API_KEY || data.voiceConfig?.groqApiKey) ? "inline-block" : "none";
+    }
+    if (badgeOpenaiKey) {
+      badgeOpenaiKey.style.display = (currentSettings.OPENAI_API_KEY || data.voiceConfig?.openaiApiKey) ? "inline-block" : "none";
+    }
+
     // Ambil data status otomasi
     try {
       const autoRes = await fetch("/api/automation");
@@ -504,6 +546,21 @@ form.addEventListener("submit", async (e) => {
     TASK_TIMEOUT_MS: timeoutInput.value.trim(),
     GITHUB_TOKEN: githubTokenInput ? githubTokenInput.value.trim() : "",
     DEPLOY_COMMAND: deployCommandInput ? deployCommandInput.value.trim() : "",
+    GROQ_API_KEY: groqApiKeyInput ? groqApiKeyInput.value.trim() : "",
+    OPENAI_API_KEY: openaiApiKeyInput ? openaiApiKeyInput.value.trim() : "",
+    voiceConfig: {
+      provider: voiceProviderSelect ? voiceProviderSelect.value : "groq",
+      language: voiceLanguageSelect ? voiceLanguageSelect.value : "id",
+      groqApiKey: groqApiKeyInput ? groqApiKeyInput.value.trim() : "",
+      openaiApiKey: openaiApiKeyInput ? openaiApiKeyInput.value.trim() : "",
+      model: voiceProviderSelect?.value === "groq" ? "whisper-large-v3-turbo" : "whisper-1",
+    },
+    sentryConfig: {
+      enabled: sentryEnabledCheckbox ? sentryEnabledCheckbox.checked : true,
+      autoHeal: sentryAutoHealCheckbox ? sentryAutoHealCheckbox.checked : true,
+      checkIntervalMinutes: sentryIntervalSelect ? Number(sentryIntervalSelect.value) : 5,
+      diskThresholdPercent: sentryDiskThresholdInput ? Number(sentryDiskThresholdInput.value) : 88,
+    },
   };
 
   btnSubmit.disabled = true;
@@ -574,6 +631,49 @@ if (btnTestDeploy) {
     } finally {
       btnTestDeploy.disabled = false;
       btnTestDeploy.innerHTML = origHtml;
+    }
+  });
+}
+
+// Toggle visibility password untuk Groq & OpenAI
+if (toggleGroqKeyBtn && groqApiKeyInput) {
+  toggleGroqKeyBtn.addEventListener("click", () => {
+    groqApiKeyInput.type = groqApiKeyInput.type === "password" ? "text" : "password";
+  });
+}
+if (toggleOpenaiKeyBtn && openaiApiKeyInput) {
+  toggleOpenaiKeyBtn.addEventListener("click", () => {
+    openaiApiKeyInput.type = openaiApiKeyInput.type === "password" ? "text" : "password";
+  });
+}
+
+// Listener untuk Audit Server Sentry via Web UI
+if (btnAuditSentry) {
+  btnAuditSentry.addEventListener("click", async () => {
+    btnAuditSentry.disabled = true;
+    const origHtml = btnAuditSentry.innerHTML;
+    btnAuditSentry.innerHTML = `<span>Mengaudit server...</span>`;
+
+    try {
+      showToast("Menjalankan audit kesehatan server & kontainer...", "info");
+      const res = await fetch("/api/sentry/check", { method: "POST" });
+      const data = await res.json();
+      if (data.ok && data.summary) {
+        if (sentryAuditResult) sentryAuditResult.style.display = "block";
+        if (sentryAuditText) sentryAuditText.textContent = data.summary;
+        showToast(
+          data.health?.healthy ? "✅ Seluruh kontainer & disk prima!" : "⚠️ Peringatan kesehatan server terdeteksi",
+          data.health?.healthy ? "success" : "warning",
+          5000
+        );
+      } else {
+        showToast(`Audit gagal: ${data.error || "Gagal memproses"}`, "error");
+      }
+    } catch (err) {
+      showToast(`Gagal menghubungi server: ${err.message}`, "error");
+    } finally {
+      btnAuditSentry.disabled = false;
+      btnAuditSentry.innerHTML = origHtml;
     }
   });
 }

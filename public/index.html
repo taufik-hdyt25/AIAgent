@@ -607,6 +607,182 @@
           </div>
         </div>
 
+        <!-- SECTION 4: Server Sentry & Proactive Auto-Healing -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon emerald">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">Server Sentry & Proactive Auto-Healing</h2>
+              <p class="card-description">Pengawasan kesehatan server 24/7 dan pemulihan otomatis saat kontainer crash atau disk menipis.</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- Sentry Monitoring Toggle -->
+            <div class="form-group">
+              <div class="toggle-card">
+                <div class="toggle-info">
+                  <span class="toggle-title">Server Sentry Monitoring (24/7)</span>
+                  <span class="toggle-desc">
+                    Memantau siklus hidup kontainer Docker dan metrik storage secara berkala di latar belakang.
+                  </span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="sentryEnabled" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Auto-Healing Toggle -->
+            <div class="form-group">
+              <div class="toggle-card">
+                <div class="toggle-info">
+                  <span class="toggle-title">Proactive Auto-Healing (Auto Restart)</span>
+                  <span class="toggle-desc">
+                    Otomatis me-restart kontainer yang exited/mati, mengambil log error, dan membersihkan disk darurat bila kapasitas kritis.
+                  </span>
+                </div>
+                <label class="switch">
+                  <input type="checkbox" id="sentryAutoHeal" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Sentry Options Grid -->
+            <div class="form-row" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <div class="form-group" style="flex: 1; min-width: 200px;">
+                <label for="sentryInterval" class="form-label">INTERVAL MONITORING</label>
+                <select id="sentryInterval" class="form-select font-mono">
+                  <option value="1">1 Menit (Realtime)</option>
+                  <option value="5" selected>5 Menit (Rekomendasi)</option>
+                  <option value="10">10 Menit</option>
+                  <option value="15">15 Menit</option>
+                  <option value="30">30 Menit</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1; min-width: 200px;">
+                <label for="sentryDiskThreshold" class="form-label">AMBANG BATAS DISK DARURAT (%)</label>
+                <input type="number" id="sentryDiskThreshold" class="form-input font-mono" min="50" max="99" value="88">
+              </div>
+            </div>
+
+            <!-- Monitored Containers List & Live Audit -->
+            <div class="form-group">
+              <div class="label-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <label class="form-label" style="margin-bottom: 0;">KONTAINER YANG DIPANTAU</label>
+                <button type="button" class="btn btn-secondary btn-sm" id="btnAuditSentry" style="padding: 0.35rem 0.75rem; font-size: 0.8rem;">
+                  <span>🩺 Jalankan Audit Server Sekarang</span>
+                </button>
+              </div>
+              <div class="chips-wrapper" style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">ai-podcast-live</span>
+                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">wa-dashboard</span>
+                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">wa-bot</span>
+                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">th-blogs-app</span>
+                <span class="metric-value font-mono" style="padding: 0.25rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 6px; font-size: 0.8rem;">th-blogs-db</span>
+              </div>
+              <div id="sentryAuditResult" class="test-result" style="display: none; margin-top: 1rem;">
+                <div class="result-box font-mono" id="sentryAuditText" style="white-space: pre-wrap; font-size: 0.85rem; max-height: 250px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-subtle);"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION 5: Voice Notes & Whisper Transcription -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-icon blue">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                <line x1="12" y1="19" x2="12" y2="23"></line>
+                <line x1="8" y1="23" x2="16" y2="23"></line>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">Voice Notes & Whisper Transcription</h2>
+              <p class="card-description">Integrasi pengenalan ucapan otomatis untuk menerima instruksi koding via pesan suara Telegram secara hands-free.</p>
+            </div>
+          </div>
+
+          <div class="card-body">
+            <!-- Voice Provider & Language -->
+            <div class="form-row" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <div class="form-group" style="flex: 1; min-width: 200px;">
+                <label for="voiceProvider" class="form-label">PROVIDER WHISPER</label>
+                <select id="voiceProvider" class="form-select font-mono">
+                  <option value="groq" selected>Groq Cloud (Sub-0.5s & Gratis Kuota Cepat)</option>
+                  <option value="openai">OpenAI Whisper (whisper-1)</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex: 1; min-width: 200px;">
+                <label for="voiceLanguage" class="form-label">BAHASA SUARA DEFAULT</label>
+                <select id="voiceLanguage" class="form-select font-mono">
+                  <option value="id" selected>Bahasa Indonesia (id)</option>
+                  <option value="en">English (en)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- GROQ_API_KEY -->
+            <div class="form-group" id="groupGroqKey">
+              <div class="label-row">
+                <label for="groqApiKey" class="form-label">GROQ API KEY</label>
+                <span class="label-badge badge-active" id="badgeGroqKey" style="display: none;">Tersimpan</span>
+              </div>
+              <div class="input-action-wrapper">
+                <input 
+                  type="password" 
+                  id="groqApiKey" 
+                  name="GROQ_API_KEY" 
+                  class="form-input font-mono" 
+                  placeholder="gsk_..."
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <button type="button" class="btn-icon" id="toggleGroqKey" title="Tampilkan / Sembunyikan Key">
+                  <svg id="eyeGroqIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+              <span class="label-hint">Transkripsi Whisper di Groq sangat cepat (~500ms). Dapatkan kunci gratis di <a href="https://console.groq.com/keys" target="_blank" style="color: var(--primary);">console.groq.com/keys</a></span>
+            </div>
+
+            <!-- OPENAI_API_KEY -->
+            <div class="form-group" id="groupOpenaiKey">
+              <div class="label-row">
+                <label for="openaiApiKey" class="form-label">OPENAI API KEY (OPSIONAL FALLBACK)</label>
+                <span class="label-badge badge-active" id="badgeOpenaiKey" style="display: none;">Tersimpan</span>
+              </div>
+              <div class="input-action-wrapper">
+                <input 
+                  type="password" 
+                  id="openaiApiKey" 
+                  name="OPENAI_API_KEY" 
+                  class="form-input font-mono" 
+                  placeholder="sk-..."
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+                <button type="button" class="btn-icon" id="toggleOpenaiKey" title="Tampilkan / Sembunyikan Key">
+                  <svg id="eyeOpenaiIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Sticky Bottom Bar -->
         <div class="actions-bar">
           <div class="actions-info">
