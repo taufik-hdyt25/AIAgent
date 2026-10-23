@@ -22,12 +22,8 @@ Workspace **TH Agent** disusun secara bersih dan modular agar alur kerja (*flow*
 
 ```text
 th-agent/
-├── projects/                  # 📂 Seluruh Proyek Target yang Dikelola AI
-│   ├── PROJECTS_SUMMARY.md    #    Peta ringkasan status & deskripsi proyek
-│   ├── intiva/                #    Sandbox isolasi proyek (Raspberry Pi scope)
-│   ├── th-blog/               #    Aplikasi blog Next.js & PostgreSQL
-│   ├── wa-chat-bot/           #    WhatsApp Bot (Baileys + Dashboard)
-│   └── ai-podcast-live/       #    AI Podcast Live Stream
+├── projects/                  # 📂 Workspace Folder Seluruh Proyek Koding Anda
+│   └── ...                    #    (Otomatis terisolasi & bersih dari file engine bot)
 │
 └── telegram-ai-agent/         # 🤖 Core Aplikasi TH Agent (Bot & Control Panel)
     ├── src/                   #    Source code bot (handlers, services, config)
