@@ -58,9 +58,108 @@ prompt_user() {
     eval "$var_name=\"\$reply\""
 }
 
+# Helper sinkronisasi git aman & bersih
+sync_git_repo_cleanly() {
+    local target_dir="${1:-$(pwd)}"
+    if [ -d "$target_dir/.git" ]; then
+        echo -e "${CYAN}Menyinkronkan repositori dari GitHub (origin/main)...${NC}"
+        (
+            cd "$target_dir"
+            # Backup file konfigurasi user jika ada
+            [ -f ".env" ] && cp -f .env .env.user.bak 2>/dev/null || true
+            [ -f "telegram-ai-agent/.env" ] && cp -f telegram-ai-agent/.env telegram-ai-agent/.env.user.bak 2>/dev/null || true
+
+            git fetch origin main 2>/dev/null || git fetch origin 2>/dev/null || true
+            git checkout main 2>/dev/null || git checkout -B main origin/main 2>/dev/null || true
+            git pull --ff-only origin main 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
+
+            # Pulihkan file .env user jika sebelumnya ada
+            if [ -f ".env.user.bak" ]; then
+                mv -f .env.user.bak .env 2>/dev/null || true
+            fi
+            if [ -f "telegram-ai-agent/.env.user.bak" ]; then
+                mv -f telegram-ai-agent/.env.user.bak telegram-ai-agent/.env 2>/dev/null || true
+            fi
+        )
+    fi
+}
+
+# Deteksi lokasi folder bot dan workspace secara dinamis
+resolve_workspace_and_agent_dirs() {
+    local cur="$(pwd)"
+
+    # Kasus 1: Standard layout (cur/telegram-ai-agent/package.json)
+    if [ -f "$cur/telegram-ai-agent/package.json" ]; then
+        WORKSPACE_DIR="$cur"
+        AGENT_DIR="$cur/telegram-ai-agent"
+        return 0
+    fi
+
+    # Kasus 2: Berada di dalam folder telegram-ai-agent
+    if [ -f "$cur/package.json" ] && [ -f "$cur/src/bot.js" ]; then
+        if [ -d "$cur/../projects" ] || [ "$(basename "$cur")" = "telegram-ai-agent" ]; then
+            WORKSPACE_DIR="$(cd "$cur/.." && pwd)"
+            AGENT_DIR="$cur"
+            return 0
+        else
+            WORKSPACE_DIR="$cur"
+            AGENT_DIR="$cur"
+            return 0
+        fi
+    fi
+
+    # Kasus 3: Berada di subfolder lain (misal scripts/)
+    if [ -f "$cur/../telegram-ai-agent/package.json" ]; then
+        WORKSPACE_DIR="$(cd "$cur/.." && pwd)"
+        AGENT_DIR="$WORKSPACE_DIR/telegram-ai-agent"
+        return 0
+    fi
+
+    # Kasus 4: package.json ada di root saat ini
+    if [ -f "$cur/package.json" ]; then
+        WORKSPACE_DIR="$cur"
+        AGENT_DIR="$cur"
+        return 0
+    fi
+
+    # Kasus 5: Cek di $HOME/th-agent
+    if [ -f "$HOME/th-agent/telegram-ai-agent/package.json" ]; then
+        WORKSPACE_DIR="$HOME/th-agent"
+        AGENT_DIR="$HOME/th-agent/telegram-ai-agent"
+        return 0
+    elif [ -f "$HOME/th-agent/package.json" ]; then
+        WORKSPACE_DIR="$HOME/th-agent"
+        AGENT_DIR="$HOME/th-agent"
+        return 0
+    fi
+
+    # Kasus 6: Pulihkan dari git jika ini repositori git
+    if [ -d "$cur/.git" ]; then
+        echo -e "${YELLOW}File bot belum lengkap. Memulihkan file dari origin/main...${NC}"
+        (cd "$cur" && git fetch origin main 2>/dev/null && git checkout origin/main -- . 2>/dev/null) || true
+        if [ -f "$cur/telegram-ai-agent/package.json" ]; then
+            WORKSPACE_DIR="$cur"
+            AGENT_DIR="$cur/telegram-ai-agent"
+            return 0
+        elif [ -f "$cur/package.json" ]; then
+            WORKSPACE_DIR="$cur"
+            AGENT_DIR="$cur"
+            return 0
+        fi
+    fi
+
+    # Fallback
+    WORKSPACE_DIR="$cur"
+    if [ -d "$cur/telegram-ai-agent" ]; then
+        AGENT_DIR="$cur/telegram-ai-agent"
+    else
+        AGENT_DIR="$cur"
+    fi
+}
+
 # Auto clone jika installer dipanggil di luar folder repo (misal via curl | bash)
-if [ ! -d "projects" ] || [ ! -d "telegram-ai-agent" ]; then
-    echo -e "\n${CYAN}>>> Mengunduh repository Telegram AI Agent dari GitHub...${NC}"
+if [ ! -f "telegram-ai-agent/package.json" ] && [ ! -f "package.json" ]; then
+    echo -e "\n${CYAN}>>> Menyiapkan repositori Telegram AI Agent dari GitHub...${NC}"
     if ! command -v git &>/dev/null; then
         echo -e "${YELLOW}Git belum terpasang. Memasang git...${NC}"
         if [ "$OS" = "Darwin" ]; then
@@ -70,8 +169,11 @@ if [ ! -d "projects" ] || [ ! -d "telegram-ai-agent" ]; then
         fi
     fi
     if [ -d "$INSTALL_DIR" ]; then
-        echo -e "${YELLOW}Direktori ${INSTALL_DIR} sudah ada. Menggunakan direktori tersebut...${NC}"
+        echo -e "${YELLOW}Direktori ${INSTALL_DIR} sudah ada. Masuk dan menyinkronkan...${NC}"
         cd "$INSTALL_DIR"
+        sync_git_repo_cleanly "$(pwd)"
+    elif [ -d ".git" ]; then
+        sync_git_repo_cleanly "$(pwd)"
     else
         git clone "$REPO_URL" "$INSTALL_DIR"
         cd "$INSTALL_DIR"
@@ -441,28 +543,38 @@ install_claude_cli() {
 
 setup_directories() {
     echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
-    mkdir -p projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth telegram-ai-agent/public
+    mkdir -p projects
+    if [ -d "telegram-ai-agent" ]; then
+        mkdir -p telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth telegram-ai-agent/public
+    else
+        mkdir -p data logs uploads
+    fi
     chmod 755 projects 2>/dev/null || true
-    chmod -R u+rwX,g+rwX telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth 2>/dev/null || true
     local target_user="${SUDO_USER:-$USER}"
     if [ -n "$target_user" ]; then
-        chown -R "$target_user" projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth 2>/dev/null || true
+        chown -R "$target_user" projects 2>/dev/null || true
+        if [ -d "telegram-ai-agent" ]; then
+            chown -R "$target_user" telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads 2>/dev/null || true
+        fi
     fi
 
     # Bersihkan jika ada folder data/logs/uploads usang di root level
-    for d in data logs uploads public; do
-        if [ -d "$d" ] && [ ! -L "$d" ]; then
-            cp -rn "$d"/* "telegram-ai-agent/$d/" 2>/dev/null || true
-            rm -rf "$d" 2>/dev/null || true
-        fi
-    done
-    echo -e "${GREEN}✓ Direktori siap (Hanya projects/ dan telegram-ai-agent/).${NC}"
+    if [ -d "telegram-ai-agent" ]; then
+        for d in data logs uploads; do
+            if [ -d "$d" ] && [ ! -L "$d" ]; then
+                cp -rn "$d"/* "telegram-ai-agent/$d/" 2>/dev/null || true
+                rm -rf "$d" 2>/dev/null || true
+            fi
+        done
+    fi
+    echo -e "${GREEN}✓ Direktori siap.${NC}"
 }
 
 setup_env_file() {
     echo -e "\n${BLUE}Menyiapkan file konfigurasi .env...${NC}"
-    local env_file="telegram-ai-agent/.env"
-    if [ ! -d "telegram-ai-agent" ]; then
+    resolve_workspace_and_agent_dirs
+    local env_file="$AGENT_DIR/.env"
+    if [ ! -d "$AGENT_DIR" ]; then
         env_file=".env"
     fi
 
@@ -514,7 +626,7 @@ setup_env_file() {
     fi
 
     if ! grep -q "^UNIVERSAL_MODEL=" "$env_file"; then
-        echo "UNIVERSAL_MODEL=deepseek-chat" >> "$env_file"
+        echo "UNIVERSAL_MODEL=" >> "$env_file"
     fi
 
     # Cek apakah BOT_TOKEN dan ALLOWED_TELEGRAM_IDS sudah terisi
@@ -550,8 +662,9 @@ setup_env_file() {
 # UNIVERSAL STANDALONE BINARY BUNDLE & 24/7 BACKGROUND SERVICE
 # ==============================================================================
 setup_binary_bundle_and_service() {
-    local workspace_dir="$(pwd)"
-    local agent_dir="$workspace_dir/telegram-ai-agent"
+    resolve_workspace_and_agent_dirs
+    local workspace_dir="$WORKSPACE_DIR"
+    local agent_dir="$AGENT_DIR"
     local global_dir="$HOME/.th-agent"
     local bin_link="$HOME/.local/bin/th-agent"
     local node_bin="$(command -v node || which node)"
@@ -559,8 +672,26 @@ setup_binary_bundle_and_service() {
     echo -e "\n${BLUE}======================================================${NC}"
     echo -e "${BLUE}📦 Mem-bundle TH Agent Menjadi Standalone Binary...   ${NC}"
     echo -e "${BLUE}======================================================${NC}"
+    echo -e "${CYAN}✓ Workspace Root:${NC} $workspace_dir"
+    echo -e "${CYAN}✓ Bot Directory :${NC} $agent_dir"
 
     mkdir -p "$global_dir/logs" "$global_dir/data" "$global_dir/uploads" "$global_dir/public" "$HOME/.local/bin"
+
+    # Verifikasi package.json ada
+    if [ ! -f "$agent_dir/package.json" ]; then
+        echo -e "${YELLOW}File package.json tidak ditemukan di $agent_dir. Mencari di workspace root...${NC}"
+        if [ -f "$workspace_dir/package.json" ]; then
+            agent_dir="$workspace_dir"
+        elif [ -d "$workspace_dir/.git" ]; then
+            echo -e "${YELLOW}Mengambil file bot dari origin/main...${NC}"
+            (cd "$workspace_dir" && git fetch origin main 2>/dev/null && git checkout origin/main -- . 2>/dev/null) || true
+            if [ -f "$workspace_dir/telegram-ai-agent/package.json" ]; then
+                agent_dir="$workspace_dir/telegram-ai-agent"
+            elif [ -f "$workspace_dir/package.json" ]; then
+                agent_dir="$workspace_dir"
+            fi
+        fi
+    fi
 
     # 1. Pastikan esbuild tersedia & build single-file executable bundle
     echo -e "${CYAN}Mengompilasi single-file executable bundle dengan esbuild...${NC}"
@@ -569,7 +700,14 @@ setup_binary_bundle_and_service() {
         npm install --silent 2>/dev/null || npm install
     fi
 
-    npx -y esbuild src/bot.js --bundle --platform=node --format=esm \
+    local entry_file="src/bot.js"
+    if [ ! -f "$entry_file" ] && [ -f "$workspace_dir/telegram-ai-agent/src/bot.js" ]; then
+        entry_file="$workspace_dir/telegram-ai-agent/src/bot.js"
+    elif [ ! -f "$entry_file" ] && [ -f "$workspace_dir/src/bot.js" ]; then
+        entry_file="$workspace_dir/src/bot.js"
+    fi
+
+    npx -y esbuild "$entry_file" --bundle --platform=node --format=esm \
         --banner:js="#!/usr/bin/env node
 import { createRequire } from 'module'; const require = createRequire(import.meta.url);" \
         --target=node20 --outfile="$global_dir/th-agent-bin"
@@ -584,9 +722,16 @@ import { createRequire } from 'module'; const require = createRequire(import.met
     cd "$workspace_dir"
 
     # 2. Salin asset Web UI & file .env ke isolated directory
-    cp -r "$agent_dir/public"/* "$global_dir/public/" 2>/dev/null || true
+    if [ -d "$agent_dir/public" ]; then
+        cp -r "$agent_dir/public"/* "$global_dir/public/" 2>/dev/null || true
+    elif [ -d "$workspace_dir/public" ]; then
+        cp -r "$workspace_dir/public"/* "$global_dir/public/" 2>/dev/null || true
+    fi
+
     if [ -f "$agent_dir/.env" ]; then
         cp "$agent_dir/.env" "$global_dir/.env"
+    elif [ -f "$workspace_dir/.env" ]; then
+        cp "$workspace_dir/.env" "$global_dir/.env"
     fi
 
     # 3. Buat CLI Command Wrapper di ~/.local/bin/th-agent
@@ -815,23 +960,12 @@ perform_fast_update() {
     echo -e "${GREEN}⚡ Mode Update Cepat: Telegram AI Coding Agent         ${NC}"
     echo -e "${BLUE}======================================================${NC}"
 
+    resolve_workspace_and_agent_dirs
+    cd "$WORKSPACE_DIR"
+
+    sync_git_repo_cleanly "$WORKSPACE_DIR"
+
     setup_directories
-
-    echo -e "\n${CYAN}📦 Memeriksa pembaruan dari GitHub (origin/main)...${NC}"
-    git fetch origin main 2>/dev/null || true
-    local local_commit="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
-    local remote_commit="$(git rev-parse --short origin/main 2>/dev/null || echo "$local_commit")"
-
-    if [ "$local_commit" != "$remote_commit" ]; then
-        echo -e "Memperbarui commit: ${YELLOW}${local_commit}${NC} -> ${GREEN}${remote_commit}${NC}..."
-        git stash 2>/dev/null || true
-        git pull --rebase origin main 2>/dev/null || git pull origin main 2>/dev/null || true
-        git stash pop 2>/dev/null || true
-        echo -e "${GREEN}✓ Kode berhasil diperbarui ke commit ${remote_commit}.${NC}"
-    else
-        echo -e "${GREEN}✓ Kode lokal sudah sinkron dengan versi terbaru (${local_commit}).${NC}"
-    fi
-
     setup_env_file
     setup_binary_bundle_and_service
     exit 0

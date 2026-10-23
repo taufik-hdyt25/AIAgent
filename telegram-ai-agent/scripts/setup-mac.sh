@@ -42,17 +42,30 @@ fi
 NODE_VER=$("$NODE_BIN" -v)
 echo -e "${GREEN}✓ Node.js terdeteksi:${NC} $NODE_BIN ($NODE_VER)"
 
-# 3. Tentukan Root Workspace & Folder Projects
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -d "$ROOT_DIR/projects" ]; then
-  WORKSPACE_DIR="$ROOT_DIR"
-  AGENT_DIR="$ROOT_DIR/telegram-ai-agent"
-elif [ -d "$ROOT_DIR/../projects" ]; then
-  WORKSPACE_DIR="$(cd "$ROOT_DIR/.." && pwd)"
-  AGENT_DIR="$ROOT_DIR"
+# 3. Tentukan Root Workspace & Folder Projects secara dinamis
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -f "$SCRIPT_DIR/package.json" ]; then
+  AGENT_DIR="$SCRIPT_DIR"
+elif [ -f "$SCRIPT_DIR/../package.json" ]; then
+  AGENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+elif [ -f "$SCRIPT_DIR/../telegram-ai-agent/package.json" ]; then
+  AGENT_DIR="$(cd "$SCRIPT_DIR/../telegram-ai-agent" && pwd)"
+elif [ -f "$(pwd)/telegram-ai-agent/package.json" ]; then
+  AGENT_DIR="$(pwd)/telegram-ai-agent"
+elif [ -f "$(pwd)/package.json" ]; then
+  AGENT_DIR="$(pwd)"
 else
-  WORKSPACE_DIR="$ROOT_DIR"
-  AGENT_DIR="$ROOT_DIR/telegram-ai-agent"
+  AGENT_DIR="$(find "$(pwd)" -maxdepth 2 -name "package.json" -not -path "*/node_modules/*" 2>/dev/null | head -n 1 | xargs dirname 2>/dev/null || pwd)"
+fi
+
+if [ -d "$AGENT_DIR/../projects" ]; then
+  WORKSPACE_DIR="$(cd "$AGENT_DIR/.." && pwd)"
+elif [ -d "$SCRIPT_DIR/../../projects" ]; then
+  WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+elif [ -d "$(pwd)/projects" ]; then
+  WORKSPACE_DIR="$(pwd)"
+else
+  WORKSPACE_DIR="$AGENT_DIR"
 fi
 
 PROJECTS_DIR="$WORKSPACE_DIR/projects"
@@ -70,12 +83,23 @@ mkdir -p "$GLOBAL_AGENT_DIR/uploads"
 # 5. Build Single-File Bundle (Zero node_modules di workspace!)
 echo -e "${BLUE}📦 Mem-bundle engine TH Agent menjadi single-file bundle...${NC}"
 cd "$AGENT_DIR"
+if [ ! -f "package.json" ] && [ -f "$WORKSPACE_DIR/package.json" ]; then
+  AGENT_DIR="$WORKSPACE_DIR"
+  cd "$AGENT_DIR"
+fi
 if [ ! -d "node_modules" ]; then
   echo -e "${BLUE}Mengunduh dependensi sementara untuk bundling...${NC}"
   npm install --silent 2>/dev/null || npm install
 fi
 
-npx -y esbuild src/bot.js --bundle --platform=node --format=esm \
+ENTRY_FILE="src/bot.js"
+if [ ! -f "$ENTRY_FILE" ] && [ -f "$WORKSPACE_DIR/telegram-ai-agent/src/bot.js" ]; then
+  ENTRY_FILE="$WORKSPACE_DIR/telegram-ai-agent/src/bot.js"
+elif [ ! -f "$ENTRY_FILE" ] && [ -f "$WORKSPACE_DIR/src/bot.js" ]; then
+  ENTRY_FILE="$WORKSPACE_DIR/src/bot.js"
+fi
+
+npx -y esbuild "$ENTRY_FILE" --bundle --platform=node --format=esm \
   --banner:js="import { createRequire } from \x27module\x27; const require = createRequire(import.meta.url);" \
   --target=node26 --outfile="$GLOBAL_AGENT_DIR/bot.bundle.js"
 
@@ -83,7 +107,11 @@ npx -y esbuild src/bot.js --bundle --platform=node --format=esm \
 rm -rf node_modules package-lock.json 2>/dev/null || true
 
 # Salin public dashboard & .env ke isolated dir
-cp -r public "$GLOBAL_AGENT_DIR/public" 2>/dev/null || true
+if [ -d "public" ]; then
+  cp -r public "$GLOBAL_AGENT_DIR/public" 2>/dev/null || true
+elif [ -d "$WORKSPACE_DIR/public" ]; then
+  cp -r "$WORKSPACE_DIR/public" "$GLOBAL_AGENT_DIR/public" 2>/dev/null || true
+fi
 if [ -f "$AGENT_DIR/.env" ]; then
   cp "$AGENT_DIR/.env" "$GLOBAL_AGENT_DIR/.env"
 elif [ -f "$WORKSPACE_DIR/.env" ]; then
