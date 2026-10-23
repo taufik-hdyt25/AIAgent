@@ -24,6 +24,12 @@ Cukup salin dan jalankan satu baris perintah ini di terminal **macOS**, **Linux 
 curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh | bash
 ```
 
+> 💡 **Smart Auto-Update:** Jika TH Agent sudah terpasang, perintah curl di atas otomatis mendeteksi instalasi lama dan beralih ke **Mode Update Cepat** (mengambil pembaruan terbaru dari GitHub, re-bundle, dan restart service) dalam hitungan detik tanpa mengulang setup dari awal dan tanpa mengubah konfigurasi `.env` atau folder `projects/` Anda.
+> Bisa juga dipanggil langsung dengan:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh | bash -s -- --update
+> ```
+
 Installer otomatis mendeteksi sistem operasi dan lingkungan kerja Anda:
 - 🍏 **Di macOS (Local):** Otomatis membuat folder kerja `th-agent/`, mem-bundle bot ke direktori terisolasi `~/.th-agent/`, mendaftarkan background service macOS LaunchAgent 24/7 (anti-sleep `caffeinate -ims`), dan menjaga workspace `th-agent/projects/` **100% bersih tanpa `node_modules`**.
 - 🐧 **Di Linux VPS / Server:** Mengonfigurasi container Docker (`docker compose up -d`) atau Native PM2 secara otomatis dengan port dan resource terisolasi.

@@ -480,22 +480,24 @@ setup_env_file() {
     ACTUAL_AGY_BIN="$(command -v agy || echo "$HOME/.local/bin/agy")"
     ACTUAL_CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
 
-    # Perbarui path binary & default engine di .env
+    # Perbarui path binary & default engine di .env jika belum diset
     if grep -q "^AGY_BIN=" "$env_file"; then
-        sed -i.bak "s|^AGY_BIN=.*|AGY_BIN=${ACTUAL_AGY_BIN}|" "$env_file" && rm -f "$env_file.bak"
+        if [ -n "$ACTUAL_AGY_BIN" ] && [ -x "$ACTUAL_AGY_BIN" ]; then
+            sed -i.bak "s|^AGY_BIN=.*|AGY_BIN=${ACTUAL_AGY_BIN}|" "$env_file" && rm -f "$env_file.bak"
+        fi
     else
         echo "AGY_BIN=${ACTUAL_AGY_BIN}" >> "$env_file"
     fi
 
     if grep -q "^CLAUDE_BIN=" "$env_file"; then
-        sed -i.bak "s|^CLAUDE_BIN=.*|CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}|" "$env_file" && rm -f "$env_file.bak"
+        if [ -n "$ACTUAL_CLAUDE_BIN" ] && [ -x "$ACTUAL_CLAUDE_BIN" ]; then
+            sed -i.bak "s|^CLAUDE_BIN=.*|CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}|" "$env_file" && rm -f "$env_file.bak"
+        fi
     else
         echo "CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}" >> "$env_file"
     fi
 
-    if grep -q "^CLI_ENGINE=" "$env_file"; then
-        sed -i.bak "s|^CLI_ENGINE=.*|CLI_ENGINE=${DEFAULT_ENGINE}|" "$env_file" && rm -f "$env_file.bak"
-    else
+    if ! grep -q "^CLI_ENGINE=" "$env_file"; then
         echo "CLI_ENGINE=${DEFAULT_ENGINE}" >> "$env_file"
     fi
 
@@ -545,7 +547,115 @@ setup_env_file() {
 }
 
 # ==============================================================================
-# ALUR INSTALASI
+# DETEKSI INSTALASI EKSISTING / FAST UPDATE
+# ==============================================================================
+perform_fast_update() {
+    echo -e "\n${BLUE}======================================================${NC}"
+    echo -e "${GREEN}⚡ Mode Update Cepat: Telegram AI Coding Agent         ${NC}"
+    echo -e "${BLUE}======================================================${NC}"
+
+    # 1. Bersihkan sisa direktori/file usang di root workspace agar bersih
+    setup_directories
+
+    # 2. Ambil pembaruan dari GitHub
+    echo -e "\n${CYAN}📦 Memeriksa pembaruan dari GitHub (origin/main)...${NC}"
+    git fetch origin main 2>/dev/null || true
+    local local_commit="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    local remote_commit="$(git rev-parse --short origin/main 2>/dev/null || echo "$local_commit")"
+
+    if [ "$local_commit" != "$remote_commit" ]; then
+        echo -e "Memperbarui commit: ${YELLOW}${local_commit}${NC} -> ${GREEN}${remote_commit}${NC}..."
+        git stash 2>/dev/null || true
+        git pull --rebase origin main 2>/dev/null || git pull origin main 2>/dev/null || true
+        git stash pop 2>/dev/null || true
+        echo -e "${GREEN}✓ Kode berhasil diperbarui ke commit ${remote_commit}.${NC}"
+    else
+        echo -e "${GREEN}✓ Kode lokal sudah sinkron dengan versi terbaru (${local_commit}).${NC}"
+    fi
+
+    # 3. Validasi .env tanpa mengubah secret user
+    setup_env_file
+
+    # 4. Bangun ulang / restart sesuai sistem operasi
+    if [ "$OS" = "Darwin" ]; then
+        echo -e "\n${BLUE}🍏 Memperbarui bundle & me-reload macOS LaunchAgent...${NC}"
+        if [ -f "telegram-ai-agent/scripts/setup-mac.sh" ]; then
+            bash telegram-ai-agent/scripts/setup-mac.sh
+        elif [ -f "setup-mac.sh" ]; then
+            bash setup-mac.sh
+        fi
+    elif [ "$OS" = "Linux" ]; then
+        local is_docker=false
+        if command -v docker &>/dev/null; then
+            if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "telegram-coding-agent"; then
+                is_docker=true
+            fi
+        fi
+
+        if [ "$is_docker" = true ]; then
+            echo -e "\n${CYAN}🐳 Membangun ulang dan me-restart container Docker...${NC}"
+            if [ -d "telegram-ai-agent" ]; then
+                cd telegram-ai-agent
+            fi
+            docker compose build 2>/dev/null || docker-compose build 2>/dev/null || true
+            docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null || true
+            cd .. 2>/dev/null || true
+        else
+            echo -e "\n${CYAN}🔄 Memperbarui dependensi & me-restart process PM2...${NC}"
+            if [ -d "telegram-ai-agent" ]; then
+                cd telegram-ai-agent
+            fi
+            npm install --omit=dev 2>/dev/null || true
+            if command -v pm2 &>/dev/null; then
+                pm2 restart telegram-coding-agent 2>/dev/null || pm2 start ecosystem.config.cjs 2>/dev/null || true
+            fi
+            cd .. 2>/dev/null || true
+        fi
+    fi
+
+    local final_commit="$(git rev-parse --short HEAD 2>/dev/null || echo "latest")"
+    echo -e "\n${GREEN}======================================================${NC}"
+    echo -e "${GREEN}🎉 UPDATE BERHASIL! TH Agent (${final_commit}) aktif!    ${NC}"
+    echo -e "${GREEN}======================================================${NC}"
+    echo -e "• Pengaturan .env, data memori, dan folder projects Anda tetap aman."
+    echo -e "• Web UI Settings: ${CYAN}http://localhost:3030${NC}"
+    echo -e "• Bot Telegram siap digunakan dengan fitur dan pembaruan terbaru! 🚀"
+    echo -e "${GREEN}======================================================${NC}"
+    exit 0
+}
+
+# Cek apakah ini instalasi yang sudah ada sebelumnya
+IS_EXISTING_INSTALL=false
+if [ -d ".git" ]; then
+    if [ -f "telegram-ai-agent/.env" ] || [ -f "$HOME/.th-agent/.env" ] || [ -f ".env" ]; then
+        IS_EXISTING_INSTALL=true
+    fi
+fi
+
+# Cek argumen CLI (misal: curl ... | bash -s -- --update)
+if [ "$1" = "--update" ] || [ "$1" = "-u" ] || [ "$1" = "update" ]; then
+    perform_fast_update
+fi
+
+if [ "$IS_EXISTING_INSTALL" = true ]; then
+    echo -e "\n${BLUE}======================================================${NC}"
+    echo -e "${GREEN}🔄 Instalasi TH Agent Terdeteksi!                     ${NC}"
+    echo -e "${BLUE}======================================================${NC}"
+    echo -e "Sistem mendeteksi instalasi TH Agent yang sudah ada di direktori ini."
+    echo -e "Pilih tindakan yang diinginkan:"
+    echo -e "  ${CYAN}[1] ⚡ Update Cepat ke Versi Terbaru${NC} (Rekomendasi - Pertahankan semua setting & data)"
+    echo -e "  ${YELLOW}[2] 🛠️  Re-konfigurasi Penuh${NC} (Setup ulang Engine, Model, dan Token dari awal)"
+    echo ""
+    prompt_user "Pilihan Anda [1/2, default: 1 (Update Cepat)]: " run_mode
+    run_mode="${run_mode:-1}"
+
+    if [ "$run_mode" != "2" ]; then
+        perform_fast_update
+    fi
+fi
+
+# ==============================================================================
+# ALUR INSTALASI LENGKAP (JIKA FRESH INSTALL ATAU RE-KONFIGURASI)
 # ==============================================================================
 
 if [ "$OS" = "Darwin" ]; then
