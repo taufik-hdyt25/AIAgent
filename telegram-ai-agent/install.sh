@@ -441,23 +441,38 @@ install_claude_cli() {
 
 setup_directories() {
     echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
-    mkdir -p projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth telegram-ai-agent/public data logs uploads
-    chmod 755 data logs projects uploads 2>/dev/null || true
-    chmod -R u+rwX,g+rwX telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth data logs uploads 2>/dev/null || true
+    mkdir -p projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth telegram-ai-agent/public
+    chmod 755 projects 2>/dev/null || true
+    chmod -R u+rwX,g+rwX telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth 2>/dev/null || true
     local target_user="${SUDO_USER:-$USER}"
     if [ -n "$target_user" ]; then
-        chown -R "$target_user" projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth data logs uploads 2>/dev/null || true
+        chown -R "$target_user" projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth 2>/dev/null || true
     fi
-    echo -e "${GREEN}✓ Direktori siap.${NC}"
+
+    # Bersihkan jika ada folder data/logs/uploads usang di root level
+    for d in data logs uploads public; do
+        if [ -d "$d" ] && [ ! -L "$d" ]; then
+            cp -rn "$d"/* "telegram-ai-agent/$d/" 2>/dev/null || true
+            rm -rf "$d" 2>/dev/null || true
+        fi
+    done
+    echo -e "${GREEN}✓ Direktori siap (Hanya projects/ dan telegram-ai-agent/).${NC}"
 }
 
 setup_env_file() {
     echo -e "\n${BLUE}Menyiapkan file konfigurasi .env...${NC}"
-    if [ ! -f ".env" ]; then
-        if [ -f ".env.example" ]; then
-            cp .env.example .env
+    local env_file="telegram-ai-agent/.env"
+    if [ ! -d "telegram-ai-agent" ]; then
+        env_file=".env"
+    fi
+
+    if [ ! -f "$env_file" ]; then
+        if [ -f "telegram-ai-agent/.env.example" ]; then
+            cp telegram-ai-agent/.env.example "$env_file"
+        elif [ -f ".env.example" ]; then
+            cp .env.example "$env_file"
         else
-            touch .env
+            touch "$env_file"
         fi
     fi
 
@@ -466,49 +481,49 @@ setup_env_file() {
     ACTUAL_CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
 
     # Perbarui path binary & default engine di .env
-    if grep -q "^AGY_BIN=" .env; then
-        sed -i.bak "s|^AGY_BIN=.*|AGY_BIN=${ACTUAL_AGY_BIN}|" .env && rm -f .env.bak
+    if grep -q "^AGY_BIN=" "$env_file"; then
+        sed -i.bak "s|^AGY_BIN=.*|AGY_BIN=${ACTUAL_AGY_BIN}|" "$env_file" && rm -f "$env_file.bak"
     else
-        echo "AGY_BIN=${ACTUAL_AGY_BIN}" >> .env
+        echo "AGY_BIN=${ACTUAL_AGY_BIN}" >> "$env_file"
     fi
 
-    if grep -q "^CLAUDE_BIN=" .env; then
-        sed -i.bak "s|^CLAUDE_BIN=.*|CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}|" .env && rm -f .env.bak
+    if grep -q "^CLAUDE_BIN=" "$env_file"; then
+        sed -i.bak "s|^CLAUDE_BIN=.*|CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}|" "$env_file" && rm -f "$env_file.bak"
     else
-        echo "CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}" >> .env
+        echo "CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}" >> "$env_file"
     fi
 
-    if grep -q "^CLI_ENGINE=" .env; then
-        sed -i.bak "s|^CLI_ENGINE=.*|CLI_ENGINE=${DEFAULT_ENGINE}|" .env && rm -f .env.bak
+    if grep -q "^CLI_ENGINE=" "$env_file"; then
+        sed -i.bak "s|^CLI_ENGINE=.*|CLI_ENGINE=${DEFAULT_ENGINE}|" "$env_file" && rm -f "$env_file.bak"
     else
-        echo "CLI_ENGINE=${DEFAULT_ENGINE}" >> .env
+        echo "CLI_ENGINE=${DEFAULT_ENGINE}" >> "$env_file"
     fi
 
-    if ! grep -q "^AGY_AUTO_APPROVE_PERMISSIONS=" .env; then
-        echo "AGY_AUTO_APPROVE_PERMISSIONS=true" >> .env
+    if ! grep -q "^AGY_AUTO_APPROVE_PERMISSIONS=" "$env_file"; then
+        echo "AGY_AUTO_APPROVE_PERMISSIONS=true" >> "$env_file"
     fi
 
-    if ! grep -q "^AGY_MODEL=" .env; then
-        echo "AGY_MODEL=gemini-3.8-flash-medium" >> .env
+    if ! grep -q "^AGY_MODEL=" "$env_file"; then
+        echo "AGY_MODEL=gemini-3.8-flash-medium" >> "$env_file"
     fi
 
-    if ! grep -q "^UNIVERSAL_BASE_URL=" .env; then
-        echo "UNIVERSAL_BASE_URL=https://api.deepseek.com/v1" >> .env
+    if ! grep -q "^UNIVERSAL_BASE_URL=" "$env_file"; then
+        echo "UNIVERSAL_BASE_URL=https://api.deepseek.com/v1" >> "$env_file"
     fi
 
-    if ! grep -q "^UNIVERSAL_MODEL=" .env; then
-        echo "UNIVERSAL_MODEL=deepseek-chat" >> .env
+    if ! grep -q "^UNIVERSAL_MODEL=" "$env_file"; then
+        echo "UNIVERSAL_MODEL=deepseek-chat" >> "$env_file"
     fi
 
     # Cek apakah BOT_TOKEN dan ALLOWED_TELEGRAM_IDS sudah terisi
-    CURRENT_TOKEN="$(grep -E "^BOT_TOKEN=" .env | cut -d '=' -f2- | tr -d ' ' || true)"
-    CURRENT_IDS="$(grep -E "^ALLOWED_TELEGRAM_IDS=" .env | cut -d '=' -f2- | tr -d ' ' || true)"
+    CURRENT_TOKEN="$(grep -E "^BOT_TOKEN=" "$env_file" | cut -d '=' -f2- | tr -d ' ' || true)"
+    CURRENT_IDS="$(grep -E "^ALLOWED_TELEGRAM_IDS=" "$env_file" | cut -d '=' -f2- | tr -d ' ' || true)"
 
     if [ -z "$CURRENT_TOKEN" ]; then
         echo -e "${YELLOW}BOT_TOKEN masih kosong.${NC}"
         prompt_user "Masukkan BOT_TOKEN dari @BotFather (atau tekan Enter untuk isi nanti di Web UI): " input_token
         if [ -n "$input_token" ]; then
-            sed -i.bak "s|^BOT_TOKEN=.*|BOT_TOKEN=${input_token}|" .env && rm -f .env.bak
+            sed -i.bak "s|^BOT_TOKEN=.*|BOT_TOKEN=${input_token}|" "$env_file" && rm -f "$env_file.bak"
         fi
     fi
 
@@ -516,14 +531,15 @@ setup_env_file() {
         echo -e "${YELLOW}ALLOWED_TELEGRAM_IDS belum diset.${NC}"
         prompt_user "Masukkan User ID Telegram Anda (atau tekan Enter untuk isi nanti di Web UI): " input_id
         if [ -n "$input_id" ]; then
-            sed -i.bak "s|^ALLOWED_TELEGRAM_IDS=.*|ALLOWED_TELEGRAM_IDS=${input_id}|" .env && rm -f .env.bak
+            sed -i.bak "s|^ALLOWED_TELEGRAM_IDS=.*|ALLOWED_TELEGRAM_IDS=${input_id}|" "$env_file" && rm -f "$env_file.bak"
         fi
     fi
 
-    chmod 600 .env 2>/dev/null || true
-    if [ -d "telegram-ai-agent" ]; then
-        cp .env telegram-ai-agent/.env 2>/dev/null || true
-        chmod 600 telegram-ai-agent/.env 2>/dev/null || true
+    chmod 600 "$env_file" 2>/dev/null || true
+
+    # Bersihkan file .env di root jika ada agar tidak mengotori workspace
+    if [ "$env_file" != ".env" ] && [ -f ".env" ]; then
+        rm -f .env .env.bak 2>/dev/null || true
     fi
     echo -e "${GREEN}✓ Konfigurasi .env siap.${NC}"
 }
@@ -585,10 +601,10 @@ if [ "$OS" = "Darwin" ]; then
 
     # 6. Bundle bot & LaunchAgent background service (Clean Isolated Workspace)
     echo -e "\n${BLUE}Menyiapkan single-file bundle & macOS LaunchAgent background service...${NC}"
-    if [ -f "./setup-mac.sh" ]; then
-        bash ./setup-mac.sh
-    elif [ -f "./telegram-ai-agent/scripts/setup-mac.sh" ]; then
+    if [ -f "./telegram-ai-agent/scripts/setup-mac.sh" ]; then
         bash ./telegram-ai-agent/scripts/setup-mac.sh
+    elif [ -f "./setup-mac.sh" ]; then
+        bash ./setup-mac.sh
     elif [ -f "../setup-mac.sh" ]; then
         bash ../setup-mac.sh
     else

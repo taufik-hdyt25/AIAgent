@@ -58,22 +58,18 @@ th-agent/
 Jika Anda sudah meng-clone repositori ini secara manual (`git clone https://github.com/taufik-hdyt25/AIAgent.git th-agent`):
 
 ### 1. 🌐 Di Linux VPS / Server (Docker Mode - Direkomendasikan)
-Dari root workspace `th-agent/`:
-```bash
-docker compose up -d
-```
-Atau dari dalam folder bot `telegram-ai-agent/`:
+Jalankan container dari folder bot `telegram-ai-agent/`:
 ```bash
 cd telegram-ai-agent
 docker compose up -d
 ```
 
 ### 2. 💻 Di Local Mac (Manual Isolated Setup)
-Di Mac, jalankan skrip setup berikut dari root:
+Di Mac, jalankan skrip setup berikut:
 ```bash
-./setup-mac.sh
+bash telegram-ai-agent/scripts/setup-mac.sh
 ```
-*(Untuk menghapus background service di Mac kapan saja: `./uninstall-mac.sh`)*
+*(Untuk menghapus background service di Mac kapan saja: `bash telegram-ai-agent/scripts/uninstall-mac.sh`)*
 
 ### 3. ⚙️ Mode Native Node.js (Dev / Debug)
 ```bash

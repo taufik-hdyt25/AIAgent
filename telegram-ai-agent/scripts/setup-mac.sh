@@ -43,21 +43,33 @@ NODE_VER=$("$NODE_BIN" -v)
 echo -e "${GREEN}✓ Node.js terdeteksi:${NC} $NODE_BIN ($NODE_VER)"
 
 # 3. Tentukan Root Workspace & Folder Projects
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -d "$ROOT_DIR/projects" ]; then
-  WORKSPACE_DIR="$ROOT_DIR"
-  AGENT_DIR="$ROOT_DIR/telegram-ai-agent"
-elif [ -d "$ROOT_DIR/../projects" ]; then
-  WORKSPACE_DIR="$(cd "$ROOT_DIR/.." && pwd)"
-  AGENT_DIR="$ROOT_DIR"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+if [ -d "$SCRIPT_DIR/../../projects" ]; then
+  WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  AGENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+elif [ -d "$SCRIPT_DIR/projects" ]; then
+  WORKSPACE_DIR="$SCRIPT_DIR"
+  AGENT_DIR="$SCRIPT_DIR/telegram-ai-agent"
+elif [ -d "$SCRIPT_DIR/../projects" ]; then
+  WORKSPACE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+  AGENT_DIR="$SCRIPT_DIR"
 else
-  WORKSPACE_DIR="$ROOT_DIR"
-  AGENT_DIR="$ROOT_DIR/telegram-ai-agent"
+  WORKSPACE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+  AGENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
 
 PROJECTS_DIR="$WORKSPACE_DIR/projects"
 mkdir -p "$PROJECTS_DIR"
 mkdir -p "$PROJECTS_DIR/intiva"
+
+# Bersihkan sisa folder data, logs, uploads di root workspace agar murni hanya projects/ & telegram-ai-agent/
+for d in data logs uploads public; do
+  if [ -d "$WORKSPACE_DIR/$d" ] && [ ! -L "$WORKSPACE_DIR/$d" ]; then
+    cp -rn "$WORKSPACE_DIR/$d"/* "$AGENT_DIR/$d/" 2>/dev/null || true
+    rm -rf "$WORKSPACE_DIR/$d" 2>/dev/null || true
+  fi
+done
+rm -f "$WORKSPACE_DIR/.env" "$WORKSPACE_DIR/.env.bak" 2>/dev/null || true
 
 echo -e "${GREEN}✓ Workspace Root:${NC} $WORKSPACE_DIR"
 echo -e "${GREEN}✓ Folder Projects:${NC} $PROJECTS_DIR"
@@ -77,8 +89,8 @@ if [ ! -d "node_modules" ]; then
 fi
 
 npx -y esbuild src/bot.js --bundle --platform=node --format=esm \
-  --banner:js="import { createRequire } from \x27module\x27; const require = createRequire(import.meta.url);" \
-  --target=node26 --outfile="$GLOBAL_AGENT_DIR/bot.bundle.js"
+  --banner:js="import { createRequire } from 'module'; const require = createRequire(import.meta.url);" \
+  --target=node20 --outfile="$GLOBAL_AGENT_DIR/bot.bundle.js"
 
 # Bersihkan node_modules di folder kerja agar tetap bersih total
 rm -rf node_modules package-lock.json 2>/dev/null || true
@@ -158,5 +170,5 @@ echo -e "   • Display Sleep: ${GREEN}Tahan tidur (caffeinate -ims)${NC}"
 echo -e "   • Web Dashboard: ${CYAN}http://localhost:3030${NC}"
 echo -e "   • Log Output: ${YELLOW}tail -f ~/.th-agent/logs/mac-bot.log${NC}"
 echo -e ""
-echo -e "💡 ${CYAN}Untuk menghapus background service kapan saja:${NC} ./uninstall-mac.sh"
+echo -e "💡 ${CYAN}Untuk menghapus background service kapan saja:${NC} bash telegram-ai-agent/scripts/uninstall-mac.sh"
 echo -e "${GREEN}================================================================${NC}"
