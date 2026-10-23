@@ -443,6 +443,11 @@ setup_directories() {
     echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
     mkdir -p projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth telegram-ai-agent/public data logs uploads
     chmod 755 data logs projects uploads 2>/dev/null || true
+    chmod -R u+rwX,g+rwX telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth data logs uploads 2>/dev/null || true
+    local target_user="${SUDO_USER:-$USER}"
+    if [ -n "$target_user" ]; then
+        chown -R "$target_user" projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth data logs uploads 2>/dev/null || true
+    fi
     echo -e "${GREEN}✓ Direktori siap.${NC}"
 }
 
@@ -516,8 +521,9 @@ setup_env_file() {
     fi
 
     chmod 600 .env 2>/dev/null || true
-    if [ -d "telegram-ai-agent" ] && [ ! -f "telegram-ai-agent/.env" ]; then
+    if [ -d "telegram-ai-agent" ]; then
         cp .env telegram-ai-agent/.env 2>/dev/null || true
+        chmod 600 telegram-ai-agent/.env 2>/dev/null || true
     fi
     echo -e "${GREEN}✓ Konfigurasi .env siap.${NC}"
 }
@@ -669,6 +675,9 @@ elif [ "$OS" = "Linux" ]; then
         setup_env_file
 
         echo -e "\n${BLUE}Menginstall dependensi proyek (npm install)...${NC}"
+        if [ -d "telegram-ai-agent" ]; then
+            cd telegram-ai-agent
+        fi
         npm install
 
         if [ "$SELECTED_AGY" = true ]; then
@@ -701,7 +710,11 @@ elif [ "$OS" = "Linux" ]; then
         echo -e "• Hentikan bot:   ${BLUE}pm2 stop telegram-coding-agent${NC}"
         if [ "$IS_PI" = true ]; then
             echo -e "\n${CYAN}🍓 Ingin bot aktif otomatis 24/7 via systemd saat Raspberry Pi dinyalakan?${NC}"
+            if [ -f "scripts/setup-pi-autostart.sh" ]; then
             echo -e "   Cukup jalankan: ${BLUE}bash scripts/setup-pi-autostart.sh${NC}"
+        else
+            echo -e "   Cukup jalankan: ${BLUE}bash telegram-ai-agent/scripts/setup-pi-autostart.sh${NC}"
+        fi
         fi
     fi
 fi
