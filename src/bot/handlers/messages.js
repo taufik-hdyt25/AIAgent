@@ -1,5 +1,7 @@
-import { downloadTelegramFile } from "../../services/telegram-files.js";
+import { readFile } from "node:fs/promises";
+import { downloadTelegramFile, truncate } from "../../services/telegram-files.js";
 import { sendToAgent } from "../dispatcher.js";
+import { transcribeAudio } from "../../services/voice-service.js";
 
 export function registerMessageHandlers(bot) {
   // Handler untuk menerima dokumen/file dari Telegram chat
@@ -92,6 +94,103 @@ export function registerMessageHandlers(bot) {
     } catch (err) {
       console.error("Gagal memproses gambar:", err);
       await ctx.reply(`❌ Gagal memproses gambar: ${err.message}`);
+    }
+  });
+
+  // Handler untuk menerima pesan suara (Voice Note) atau Audio dari Telegram chat
+  bot.on(["message:voice", "message:audio"], async (ctx) => {
+    const voice = ctx.message.voice;
+    const audio = ctx.message.audio;
+    const targetMedia = voice || audio;
+    if (!targetMedia) return;
+
+    const isVoiceNote = Boolean(voice);
+    const originalName = audio?.file_name || (isVoiceNote ? `voice_${Date.now()}.oga` : `audio_${Date.now()}.mp3`);
+    const mimeType = targetMedia.mime_type || (isVoiceNote ? "audio/ogg" : "audio/mpeg");
+
+    let statusMsg = null;
+    try {
+      statusMsg = await ctx.reply("🎙️ *Mendengarkan pesan suara...*", {
+        parse_mode: "Markdown",
+      });
+
+      const fileInfo = await downloadTelegramFile(
+        ctx,
+        targetMedia.file_id,
+        originalName,
+        false,
+        mimeType
+      );
+
+      const buffer = await readFile(fileInfo.absolutePath);
+      const transcription = await transcribeAudio(buffer, {
+        fileName: fileInfo.savedFileName,
+        mimeType: fileInfo.mimeType,
+      });
+
+      if (!transcription.success) {
+        if (transcription.error === "NO_API_KEY") {
+          const helpMsg =
+            `🎙️ *Pesan Suara / Voice Note Diterima!*\n\n` +
+            `Fitur transkripsi audio otomatis memerlukan API Key Whisper (disarankan **Groq Cloud** gratis & kilat <0.5s, atau OpenAI).\n\n` +
+            `💡 *Cara Mengaktifkan:*\n` +
+            `1. Ambil API Key gratis di [console.groq.com/keys](https://console.groq.com/keys)\n` +
+            `2. Ketik perintah:\n` +
+            `\`/setwhisper groq gsk_...\`\n\n` +
+            `_Setelah diisi, pesan suara apa pun akan langsung otomatis dijalankan jadi perintah koding!_`;
+
+          try {
+            await ctx.api.editMessageText(ctx.chat.id, statusMsg.message_id, helpMsg, {
+              parse_mode: "Markdown",
+              disable_web_page_preview: true,
+            });
+          } catch {
+            await ctx.reply(helpMsg, { parse_mode: "Markdown", disable_web_page_preview: true });
+          }
+          return;
+        }
+
+        throw new Error(transcription.message || "Gagal mentranskripsi audio.");
+      }
+
+      const voiceText = transcription.text;
+      if (!voiceText) {
+        await ctx.api.editMessageText(
+          ctx.chat.id,
+          statusMsg.message_id,
+          "⚠️ Suara tidak terdeteksi atau terlalu sunyi. Coba kirim ulang ya bro."
+        );
+        return;
+      }
+
+      const infoMsg =
+        `🗣️ *Voice Command Diterima:* _"${truncate(voiceText, 180)}"_\n` +
+        `⚡ Transkripsi: \`${transcription.provider}\` (${transcription.durationSec}s)\n` +
+        `⏳ *Mengeksekusi instruksi...*`;
+
+      try {
+        await ctx.api.editMessageText(ctx.chat.id, statusMsg.message_id, infoMsg, {
+          parse_mode: "Markdown",
+        });
+      } catch {
+        await ctx.reply(infoMsg, { parse_mode: "Markdown" });
+      }
+
+      // Kirim teks hasil transkripsi ke agent
+      await sendToAgent(voiceText, ctx, fileInfo);
+    } catch (err) {
+      console.error("[Voice Handler] Gagal memproses pesan suara:", err);
+      if (statusMsg) {
+        try {
+          await ctx.api.editMessageText(
+            ctx.chat.id,
+            statusMsg.message_id,
+            `❌ Gagal memproses voice note: ${err.message}`
+          );
+          return;
+        } catch (_) {}
+      }
+      await ctx.reply(`❌ Gagal memproses voice note: ${err.message}`);
     }
   });
 

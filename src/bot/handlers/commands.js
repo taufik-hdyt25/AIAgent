@@ -79,6 +79,17 @@ import {
   performSelfUpdate,
   getCurrentCommit,
 } from "../../services/update-service.js";
+import {
+  setWhisperApiKey,
+  getVoiceConfig,
+} from "../../services/voice-service.js";
+import {
+  getSentryConfig,
+  checkServerHealth,
+  formatSentryStatus,
+  toggleSentry,
+  toggleAutoHeal,
+} from "../../services/sentry-service.js";
 
 export function registerBasicCommands(bot) {
   // /start, /help
@@ -113,10 +124,14 @@ export function registerBasicCommands(bot) {
         "Saya terhubung langsung dengan Anda di Telegram ini. Anda bisa langsung mengobrol, mengirim file koding/skrip, mengirim screenshot error/gambar, atau memberikan perintah kerja apa pun.\n\n" +
         `⚙️ Engine aktif: *${activeEngineLabel}*\n` +
         `🤖 Model aktif: ${activeModelDisplay}\n\n` +
-        "📁 *Fitur File & Gambar:*\n" +
+        "📁 *Fitur File, Gambar & Suara:*\n" +
+        "• *Kirim Pesan Suara / Voice Note:* Bicara langsung di Telegram, AI otomatis transkripsi & kerjakan tugas!\n" +
         "• *Kirim Dokumen / Skrip:* Kirim file `.py`, `.js`, `.sh`, `.json`, `.zip` dll. dengan caption instruksi.\n" +
         "• *Kirim Gambar / Foto:* Kirim screenshot error terminal, mockup UI, atau diagram untuk dianalisis AI.\n\n" +
         "Perintah bantuan:\n" +
+        "• `/menu` - Quick-Action Dashboard interaktif (tombol 1-klik)\n" +
+        "• `/sentry [check|on|off]` - Pantau kesehatan container & auto-healing 24/7\n" +
+        "• `/setwhisper <key> [provider]` - Konfigurasi API Whisper untuk voice note\n" +
         "• `/deploy` - Deploy aplikasi ke server langsung via chat\n" +
         "• `/setdeploy <cmd>` - Atur perintah shell untuk deployment server\n" +
         "• `/autofix <issue_url>` - Otomatis buat branch fix, perbaiki kode & buat Draft PR\n" +
@@ -1361,6 +1376,301 @@ export function registerBasicCommands(bot) {
     activeTask.cancelled = true;
     if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
     await ctx.reply(`🛑 Permintaan pembatalan tugas aktif (\`${activeTask.id}\`) telah dikirim.`);
+  });
+
+  // ==================== QUICK-ACTION DASHBOARD / MENU ====================
+
+  // /menu, /dashboard
+  bot.command(["menu", "dashboard"], async (ctx) => {
+    const keyboard = new InlineKeyboard()
+      .text("📊 Status Server", "menu_status")
+      .text("🧹 Bersihkan Cache", "menu_clean")
+      .row()
+      .text("🩺 Sentry Health", "menu_sentry")
+      .text("🔄 Cek Update", "menu_update")
+      .row()
+      .text("📁 Daftar Proyek", "menu_projects")
+      .text("📋 Cek Antrean", "menu_queue");
+
+    await ctx.reply(
+      "🎛️ *Quick-Action Dashboard TH Agent*\n\n" +
+        "Pilih tindakan operasional di bawah ini secara instan tanpa perlu mengetik perintah manual:",
+      {
+        parse_mode: "Markdown",
+        reply_markup: keyboard,
+      }
+    );
+  });
+
+  // Callback: menu_status
+  bot.callbackQuery("menu_status", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "📊 Memeriksa status..." });
+    const userId = ctx.from?.id;
+    const currentEngine = await getUserEngine(userId);
+    const isClaude = currentEngine === "claude";
+    const isUniversal = currentEngine === "universal";
+    const engineLabel = isClaude
+      ? "Claude Code CLI (`claude`)"
+      : isUniversal
+      ? "Universal API (`Zero-CLI`)"
+      : "Antigravity CLI (`agy`)";
+
+    const queueLen = getQueueLength();
+    const queueStatus =
+      queueLen > 0
+        ? `*${queueLen} instruksi menunggu* (\`/queue\`)`
+        : "Kosong (tidak ada antrean)";
+
+    const activeTask = getActiveTask();
+    const taskStatus = activeTask
+      ? `Sedang memproses (\`${activeTask.id}\`)`
+      : "🟢 Idle (Siap menerima instruksi)";
+
+    await ctx.reply(
+      `📊 *Status Ringkas Server TH Agent*\n\n` +
+        `• Status: ${taskStatus}\n` +
+        `• Engine: *${engineLabel}*\n` +
+        `• Antrean: ${queueStatus}\n\n` +
+        `💡 Ketik \`/status\` untuk detail lengkap atau \`/sentry\` untuk cek kesehatan container.`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // Callback: menu_clean
+  bot.callbackQuery("menu_clean", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "🧹 Menjalankan pembersihan server..." });
+    const statusMsg = await ctx.reply(
+      "🧹 *Memulai pembersihan server...*\nSedang membersihkan Docker build cache, dangling images, NPM cache & file temporary...",
+      { parse_mode: "Markdown" }
+    );
+    try {
+      const report = await executeServerCleanup();
+      const reportText = formatCleanupReport(report);
+      await ctx.api
+        .editMessageText(ctx.chat.id, statusMsg.message_id, reportText, {
+          parse_mode: "Markdown",
+        })
+        .catch(() => {});
+    } catch (err) {
+      await ctx.api
+        .editMessageText(
+          ctx.chat.id,
+          statusMsg.message_id,
+          `❌ Gagal membersihkan server: ${err.message}`
+        )
+        .catch(() => {});
+    }
+  });
+
+  // Callback: menu_sentry
+  bot.callbackQuery("menu_sentry", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "🩺 Memeriksa kesehatan server..." });
+    const statusMsg = await ctx.reply(
+      "🩺 *Memeriksa kesehatan container & resource server...*",
+      { parse_mode: "Markdown" }
+    );
+    try {
+      const cfg = await getSentryConfig();
+      const health = await checkServerHealth(null, true);
+      const text = formatSentryStatus(cfg, health);
+      await ctx.api
+        .editMessageText(ctx.chat.id, statusMsg.message_id, text, {
+          parse_mode: "Markdown",
+        })
+        .catch(() => {});
+    } catch (err) {
+      await ctx.api
+        .editMessageText(
+          ctx.chat.id,
+          statusMsg.message_id,
+          `❌ Gagal memeriksa Sentry: ${err.message}`
+        )
+        .catch(() => {});
+    }
+  });
+
+  // Callback: menu_update
+  bot.callbackQuery("menu_update", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "🔄 Memeriksa pembaruan..." });
+    const check = await checkForUpdates();
+    if (!check.hasUpdate) {
+      await ctx.reply(
+        `✅ *TH Agent Sudah Versi Paling Mutakhir!*\n\n` +
+          `🆔 Commit Aktif: \`${check.currentCommit}\`\n` +
+          `🌐 Status: Sinkron dengan \`origin/main\` di GitHub.`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+    await ctx.reply(
+      `📦 *Pembaruan Ditemukan! (${check.commitCount} commit baru)*\n\n` +
+        `• Versi Sekarang: \`${check.currentCommit}\`\n` +
+        `• Versi Terbaru: \`${check.latestCommit}\`\n\n` +
+        `💡 Ketik \`/update\` untuk menginstal pembaruan secara instan!`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // Callback: menu_projects
+  bot.callbackQuery("menu_projects", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "📁 Membaca daftar proyek..." });
+    try {
+      const items = await readdir(PROJECTS_DIR, { withFileTypes: true });
+      const dirs = items
+        .filter((d) => d.isDirectory() && !d.name.startsWith("."))
+        .map((d) => d.name);
+
+      if (dirs.length === 0) {
+        await ctx.reply("📁 Belum ada project di folder `./projects`.");
+        return;
+      }
+
+      const list = dirs.map((d, i) => `${i + 1}. \`./projects/${d}\``).join("\n");
+      await ctx.reply(
+        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}`,
+        { parse_mode: "Markdown" }
+      );
+    } catch (err) {
+      await ctx.reply(`❌ Gagal membaca folder projects: ${err.message}`);
+    }
+  });
+
+  // Callback: menu_queue
+  bot.callbackQuery("menu_queue", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: "📋 Memeriksa antrean..." });
+    const queue = getQueue();
+    if (queue.length === 0) {
+      await ctx.reply("📋 *Antrean Tugas Kosong*\nSemua tugas sudah selesai dikerjakan.", {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
+    const lines = queue
+      .map((item, idx) => `${idx + 1}. [${item.id}] _“${truncate(item.text, 50)}”_`)
+      .join("\n");
+    await ctx.reply(`📋 *Daftar Antrean Tugas (${queue.length}):*\n\n${lines}`, {
+      parse_mode: "Markdown",
+    });
+  });
+
+  // ==================== SERVER SENTRY & AUTO-HEALING ====================
+
+  // /sentry [check | on | off | autoheal on|off]
+  bot.command("sentry", async (ctx) => {
+    const raw = ctx.message?.text?.replace(/^\/sentry(@\w+)?\s*/i, "").trim().toLowerCase();
+    const parts = raw ? raw.split(/\s+/) : [];
+    const action = parts[0] || "check";
+
+    if (action === "on") {
+      const cfg = await toggleSentry(true);
+      await ctx.reply(
+        `🩺 *Server Sentry DIAKTIFKAN* ✅\n` +
+          `• Interval monitoring: setiap ${cfg.checkIntervalMinutes || 5} menit\n` +
+          `• Auto-healing: ${cfg.autoHeal ? "Aktif (Auto-restart container)" : "Nonaktif (Alert saja)"}`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (action === "off") {
+      await toggleSentry(false);
+      await ctx.reply(
+        "🩺 *Server Sentry DINONAKTIFKAN* ❌\nMonitoring background dan auto-healing dijeda sementara.",
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (action === "autoheal") {
+      const sub = parts[1];
+      if (sub === "on") {
+        await toggleAutoHeal(true);
+        await ctx.reply(
+          "🩺 *Sentry Auto-Healing: DIAKTIFKAN* ✅\nContainer yang mati akan otomatis di-restart oleh sentry.",
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+      if (sub === "off") {
+        await toggleAutoHeal(false);
+        await ctx.reply(
+          "🩺 *Sentry Auto-Healing: DINONAKTIFKAN* ❌\nSentry hanya akan mengirim notifikasi tanpa auto-restart.",
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+      const cfg = await getSentryConfig();
+      await ctx.reply(
+        `🩺 *Status Auto-Healing Sentry:* ${cfg.autoHeal ? "Aktif ✅" : "Nonaktif ❌"}\n` +
+          `Ketik \`/sentry autoheal on\` untuk mengaktifkan atau \`/sentry autoheal off\` untuk mematikan.`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    // Default: check status
+    const statusMsg = await ctx.reply(
+      "🩺 *Memeriksa kesehatan container & resource server...*",
+      { parse_mode: "Markdown" }
+    );
+    try {
+      const cfg = await getSentryConfig();
+      const health = await checkServerHealth(null, true);
+      const text = formatSentryStatus(cfg, health);
+      await ctx.api
+        .editMessageText(ctx.chat.id, statusMsg.message_id, text, {
+          parse_mode: "Markdown",
+        })
+        .catch(() => {});
+    } catch (err) {
+      await ctx.api
+        .editMessageText(
+          ctx.chat.id,
+          statusMsg.message_id,
+          `❌ Gagal memeriksa Sentry: ${err.message}`
+        )
+        .catch(() => {});
+    }
+  });
+
+  // ==================== VOICE / WHISPER CONFIGURATION ====================
+
+  // /setwhisper <api-key> [groq|openai]
+  bot.command(["setwhisper", "whisper", "voice"], async (ctx) => {
+    const raw = ctx.message?.text?.replace(/^\/(setwhisper|whisper|voice)(@\w+)?\s*/i, "").trim();
+    if (!raw) {
+      const cfg = await getVoiceConfig();
+      const hasKey = cfg.provider === "groq" ? !!(cfg.groqApiKey || process.env.GROQ_API_KEY) : !!(cfg.openaiApiKey || process.env.OPENAI_API_KEY);
+      const activeKey = cfg.provider === "groq" ? (cfg.groqApiKey || process.env.GROQ_API_KEY) : (cfg.openaiApiKey || process.env.OPENAI_API_KEY);
+      const statusKey = hasKey
+        ? `Tersimpan (\`${activeKey.slice(0, 4)}...${activeKey.slice(-4)}\`)`
+        : "_Belum diatur (Bisa diisi via /setwhisper atau GROQ_API_KEY di .env)_";
+      await ctx.reply(
+        `🎙️ *Konfigurasi Voice Note & Whisper*\n\n` +
+          `• Provider aktif: *${cfg.provider.toUpperCase()}*\n` +
+          `• API Key status: ${statusKey}\n` +
+          `• Model: \`${cfg.model}\`\n\n` +
+          `💡 *Cara Mengatur:*\n` +
+          `Ketik: \`/setwhisper <api-key> [groq|openai]\`\n\n` +
+          `_Rekomendasi: Gunakan API Key Groq (\`gsk_...\`) karena transkripsi Whisper di Groq sangat cepat (~500ms) dan kuotanya generous/gratis!_\n\n` +
+          `🎙️ *Penggunaan:* Rekam Voice Note di Telegram dan kirim langsung ke chat ini. AI akan mentranskripsi suara Anda dan mengeksekusi instruksi kodingnya!`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const parts = raw.split(/\s+/);
+    const apiKey = parts[0];
+    const provider = parts[1]?.toLowerCase() || (apiKey.startsWith("gsk_") ? "groq" : "openai");
+
+    const saved = await setWhisperApiKey(apiKey, provider);
+    await ctx.reply(
+      `✅ *Voice Transcription Berhasil Dikonfigurasi!*\n\n` +
+        `• Provider: *${saved.provider.toUpperCase()}*\n` +
+        `• Model: \`${saved.model}\`\n\n` +
+        `🎙️ Sekarang Anda bisa langsung merekam & mengirim *Voice Note* di chat ini. TH Agent akan otomatis mengeksekusi instruksi Anda!`,
+      { parse_mode: "Markdown" }
+    );
   });
 }
 

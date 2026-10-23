@@ -10,6 +10,7 @@ import { registerModelHandlers } from "./bot/handlers/model.js";
 import { registerMessageHandlers } from "./bot/handlers/messages.js";
 import { initGithubWatcher } from "./services/github-watcher.js";
 import { initDailyCleanup } from "./services/cleanup-service.js";
+import { initServerSentry } from "./services/sentry-service.js";
 import {
   getActiveTask,
   clearActiveTask,
@@ -62,8 +63,11 @@ if (
   const syncCommands = () => {
     bot.api
       .setMyCommands([
+        { command: "menu", description: "Quick-Action Dashboard interaktif" },
         { command: "start", description: "Sambutan & info bot" },
         { command: "help", description: "Panduan lengkap perintah" },
+        { command: "sentry", description: "Kesehatan container & auto-healing" },
+        { command: "setwhisper", description: "Atur API Whisper untuk Voice Note" },
         { command: "projects", description: "Daftar proyek coding di ./projects" },
         { command: "syncprojects", description: "Sinkronisasi peta arsitektur semua project" },
         { command: "swarm", description: "Eksekusi multi-tugas dengan Sub-Agent Swarm" },
@@ -125,6 +129,7 @@ if (
                 console.warn("Gagal memulai GitHub Issue Watcher:", err.message);
               });
               initDailyCleanup(bot);
+              initServerSentry(bot);
             }
           },
         });
