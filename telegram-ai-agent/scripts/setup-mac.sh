@@ -71,7 +71,17 @@ mkdir -p "$GLOBAL_AGENT_DIR/uploads"
 # 5. Build Single-File Bundle (Zero node_modules di workspace!)
 echo -e "${BLUE}📦 Mem-bundle engine TH Agent menjadi single-file bundle...${NC}"
 cd "$AGENT_DIR"
-npx -y esbuild src/bot.js --bundle --platform=node --format=esm --target=node26 --outfile="$GLOBAL_AGENT_DIR/bot.bundle.js"
+if [ ! -d "node_modules" ]; then
+  echo -e "${BLUE}Mengunduh dependensi sementara untuk bundling...${NC}"
+  npm install --silent 2>/dev/null || npm install
+fi
+
+npx -y esbuild src/bot.js --bundle --platform=node --format=esm \
+  --banner:js="import { createRequire } from \x27module\x27; const require = createRequire(import.meta.url);" \
+  --target=node26 --outfile="$GLOBAL_AGENT_DIR/bot.bundle.js"
+
+# Bersihkan node_modules di folder kerja agar tetap bersih total
+rm -rf node_modules package-lock.json 2>/dev/null || true
 
 # Salin public dashboard & .env ke isolated dir
 cp -r public "$GLOBAL_AGENT_DIR/public" 2>/dev/null || true

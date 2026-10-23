@@ -7,7 +7,7 @@
   "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
-    "bundle": "npx -y esbuild src/bot.js --bundle --platform=node --format=esm --target=node26 --outfile=dist/bot.bundle.js",
+    "bundle": "npx -y esbuild src/bot.js --bundle --platform=node --format=esm --banner:js=\"import { createRequire } from \\x27module\\x27; const require = createRequire(import.meta.url);\" --target=node26 --outfile=dist/bot.bundle.js",
     "start:bundle": "node dist/bot.bundle.js",
     "background": "pm2 start ecosystem.config.cjs",
     "stop": "pm2 stop telegram-coding-agent",

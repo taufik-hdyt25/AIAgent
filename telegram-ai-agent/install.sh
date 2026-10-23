@@ -19,7 +19,7 @@ echo -e "${BLUE}   Mendukung Mac, Linux VPS & Raspberry Pi            ${NC}"
 echo -e "${BLUE}======================================================${NC}"
 
 REPO_URL="https://github.com/taufik-hdyt25/AIAgent.git"
-INSTALL_DIR="telegram-ai-agent"
+INSTALL_DIR="th-agent"
 
 OS="$(uname -s)"
 ARCH="$(uname -m)"
@@ -59,7 +59,7 @@ prompt_user() {
 }
 
 # Auto clone jika installer dipanggil di luar folder repo (misal via curl | bash)
-if [ ! -f "package.json" ] || [ ! -d "src" ]; then
+if [ ! -d "projects" ] || [ ! -d "telegram-ai-agent" ]; then
     echo -e "\n${CYAN}>>> Mengunduh repository Telegram AI Agent dari GitHub...${NC}"
     if ! command -v git &>/dev/null; then
         echo -e "${YELLOW}Git belum terpasang. Memasang git...${NC}"
@@ -441,7 +441,7 @@ install_claude_cli() {
 
 setup_directories() {
     echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
-    mkdir -p data logs projects uploads gemini_auth claude_auth public
+    mkdir -p projects telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth telegram-ai-agent/public data logs uploads
     chmod 755 data logs projects uploads 2>/dev/null || true
     echo -e "${GREEN}✓ Direktori siap.${NC}"
 }
@@ -516,6 +516,9 @@ setup_env_file() {
     fi
 
     chmod 600 .env 2>/dev/null || true
+    if [ -d "telegram-ai-agent" ] && [ ! -f "telegram-ai-agent/.env" ]; then
+        cp .env telegram-ai-agent/.env 2>/dev/null || true
+    fi
     echo -e "${GREEN}✓ Konfigurasi .env siap.${NC}"
 }
 
@@ -525,9 +528,9 @@ setup_env_file() {
 
 if [ "$OS" = "Darwin" ]; then
     # --------------------------------------------------------------------------
-    # MAC LOCAL INSTALLATION
+    # MAC LOCAL INSTALLATION (Clean Isolated Workspace)
     # --------------------------------------------------------------------------
-    echo -e "\n${CYAN}>>> Mode Instalasi: Local macOS (Direct Native)${NC}"
+    echo -e "\n${CYAN}>>> Mode Instalasi: Local macOS (Clean Isolated Workspace)${NC}"
 
     # 1. Cek Node.js & npm
     if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
@@ -559,20 +562,7 @@ if [ "$OS" = "Darwin" ]; then
     setup_directories
     setup_env_file
 
-    # 5. Install dependensi Node.js & PM2
-    echo -e "\n${BLUE}Menginstall dependensi proyek (npm install)...${NC}"
-    npm install
-
-    # Pasang PM2 secara global jika belum terpasang
-    if ! command -v pm2 &>/dev/null; then
-        echo -e "${BLUE}Memasang PM2 process manager (agar bot bisa auto-start & jalan di background)...${NC}"
-        npm install -g pm2 2>/dev/null || sudo npm install -g pm2 2>/dev/null || true
-    fi
-    if command -v pm2 &>/dev/null; then
-        echo -e "${GREEN}✓ PM2 terpasang: $(pm2 -v)${NC}"
-    fi
-
-    # 6. Cek Autentikasi CLI (khusus jika agy aktif)
+    # 5. Cek Autentikasi CLI (khusus jika agy aktif)
     if [ "$SELECTED_AGY" = true ]; then
         echo -e "\n${BLUE}Memeriksa status login Antigravity CLI...${NC}"
         AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
@@ -587,46 +577,18 @@ if [ "$OS" = "Darwin" ]; then
         fi
     fi
 
-    # 7. Opsi Background & Auto-start
-    echo -e "\n${BLUE}Menyiapkan Background Service & Auto-Start...${NC}"
-    if command -v pm2 &>/dev/null; then
-        prompt_user "Jalankan bot di background & aktifkan auto-start saat Mac nyala? (y/n, default: y): " start_bg
-        start_bg="${start_bg:-y}"
-
-        if [ "$start_bg" != "n" ] && [ "$start_bg" != "N" ]; then
-            echo -e "${BLUE}Menjalankan bot via PM2...${NC}"
-            pm2 delete telegram-coding-agent 2>/dev/null || true
-            pm2 start ecosystem.config.cjs
-            pm2 save || true
-
-            echo -e "${YELLOW}Mengonfigurasi auto-start on boot...${NC}"
-            pm2 startup darwin -u "$USER" --hp "$HOME" 2>/dev/null || pm2 startup 2>/dev/null || true
-            pm2 save || true
-            echo -e "${GREEN}✓ Bot berhasil aktif di background dan dikonfigurasi auto-start!${NC}"
-        fi
-    fi
-
-    echo -e "\n${GREEN}======================================================${NC}"
-    echo -e "${GREEN}🎉 INSTALASI DI MAC BERHASIL SELESAI!                  ${NC}"
-    echo -e "${GREEN}======================================================${NC}"
-    WEB_PORT_VAL="$(grep -E "^WEB_PORT=" .env | cut -d '=' -f2- | tr -d ' ' || echo "3030")"
-    WEB_PORT_VAL="${WEB_PORT_VAL:-3030}"
-    echo -e "${CYAN}Web UI Control Panel siap di:${NC} ${BLUE}http://localhost:${WEB_PORT_VAL}${NC}"
-    echo -e "Anda dapat mengatur Token, ID, dan Model langsung lewat browser."
-    echo ""
-    if command -v pm2 &>/dev/null && pm2 list | grep -q "telegram-coding-agent"; then
-        echo -e "${GREEN}Status Bot (PM2 Background Active):${NC}"
-        pm2 status telegram-coding-agent
-        echo ""
-        echo -e "• Cek log live:   ${BLUE}npm run logs${NC} (atau: ${BLUE}pm2 logs${NC})"
-        echo -e "• Restart bot:    ${BLUE}npm run restart${NC}"
-        echo -e "• Hentikan bot:   ${BLUE}npm run stop${NC}"
+    # 6. Bundle bot & LaunchAgent background service (Clean Isolated Workspace)
+    echo -e "\n${BLUE}Menyiapkan single-file bundle & macOS LaunchAgent background service...${NC}"
+    if [ -f "./setup-mac.sh" ]; then
+        bash ./setup-mac.sh
+    elif [ -f "./telegram-ai-agent/scripts/setup-mac.sh" ]; then
+        bash ./telegram-ai-agent/scripts/setup-mac.sh
+    elif [ -f "../setup-mac.sh" ]; then
+        bash ../setup-mac.sh
     else
-        echo -e "${YELLOW}Untuk menjalankan bot secara manual:${NC}"
-        echo -e "   ${BLUE}npm start${NC}        # Foreground (terminal)"
-        echo -e "   ${BLUE}npm run background${NC} # Latar belakang (PM2)"
+        echo -e "${RED}setup-mac.sh tidak ditemukan.${NC}"
+        exit 1
     fi
-    echo ""
 
 elif [ "$OS" = "Linux" ]; then
     # --------------------------------------------------------------------------
