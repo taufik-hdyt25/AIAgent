@@ -246,7 +246,8 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       queueStatusPrompt = `
 [STATUS ANTREAN CHAT TELEGRAM: KOSONG / TUGAS TERAKHIR]
 🟢 ATURAN BUILD & DEPLOY:
-- Antrean chat sudah kosong. Jika tugas ini mengubah kode proyek yang butuh build/deploy, lakukan build dan deploy sekarang sampai selesai dan live!${deferredNotice}
+- JIKA DAN HANYA JIKA tugas/instruksi pengguna saat ini meminta pembuatan atau modifikasi kode yang membutuhkan build/deploy, lakukan build dan deploy sekarang sampai selesai dan live!${deferredNotice}
+- DILARANG KERAS menjalankan git commit, git push, build, atau perintah terminal yang tidak diminta jika pengguna hanya bertanya, berkonsultasi, meminta penjelasan, atau mengobrol.
 `.trim();
     }
 
@@ -271,7 +272,8 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
 ${userMessage}
 ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}${queueStatusPrompt ? `\n${queueStatusPrompt}\n` : ""}${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}
 [Panduan Eksekusi Lanjutan]:
-- Lanjutkan tugas secara otonom & langsung eksekusi tanpa meminta konfirmasi (Zero-Confirmation).
+- Fokus HANYA pada maksud pesan pengguna di atas. Jangan mengulang, meng-commit, atau men-deploy pekerjaan lama dari sesi sebelumnya jika tidak diminta.
+- Lanjutkan tugas secara otonom & langsung eksekusi tanpa meminta konfirmasi (Zero-Confirmation) HANYA jika pesan pengguna memang meminta tindakan coding/eksekusi.
 ${piOngoingRule}
 - Simpan fakta/preferensi baru jika ada: :::memory:add {"content": "...", "category": "preference|architecture|workflow|solution", "tags": [...]}:::
 - Simpan SOP/skill berulang jika baru dipelajari: :::skill:add {"id": "nama-skill", "name": "...", "description": "...", "triggers": [...], "instructions": "..."}:::

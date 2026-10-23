@@ -3,6 +3,41 @@ import { downloadTelegramFile, truncate } from "../../services/telegram-files.js
 import { sendToAgent } from "../dispatcher.js";
 import { transcribeAudio } from "../../services/voice-service.js";
 
+/**
+ * Respon instan untuk sapaan ringan, ping/test, atau ungkapan terima kasih
+ * Menghindari beban token dan latensi CLI jika pesan bukan instruksi koding/eksekusi.
+ */
+export function getQuickReply(rawText) {
+  if (!rawText || typeof rawText !== "string") return null;
+  const text = rawText.trim().toLowerCase();
+  const clean = text.replace(/^[!?,.:;\s~]+|[!?,.:;\s~]+$/g, "").trim();
+
+  // 1. Ping / Test
+  if (/^(ping|tes|test|p)$/i.test(clean)) {
+    return "Pong! 🏓 TH Agent aktif dan siap menerima instruksi koding bro. Mau ngerjain apa hari ini?";
+  }
+
+  // 2. Greetings (murni sapaan pendek tanpa instruksi lanjutan)
+  const greetingPattern = /^(halo+|hallo+|hai+|hi+|hey+|helo+|assalamu['’]?alaikum|selamat (pagi|siang|sore|malam))(\s+(bro|mas|bang|gan|min|agent|th|kawan|teman|semua))?$/i;
+  if (greetingPattern.test(clean)) {
+    return "Halo bro! 👋 TH Agent siap bantu. Ada proyek coding, fitur baru, fix bug, atau cek server yang mau dikerjakan?";
+  }
+
+  // 3. Gratitude / Ucapan terima kasih
+  const thanksPattern = /^(makasih|terima\s*kasih|thanks|thank\s*you|tq|maturnuwun|nuhun)(\s+(banyak|banget|ya|bro|mas|bang|gan|min|th))?$/i;
+  if (thanksPattern.test(clean)) {
+    return "Sama-sama bro! Senang bisa bantu. Kalau butuh bantuan coding atau deploy lagi, langsung chat aja ya! 🚀";
+  }
+
+  // 4. Affirmations / Konfirmasi singkat
+  const ackPattern = /^(oke+|ok+|siap+|mantap+|sip+|noted|siap\s*komandan)(\s+(bro|mas|bang|gan|min|th))?$/i;
+  if (ackPattern.test(clean)) {
+    return "Siap bro! Beritahu saya kalau ada instruksi atau tugas selanjutnya yang mau dieksekusi. 🫡";
+  }
+
+  return null;
+}
+
 export function registerMessageHandlers(bot) {
   // Handler untuk menerima dokumen/file dari Telegram chat
   bot.on("message:document", async (ctx) => {
@@ -194,13 +229,20 @@ export function registerMessageHandlers(bot) {
     }
   });
 
-  // Setiap chat yang masuk langsung diteruskan 100% ke TH Agent!
+  // Setiap chat yang masuk diproses dengan cerdas
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text.trim();
     if (text.startsWith("/")) return;
 
     if (text.length > 5000) {
       await ctx.reply("Pesan terlalu panjang (maksimal 5000 karakter).");
+      return;
+    }
+
+    // Deteksi cepat jika hanya sapaan murni, ping/test, atau terima kasih (respon seketika <50ms)
+    const quickReply = getQuickReply(text);
+    if (quickReply) {
+      await ctx.reply(quickReply);
       return;
     }
 
