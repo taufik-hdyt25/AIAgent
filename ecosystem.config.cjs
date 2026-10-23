@@ -24,7 +24,7 @@ module.exports = {
     {
       name: "keep-awake",
       script: "/usr/bin/caffeinate",
-      args: "-dimsu",
+      args: "-ims",
       instances: 1,
       exec_mode: "fork",
       autorestart: true,

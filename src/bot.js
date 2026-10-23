@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { spawn } from "node:child_process";
+import dns from "node:dns/promises";
 import { Bot } from "grammy";
 import { BOT_TOKEN, ALLOWED_IDS, ensureDirectories } from "./config/env.js";
 import { startWebServer } from "./web-server.js";
@@ -31,18 +32,35 @@ process.on("uncaughtException", (error) => {
   console.error("❌ [Process Error] Uncaught Exception diamankan:", error?.message || error);
 });
 
-// Otomatis aktifkan caffeinate jika berjalan di macOS lokal agar Mac tidak sleep selama laptop terbuka / layar terkunci
+// Otomatis aktifkan caffeinate jika berjalan di macOS lokal:
+// Gunakan flag '-ims' (tanpa '-d') agar layar/display Mac BOLEH mati/sleep, tetapi sistem & Wi-Fi tetap berjalan!
 if (process.platform === "darwin") {
   try {
-    const caffeinate = spawn("caffeinate", ["-dims", "-w", String(process.pid)], {
+    const caffeinate = spawn("caffeinate", ["-ims", "-w", String(process.pid)], {
       detached: true,
       stdio: "ignore",
     });
     caffeinate.unref();
-    console.log("☕ [macOS PowerManagement] Caffeinate aktif: Mencegah Mac sleep/idle selama layar terbuka.");
+    console.log("☕ [macOS PowerManagement] Caffeinate aktif (-ims): Layar boleh mati, sistem & Wi-Fi tetap jalan.");
   } catch (err) {
     console.warn("⚠️ [macOS PowerManagement] Gagal mengaktifkan caffeinate:", err.message);
   }
+}
+
+/**
+ * Menunggu hingga koneksi internet (DNS Telegram) siap kembali setelah Mac bangun dari sleep
+ */
+async function waitForInternet(maxWaitMs = 12000) {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      await dns.lookup("api.telegram.org");
+      return true;
+    } catch (_) {
+      await new Promise((r) => setTimeout(r, 600));
+    }
+  }
+  return false;
 }
 
 // Pastikan semua direktori kerja lokal siap & load persistent vector memory & dynamic skills
@@ -177,7 +195,10 @@ if (
       if (!shouldRun) break;
 
       retryAttempt++;
-      const delayMs = Math.min(30000, 3000 * Math.min(retryAttempt, 5));
+      // Pastikan koneksi internet (DNS Telegram) sudah siap sebelum mencoba start polling ulang
+      await waitForInternet(10000).catch(() => {});
+
+      const delayMs = Math.min(25000, 2000 * Math.min(retryAttempt, 5));
       console.log(`[Bot Gateway] Menghubungkan ulang ke Telegram dalam ${Math.round(delayMs / 1000)} detik (percobaan #${retryAttempt})...`);
       await new Promise((r) => setTimeout(r, delayMs));
     }
@@ -185,22 +206,23 @@ if (
 
   startBotLoop().catch((err) => console.error("[Bot Gateway] Loop error fatal:", err));
 
-  // Deteksi Sleep / Wake-up Mac & Heartbeat Watchdog
+  // Deteksi Sleep / Wake-up Mac Kilat & Heartbeat Watchdog (Interval 2 detik)
   let lastHeartbeatTime = Date.now();
   let consecutivePingFails = 0;
+  let pingTickCounter = 0;
 
   const watchdogInterval = setInterval(async () => {
     const now = Date.now();
     const elapsed = now - lastHeartbeatTime;
     lastHeartbeatTime = now;
 
-    // Jika selisih waktu > 25 detik (interval seharusnya 10 detik), berarti Mac baru bangun dari Sleep!
-    if (elapsed > 25000) {
+    // Jika selisih waktu > 5 detik (interval normal 2s), berarti Mac baru saja dibuka dari mode Sleep!
+    if (elapsed > 5000) {
       const sleepSeconds = Math.round(elapsed / 1000);
-      console.log(`\n💤 [PowerManagement] Terdeteksi Mac baru saja bangun dari Sleep mode (${sleepSeconds} detik).`);
-      console.log(`🔄 [PowerManagement] Membersihkan task yang terinterupsi & merefresh koneksi bot...`);
+      console.log(`\n💤 [PowerManagement] Terdeteksi Mac baru saja dibuka dari Sleep mode (${sleepSeconds} detik).`);
+      console.log(`⚡ [PowerManagement] Memulihkan koneksi bot secara kilat...`);
 
-      // Hentikan dan bersihkan tugas CLI yang terputus di tengah jalan saat laptop ditutup
+      // 1. Hentikan tugas CLI yang terputus di tengah jalan saat laptop ditutup
       const activeTask = getActiveTask();
       if (activeTask) {
         console.log(`[PowerManagement] Menghentikan tugas #${activeTask.id} yang terinterupsi saat lid Mac ditutup...`);
@@ -209,34 +231,42 @@ if (
           killProcessTree(activeTask.process, "SIGKILL");
         }
         clearActiveTask(activeTask.id);
-
-        if (activeTask.chatId) {
-          bot.api.sendMessage(
-            activeTask.chatId,
-            `⚠️ *Mac baru saja dibuka kembali setelah mode sleep.*\nInstruksi koding sebelumnya (\`${activeTask.id}\`) sempat terhenti saat laptop ditutup dan telah dibersihkan secara aman.\n\n✅ Bot sekarang sudah aktif kembali dan siap menerima instruksi baru!`,
-            { parse_mode: "Markdown" }
-          ).catch(() => {});
-        }
-
         processNextQueue().catch(() => {});
       }
 
+      // 2. Putuskan koneksi polling lama yang menggantung (timeout cepat 1.5 detik)
       try {
         await Promise.race([
           bot.stop(),
-          new Promise((r) => setTimeout(r, 2500)),
+          new Promise((r) => setTimeout(r, 1500)),
         ]).catch(() => {});
       } catch (_) {}
+
+      // 3. Tunggu Wi-Fi aktif kembali (biasanya 1-3 detik setelah Mac dibuka)
+      console.log(`📶 [PowerManagement] Menunggu sinyal Wi-Fi aktif kembali...`);
+      const isOnline = await waitForInternet(12000);
+      if (isOnline) {
+        console.log(`✅ [PowerManagement] Wi-Fi & Internet aktif! TH Agent langsung terhubung kembali.`);
+        if (activeTask?.chatId) {
+          bot.api.sendMessage(
+            activeTask.chatId,
+            `⚡ *Mac baru saja dibuka!*\nKoneksi TH Agent otomatis aktif kembali & siap menerima perintah baru.`,
+            { parse_mode: "Markdown" }
+          ).catch(() => {});
+        }
+      }
       return;
     }
 
-    // Hanya lakukan healthcheck ping jika bot sedang aktif polling
+    // Ping healthcheck setiap 5 tick (10 detik sekali)
+    pingTickCounter = (pingTickCounter + 1) % 5;
+    if (pingTickCounter !== 0) return;
     if (!isPollingActive) return;
 
     try {
       await Promise.race([
         bot.api.getMe(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Ping Timeout")), 7000)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("Ping Timeout")), 6000)),
       ]);
       consecutivePingFails = 0;
     } catch (pingErr) {
@@ -248,12 +278,12 @@ if (
         try {
           await Promise.race([
             bot.stop(),
-            new Promise((r) => setTimeout(r, 2500)),
+            new Promise((r) => setTimeout(r, 2000)),
           ]).catch(() => {});
         } catch (_) {}
       }
     }
-  }, 10000);
+  }, 2000);
 
   // Graceful shutdown
   const handleExit = async () => {
