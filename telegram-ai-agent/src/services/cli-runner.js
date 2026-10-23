@@ -105,6 +105,17 @@ export function runProcess({
       } catch (_) {}
     }
 
+    // Jaga Mac agar tidak sleep saat process child sedang dieksekusi
+    if (process.platform === "darwin" && child.pid) {
+      try {
+        const taskCaffeinate = spawn("caffeinate", ["-dimsu", "-w", String(child.pid)], {
+          detached: true,
+          stdio: "ignore",
+        });
+        taskCaffeinate.unref();
+      } catch (_) {}
+    }
+
     let stdout = "";
     let stderr = "";
     let settled = false;

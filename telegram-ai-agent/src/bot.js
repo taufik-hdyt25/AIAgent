@@ -227,16 +227,32 @@ if (
       console.log(`\n💤 [PowerManagement] Terdeteksi Mac baru saja dibuka dari Sleep mode (${sleepSeconds} detik).`);
       console.log(`⚡ [PowerManagement] Memulihkan koneksi bot secara kilat...`);
 
-      // 1. Hentikan tugas CLI yang terputus di tengah jalan saat laptop ditutup
+      // 1. Cek status tugas aktif (jangan langsung kill jika proses masih berjalan sehat)
       const activeTask = getActiveTask();
+      let taskStillRunning = false;
+
       if (activeTask) {
-        console.log(`[PowerManagement] Menghentikan tugas #${activeTask.id} yang terinterupsi saat lid Mac ditutup...`);
-        activeTask.cancelled = true;
-        if (activeTask.process) {
-          killProcessTree(activeTask.process, "SIGKILL");
+        if (activeTask.process && activeTask.process.pid && !activeTask.process.killed) {
+          try {
+            process.kill(activeTask.process.pid, 0);
+            taskStillRunning = true;
+          } catch (_) {
+            taskStillRunning = false;
+          }
         }
-        clearActiveTask(activeTask.id);
-        processNextQueue().catch(() => {});
+
+        // Jika proses child masih hidup dan interupsi wajar (< 10 menit), biarkan lanjut sampai tuntas!
+        if (taskStillRunning && sleepSeconds < 600) {
+          console.log(`⚡ [PowerManagement] Tugas #${activeTask.id} masih aktif di background. Melanjutkan eksekusi tanpa dihentikan...`);
+        } else {
+          console.log(`[PowerManagement] Menghentikan tugas #${activeTask.id} yang terinterupsi/terputus (${sleepSeconds}s)...`);
+          activeTask.cancelled = true;
+          if (activeTask.process) {
+            killProcessTree(activeTask.process, "SIGKILL");
+          }
+          clearActiveTask(activeTask.id);
+          processNextQueue().catch(() => {});
+        }
       }
 
       // 2. Putuskan koneksi polling lama yang menggantung (timeout cepat 1.5 detik)
@@ -253,11 +269,19 @@ if (
       if (isOnline) {
         console.log(`✅ [PowerManagement] Wi-Fi & Internet aktif! TH Agent langsung terhubung kembali.`);
         if (activeTask?.chatId) {
-          bot.api.sendMessage(
-            activeTask.chatId,
-            `⚡ *Mac baru saja dibuka!*\nKoneksi TH Agent otomatis aktif kembali & siap menerima perintah baru.`,
-            { parse_mode: "Markdown" }
-          ).catch(() => {});
+          if (taskStillRunning) {
+            bot.api.sendMessage(
+              activeTask.chatId,
+              `⚡ *Mac aktif kembali!*\nTugas #${activeTask.id} tetap berjalan di background dan akan segera dilaporkan setelah selesai.`,
+              { parse_mode: "Markdown" }
+            ).catch(() => {});
+          } else {
+            bot.api.sendMessage(
+              activeTask.chatId,
+              `⚡ *Mac baru saja dibuka!*\nKoneksi TH Agent otomatis aktif kembali & siap menerima perintah baru.`,
+              { parse_mode: "Markdown" }
+            ).catch(() => {});
+          }
         }
       }
       return;

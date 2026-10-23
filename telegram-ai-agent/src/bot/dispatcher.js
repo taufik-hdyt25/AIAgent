@@ -538,6 +538,17 @@ ${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan e
 
       task.process = child;
 
+      // Jaga Mac agar tidak sleep saat tugas sedang aktif dieksekusi (bahkan saat pakai baterai)
+      if (process.platform === "darwin" && child.pid) {
+        try {
+          const taskCaffeinate = spawn("caffeinate", ["-dimsu", "-w", String(child.pid)], {
+            detached: true,
+            stdio: "ignore",
+          });
+          taskCaffeinate.unref();
+        } catch (_) {}
+      }
+
       let stdout = "";
       let stderr = "";
       let settled = false;
