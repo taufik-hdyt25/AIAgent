@@ -195,7 +195,7 @@ function updateBadges(settings, system) {
     badgeModel.textContent = settings.CLAUDE_MODEL || "sonnet";
   } else if (settings.CLI_ENGINE === "universal") {
     badgeEngine.textContent = "Universal API";
-    badgeModel.textContent = settings.UNIVERSAL_MODEL || "deepseek-chat";
+    badgeModel.textContent = settings.UNIVERSAL_MODEL || "Auto-detect";
   } else {
     badgeEngine.textContent = "Antigravity (agy)";
     badgeModel.textContent = settings.AGY_MODEL || "gemini-3.8-flash-medium";
@@ -266,10 +266,18 @@ async function loadSettings() {
     if (universalModelSelect) {
       universalModelSelect.innerHTML = "";
       const models = availableOptions.universalModels || [];
-      const currentUniModel = currentSettings.UNIVERSAL_MODEL || "deepseek-chat";
+      const currentUniModel = currentSettings.UNIVERSAL_MODEL || "";
+
+      // Opsi 1: Otomatis (Dynamic Server Auto-Detect)
+      const autoOpt = document.createElement("option");
+      autoOpt.value = "";
+      autoOpt.textContent = "⚡ Otomatis (Dynamic Auto-Detect dari Server)";
+      autoOpt.selected = !currentUniModel || currentUniModel === "auto";
+      universalModelSelect.appendChild(autoOpt);
+
       const exists = models.some((m) => m.id === currentUniModel);
 
-      if (!exists && currentUniModel) {
+      if (!exists && currentUniModel && currentUniModel !== "auto") {
         const customOpt = document.createElement("option");
         customOpt.value = currentUniModel;
         customOpt.textContent = `${currentUniModel} [Custom]`;

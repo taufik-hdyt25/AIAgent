@@ -65,7 +65,7 @@ export async function getModelList(engine) {
   if (engine === "universal") {
     const uniUrl = process.env.UNIVERSAL_BASE_URL;
     const uniKey = process.env.UNIVERSAL_API_KEY || "";
-    if (uniUrl && (uniUrl.startsWith("http://") || uniUrl.includes(":") || !uniUrl.includes("deepseek.com"))) {
+    if (uniUrl) {
       try {
         const remote = await fetchRemoteModels(uniUrl, uniKey);
         if (remote.length > 0) {
@@ -82,6 +82,29 @@ export async function getModelList(engine) {
     return custom?.universalModels || AVAILABLE_UNIVERSAL_MODELS;
   }
   return custom?.agyModels || AVAILABLE_AGY_MODELS;
+}
+
+/**
+ * Mengambil model pertama yang aktif dari remote server (dynamic fallback)
+ */
+export async function resolveDynamicUniversalModel(baseUrl, apiKey) {
+  const targetUrl = baseUrl || process.env.UNIVERSAL_BASE_URL || "";
+  const targetKey = apiKey !== undefined ? apiKey : (process.env.UNIVERSAL_API_KEY || "");
+  if (!targetUrl) return "";
+
+  try {
+    const list = await fetchRemoteModels(targetUrl, targetKey);
+    if (list && list.length > 0) {
+      // Prioritaskan model yang ada indikator 'chat', 'coder', 'default', atau ambil yang pertama
+      const preferred = list.find((m) => {
+        const idLower = m.id.toLowerCase();
+        return idLower.includes("chat") || idLower.includes("instruct") || idLower.includes("pi");
+      }) || list[0];
+      return preferred.id;
+    }
+  } catch (_) {}
+
+  return "";
 }
 
 // Fetch model real-time dari provider OpenAI-compatible (misal OpenRouter / custom http://ip:port/v1/models / Ollama)

@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 
 import { ROOT_DIR, PROJECTS_DIR, UPLOADS_DIR } from "./config/env.js";
+import { resolveDynamicUniversalModel } from "./config/models.js";
 
 // Definisi Tools untuk OpenAI-compatible Tool Calling
 export const AGENT_TOOLS = [
@@ -175,7 +176,7 @@ export async function runUniversalAgent({
   convId,
   apiKey,
   baseUrl = "https://api.deepseek.com/v1",
-  model = "deepseek-chat",
+  model = "",
   systemPrompt,
   workingDir = null,
   onToolStart,
@@ -184,6 +185,18 @@ export async function runUniversalAgent({
     throw new Error(
       "UNIVERSAL_API_KEY (atau OPENROUTER_API_KEY) belum diisi di .env atau Web Settings."
     );
+  }
+
+  // Jika model belum diisi, auto-detect dinamis dari server
+  let activeModel = model;
+  if (!activeModel || activeModel === "auto") {
+    try {
+      const dynamic = await resolveDynamicUniversalModel(baseUrl, apiKey);
+      if (dynamic) activeModel = dynamic;
+    } catch (_) {}
+  }
+  if (!activeModel) {
+    activeModel = baseUrl.includes("deepseek.com") ? "deepseek-chat" : "default";
   }
 
   const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
@@ -220,7 +233,7 @@ export async function runUniversalAgent({
     currentTurn++;
 
     const payload = {
-      model,
+      model: activeModel,
       messages,
       tools: AGENT_TOOLS,
       tool_choice: "auto",

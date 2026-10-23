@@ -52,6 +52,15 @@ export function registerModelHandlers(bot) {
     }
 
     if (arg) {
+      if (isUniversal && ["auto", "dynamic", "reset", "clear", "default"].includes(arg.toLowerCase())) {
+        await setUserUniversalModel(userId, "");
+        await ctx.reply(
+          `✅ Model untuk *${engineLabel}* diatur ke: *⚡ Auto-Detect (Dynamic)*\nModel akan diambil secara otomatis dari endpoint server saat instruksi dijalankan.`,
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+
       const matched = modelList.find(
         (m) => m.id.toLowerCase() === arg.toLowerCase()
       );
@@ -86,6 +95,11 @@ export function registerModelHandlers(bot) {
     }
 
     const keyboard = new InlineKeyboard();
+    if (isUniversal) {
+      const isAuto = !currentModel || currentModel === "auto";
+      keyboard.text(`${isAuto ? "🔘 " : "⚪ "}⚡ Auto-Detect (Dynamic dari Server)`, "set_model:auto").row();
+    }
+
     const displayModels = modelList.slice(0, 15);
     for (const model of displayModels) {
       const isCurrent = model.id === currentModel;
@@ -94,7 +108,10 @@ export function registerModelHandlers(bot) {
     }
 
     const activeName =
-      modelList.find((m) => m.id === currentModel)?.name || currentModel;
+      (isUniversal && (!currentModel || currentModel === "auto"))
+        ? "⚡ Auto-Detect (Dynamic dari Server)"
+        : (modelList.find((m) => m.id === currentModel)?.name || currentModel || "⚡ Auto-Detect");
+    const activeModelId = currentModel || "auto";
 
     const detectedInfo =
       detectedCount > 0
@@ -109,7 +126,7 @@ export function registerModelHandlers(bot) {
     await ctx.reply(
       `🤖 *Pilihan Model AI*\n\n` +
         `⚙️ Engine aktif: *${engineLabel}*\n` +
-        `👉 Model aktif saat ini:\n*${activeName}* (\`${currentModel}\`)\n` +
+        `👉 Model aktif saat ini:\n*${activeName}* (\`${activeModelId}\`)\n` +
         detectedInfo +
         moreHint +
         `\nSilakan pilih model khusus *${engineLabel}* di bawah ini:`,
@@ -146,6 +163,33 @@ export function registerModelHandlers(bot) {
         const filteredDefault = AVAILABLE_UNIVERSAL_MODELS.filter((d) => !remoteIds.has(d.id));
         modelList = [...remote, ...filteredDefault];
       }
+
+      if (modelId === "auto") {
+        await setUserUniversalModel(userId, "");
+        await ctx.answerCallbackQuery({
+          text: "Model diatur ke Auto-Detect (Dynamic)",
+        });
+
+        const keyboard = new InlineKeyboard();
+        keyboard.text("🔘 ⚡ Auto-Detect (Dynamic dari Server)", "set_model:auto").row();
+        for (const model of modelList.slice(0, 15)) {
+          keyboard.text(`⚪ ${model.name}`, `set_model:${model.id}`).row();
+        }
+
+        try {
+          await ctx.editMessageText(
+            `🤖 *Pilihan Model AI*\n\n` +
+              `⚙️ Engine aktif: *${engineLabel}*\n` +
+              `✅ Model aktif sekarang:\n👉 *⚡ Auto-Detect (Dynamic)* (\`auto\`)\n\n` +
+              `Model akan dideteksi dan diambil secara dinamis dari server saat eksekusi.\nSilakan klik tombol di bawah jika ingin mengganti ke model lain:`,
+            {
+              reply_markup: keyboard,
+              parse_mode: "Markdown",
+            }
+          );
+        } catch {}
+        return;
+      }
     }
 
     const matched = modelList.find((m) => m.id === modelId);
@@ -173,7 +217,10 @@ export function registerModelHandlers(bot) {
     });
 
     const keyboard = new InlineKeyboard();
-    for (const model of modelList) {
+    if (isUniversal) {
+      keyboard.text("⚪ ⚡ Auto-Detect (Dynamic dari Server)", "set_model:auto").row();
+    }
+    for (const model of modelList.slice(0, 15)) {
       const isCurrent = model.id === chosenId;
       const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;
       keyboard.text(label, `set_model:${model.id}`).row();

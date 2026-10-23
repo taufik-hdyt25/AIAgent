@@ -128,7 +128,9 @@ export function registerBasicCommands(bot) {
     } else if (isUniversal) {
       const univModel = await getUserUniversalModel(userId);
       const matched = AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === univModel);
-      activeModelDisplay = `*${matched?.name || univModel}* (\`${univModel}\`)`;
+      activeModelDisplay = univModel
+        ? `*${matched?.name || univModel}* (\`${univModel}\`)`
+        : "*⚡ Auto-Detect (Dynamic)* (`auto`)";
     } else {
       const agyModel = await getUserAgyModel(userId);
       const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);
@@ -208,7 +210,9 @@ export function registerBasicCommands(bot) {
     } else if (isUniversal) {
       const univModel = await getUserUniversalModel(userId);
       const matched = AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === univModel);
-      activeModelDisplay = `*${matched?.name || univModel}* (\`${univModel}\`)`;
+      activeModelDisplay = univModel
+        ? `*${matched?.name || univModel}* (\`${univModel}\`)`
+        : "*⚡ Auto-Detect (Dynamic)* (`auto`)";
     } else {
       const agyModel = await getUserAgyModel(userId);
       const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);

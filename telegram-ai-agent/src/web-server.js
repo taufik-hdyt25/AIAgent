@@ -142,7 +142,7 @@ export function createWebServer() {
             AGY_AUTH_TYPE: parsed.AGY_AUTH_TYPE || (parsed.GEMINI_API_KEY ? "api_key" : "oauth"),
             UNIVERSAL_BASE_URL: parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1",
             UNIVERSAL_API_KEY: parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "",
-            UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL || process.env.UNIVERSAL_MODEL || "deepseek-chat",
+            UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL ?? process.env.UNIVERSAL_MODEL ?? "",
             GITHUB_TOKEN: parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
             DEPLOY_COMMAND: parsed.DEPLOY_COMMAND || process.env.DEPLOY_COMMAND || "git pull && npm install && pm2 reload all || pm2 reload ecosystem.config.cjs",
             GROQ_API_KEY: parsed.GROQ_API_KEY || process.env.GROQ_API_KEY || voiceConfig.groqApiKey || "",

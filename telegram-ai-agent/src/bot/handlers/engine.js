@@ -116,9 +116,10 @@ export function registerEngineHandlers(bot) {
       matchedModel =
         AVAILABLE_CLAUDE_MODELS.find((m) => m.id === engineModel)?.name || engineModel;
     } else if (engineId === "universal") {
-      engineModel = await getUserUniversalModel(userId);
-      matchedModel =
-        AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === engineModel)?.name || engineModel;
+      engineModel = (await getUserUniversalModel(userId)) || "auto";
+      matchedModel = engineModel !== "auto"
+        ? (AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === engineModel)?.name || engineModel)
+        : "⚡ Auto-Detect (Dynamic dari Server)";
     } else {
       engineModel = await getUserAgyModel(userId);
       matchedModel =

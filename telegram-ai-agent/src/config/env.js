@@ -46,7 +46,7 @@ export const CLAUDE_BIN = process.env.CLAUDE_BIN || path.join(os.homedir(), ".lo
 export const DEFAULT_ENGINE = process.env.CLI_ENGINE || "agy";
 export const DEFAULT_AGY_MODEL = process.env.AGY_MODEL || "gemini-3.8-flash-medium";
 export const DEFAULT_CLAUDE_MODEL = process.env.CLAUDE_MODEL || "sonnet";
-export const DEFAULT_UNIVERSAL_MODEL = process.env.UNIVERSAL_MODEL || "deepseek-chat";
+export const DEFAULT_UNIVERSAL_MODEL = process.env.UNIVERSAL_MODEL || "";
 export const DEFAULT_UNIVERSAL_BASE_URL = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
 
 export const TIMEOUT_MS = Number(process.env.TASK_TIMEOUT_MS || 900000);

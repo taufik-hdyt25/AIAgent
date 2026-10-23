@@ -65,6 +65,7 @@ import {
   isMultiTaskRequest,
   executeSwarm,
 } from "../services/swarm-service.js";
+import { resolveDynamicUniversalModel } from "../config/models.js";
 
 /**
  * Memproses tag otonom dari output AI (Hermes-like self-learning & persistent memory):
@@ -760,7 +761,20 @@ export async function runAgentAutonomous({
     }
 
     const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-    let universalModel = userId ? await getUserUniversalModel(userId) : (process.env.UNIVERSAL_MODEL || "deepseek-chat");
+    let universalModel = userId ? await getUserUniversalModel(userId) : (process.env.UNIVERSAL_MODEL || "");
+
+    // Jika model belum diset (kosong atau 'auto'), ambil secara dinamis langsung dari server
+    if (!universalModel || universalModel === "auto") {
+      try {
+        const dynamicModel = await resolveDynamicUniversalModel(universalBaseUrl, universalApiKey);
+        if (dynamicModel) {
+          universalModel = dynamicModel;
+          console.log(`[Universal Agent] Model dinamis terpilih dari server: ${universalModel}`);
+        }
+      } catch (e) {
+        console.warn("[Universal Agent] Gagal auto-detect model dinamis:", e.message);
+      }
+    }
 
     const isCustomServer =
       universalBaseUrl.startsWith("http://") ||
@@ -770,9 +784,9 @@ export async function runAgentAutonomous({
 
     if (
       isCustomServer &&
-      (universalModel === "deepseek-chat" ||
-        universalModel === "inflection/inflection-3-pi" ||
-        !universalModel)
+      (!universalModel ||
+        universalModel === "deepseek-chat" ||
+        universalModel === "inflection/inflection-3-pi")
     ) {
       try {
         const syncResult = await syncPiModelDirectly(universalBaseUrl, universalApiKey, userId);
@@ -780,6 +794,17 @@ export async function runAgentAutonomous({
           universalModel = syncResult.activeModel;
         }
       } catch {}
+    }
+
+    // Fallback default jika endpoint adalah deepseek resmi
+    if (!universalModel && universalBaseUrl.includes("deepseek.com")) {
+      universalModel = "deepseek-chat";
+    }
+
+    if (!universalModel) {
+      throw new Error(
+        `Model Universal API belum ditentukan dan server di ${universalBaseUrl} tidak merespon daftar model otomatis (/v1/models). Silakan atur model via command /model <id> atau isi UNIVERSAL_MODEL di pengaturan.`
+      );
     }
 
     const replyText = await runUniversalAgent({
