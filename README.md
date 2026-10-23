@@ -1,6 +1,22 @@
-# Telegram AI Coding Agent dengan Antigravity CLI dan Claude CLI
+<p align="center">
+  <img src="public/logo.png" width="160" alt="TH Agent Logo" style="border-radius: 24px;" />
+</p>
 
-Bot Telegram cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (`agy`) dan Claude Code CLI (`claude`), memungkinkan Anda mendelegasikan tugas coding langsung dari chat Telegram ke repository di server/VPS.
+<h1 align="center">⚡ TH Agent</h1>
+
+<p align="center">
+  <strong>Autonomous AI Coding Assistant & Server Automation powered by Antigravity CLI, Claude Code CLI & Telegram</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Node.js-v26-68a063?style=flat-square&logo=node.js" alt="Node.js 26" />
+  <img src="https://img.shields.io/badge/Engine-Antigravity%20%7C%20Claude-8b5cf6?style=flat-square" alt="AI Engines" />
+  <img src="https://img.shields.io/badge/Platform-Telegram%20Bot-229ED9?style=flat-square&logo=telegram" alt="Telegram" />
+</p>
+
+---
+
+**TH Agent** adalah asisten AI coding & server automation cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (`agy`) dan Claude Code CLI (`claude`), memungkinkan Anda mendelegasikan tugas coding langsung dari chat Telegram ke repository di server/VPS.
 
 ---
 
