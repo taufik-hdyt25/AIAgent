@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { spawn } from "node:child_process";
 import { Bot } from "grammy";
 import { BOT_TOKEN, ALLOWED_IDS, ensureDirectories } from "./config/env.js";
 import { startWebServer } from "./web-server.js";
@@ -20,6 +21,29 @@ import { processNextQueue } from "./services/queue-service.js";
 import { loadMemories } from "./services/memory-service.js";
 import { initSkillStore } from "./services/skill-service.js";
 import { checkPendingUpdateNotification } from "./services/update-service.js";
+
+// Mencegah process crash akibat unhandled promise rejection atau socket error saat sleep/wake pada Mac/Laptop
+process.on("unhandledRejection", (reason) => {
+  console.warn("⚠️ [Process Warning] Unhandled Rejection diabaikan:", reason?.message || reason);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("❌ [Process Error] Uncaught Exception diamankan:", error?.message || error);
+});
+
+// Otomatis aktifkan caffeinate jika berjalan di macOS lokal agar Mac tidak sleep selama laptop terbuka / layar terkunci
+if (process.platform === "darwin") {
+  try {
+    const caffeinate = spawn("caffeinate", ["-dims", "-w", String(process.pid)], {
+      detached: true,
+      stdio: "ignore",
+    });
+    caffeinate.unref();
+    console.log("☕ [macOS PowerManagement] Caffeinate aktif: Mencegah Mac sleep/idle selama layar terbuka.");
+  } catch (err) {
+    console.warn("⚠️ [macOS PowerManagement] Gagal mengaktifkan caffeinate:", err.message);
+  }
+}
 
 // Pastikan semua direktori kerja lokal siap & load persistent vector memory & dynamic skills
 await ensureDirectories();
@@ -198,7 +222,10 @@ if (
       }
 
       try {
-        await bot.stop().catch(() => {});
+        await Promise.race([
+          bot.stop(),
+          new Promise((r) => setTimeout(r, 2500)),
+        ]).catch(() => {});
       } catch (_) {}
       return;
     }
@@ -219,7 +246,10 @@ if (
         console.warn("[Watchdog] Koneksi Telegram terputus (stale socket). Merefresh polling bot...");
         consecutivePingFails = 0;
         try {
-          await bot.stop().catch(() => {});
+          await Promise.race([
+            bot.stop(),
+            new Promise((r) => setTimeout(r, 2500)),
+          ]).catch(() => {});
         } catch (_) {}
       }
     }
