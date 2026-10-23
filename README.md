@@ -44,7 +44,7 @@ th-agent/
 
 ## 🚀 Cara Menjalankan
 
-### Opsi A: Menggunakan Docker Compose (Direkomendasikan)
+### 1. 🌐 Di VPS Server (Docker Mode - Direkomendasikan)
 Dari root workspace `th-agent/`:
 ```bash
 docker compose up -d
@@ -55,7 +55,18 @@ cd telegram-ai-agent
 docker compose up -d
 ```
 
-### Opsi B: Menjalankan Secara Native (Node.js 26)
+### 2. 💻 Di Local Mac (Clean Isolated Workspace - Zero node_modules!)
+Di Mac, jalankan single-command setup berikut dari root:
+```bash
+./setup-mac.sh
+```
+Script ini otomatis:
+1. Mem-bundle engine bot menjadi single-file bundle ke `~/.th-agent/`.
+2. Mendaftarkan bot ke **macOS LaunchAgent** dengan `caffeinate -ims` (layar boleh mati/lock, bot tetap aktif 24/7).
+3. Mengarahkan workspace koding ke `th-agent/projects/` sehingga Anda bisa membuka VS Code / Cursor murni hanya folder proyek tanpa tumpukan `node_modules` bot.
+4. Untuk uninstall service kapan saja: `./uninstall-mac.sh`.
+
+### 3. 🛠️ Mode Native Node.js (Dev / Debug)
 ```bash
 cd telegram-ai-agent
 npm install

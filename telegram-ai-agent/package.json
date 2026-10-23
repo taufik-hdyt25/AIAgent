@@ -1,12 +1,14 @@
 {
-  "name": "telegram-coding-agent",
+  "name": "th-agent",
   "version": "1.0.0",
-  "description": "Telegram AI Coding Agent powered by Antigravity CLI, Claude Code CLI, and grammY",
+  "description": "TH Agent - Autonomous AI Coding Assistant & Server Automation",
   "private": true,
   "type": "module",
   "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
+    "bundle": "npx -y esbuild src/bot.js --bundle --platform=node --format=esm --target=node26 --outfile=dist/bot.bundle.js",
+    "start:bundle": "node dist/bot.bundle.js",
     "background": "pm2 start ecosystem.config.cjs",
     "stop": "pm2 stop telegram-coding-agent",
     "restart": "pm2 restart telegram-coding-agent",
@@ -17,5 +19,8 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "grammy": "^1.35.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
   }
 }
