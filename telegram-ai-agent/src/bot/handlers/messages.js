@@ -140,8 +140,14 @@ export function registerMessageHandlers(bot) {
     if (!targetMedia) return;
 
     const isVoiceNote = Boolean(voice);
-    const originalName = audio?.file_name || (isVoiceNote ? `voice_${Date.now()}.oga` : `audio_${Date.now()}.mp3`);
-    const mimeType = targetMedia.mime_type || (isVoiceNote ? "audio/ogg" : "audio/mpeg");
+    let originalName = audio?.file_name || (isVoiceNote ? `voice_${Date.now()}.ogg` : `audio_${Date.now()}.mp3`);
+    if (originalName.toLowerCase().endsWith(".oga")) {
+      originalName = originalName.slice(0, -4) + ".ogg";
+    }
+    let mimeType = targetMedia.mime_type || (isVoiceNote ? "audio/ogg" : "audio/mpeg");
+    if (mimeType === "audio/oga") {
+      mimeType = "audio/ogg";
+    }
 
     let statusMsg = null;
     try {

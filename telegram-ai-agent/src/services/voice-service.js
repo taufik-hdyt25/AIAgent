@@ -56,15 +56,28 @@ export async function setWhisperApiKey(key, provider = "groq") {
  */
 export async function transcribeAudio(audioBuffer, options = {}) {
   const {
-    fileName = "voice_note.oga",
+    fileName = "voice_note.ogg",
     mimeType = "audio/ogg",
     language = "id",
   } = options;
 
   const config = await getVoiceConfig();
 
-  const isGroq = config.provider === "groq" || Boolean(config.groqApiKey);
-  const apiKey = isGroq ? (config.groqApiKey || process.env.GROQ_API_KEY) : (config.openaiApiKey || process.env.OPENAI_API_KEY);
+  let isGroq = config.provider ? config.provider.toLowerCase() === "groq" : true;
+  let apiKey = isGroq
+    ? (config.groqApiKey || process.env.GROQ_API_KEY)
+    : (config.openaiApiKey || process.env.OPENAI_API_KEY);
+
+  // Fallback ke provider lain jika apiKey kosong namun ada key di provider alternatif
+  if (!apiKey) {
+    if (isGroq && (config.openaiApiKey || process.env.OPENAI_API_KEY)) {
+      isGroq = false;
+      apiKey = config.openaiApiKey || process.env.OPENAI_API_KEY;
+    } else if (!isGroq && (config.groqApiKey || process.env.GROQ_API_KEY)) {
+      isGroq = true;
+      apiKey = config.groqApiKey || process.env.GROQ_API_KEY;
+    }
+  }
 
   if (!apiKey) {
     return {
@@ -80,9 +93,56 @@ export async function transcribeAudio(audioBuffer, options = {}) {
 
   const model = isGroq ? "whisper-large-v3-turbo" : "whisper-1";
 
+  // Ekstensi audio yang didukung resmi oleh Whisper API (Groq & OpenAI)
+  const allowedExtensions = new Set([
+    ".flac",
+    ".mp3",
+    ".mp4",
+    ".mpeg",
+    ".mpga",
+    ".m4a",
+    ".ogg",
+    ".opus",
+    ".wav",
+    ".webm",
+  ]);
+
+  let cleanFileName = path.basename(fileName || "voice_note.ogg");
+  let rawExt = path.extname(cleanFileName).toLowerCase();
+
+  // Telegram voice note selalu Ogg Opus namun berekstensi .oga di Telegram
+  if (rawExt === ".oga") {
+    cleanFileName = `${path.basename(cleanFileName, rawExt)}.ogg`;
+    rawExt = ".ogg";
+  }
+
+  // Jika ekstensi tidak didukung langsung oleh Whisper API, sesuaikan dengan MIME type
+  if (!allowedExtensions.has(rawExt)) {
+    const base = path.basename(cleanFileName, rawExt) || "audio";
+    const mime = (mimeType || "").toLowerCase();
+    if (mime.includes("ogg") || mime.includes("opus")) {
+      cleanFileName = `${base}.ogg`;
+    } else if (mime.includes("wav")) {
+      cleanFileName = `${base}.wav`;
+    } else if (mime.includes("mp4") || mime.includes("m4a")) {
+      cleanFileName = `${base}.m4a`;
+    } else if (mime.includes("webm")) {
+      cleanFileName = `${base}.webm`;
+    } else if (mime.includes("flac")) {
+      cleanFileName = `${base}.flac`;
+    } else {
+      cleanFileName = `${base}.mp3`;
+    }
+  }
+
+  let effectiveMime = mimeType || "audio/ogg";
+  if (effectiveMime === "audio/oga") {
+    effectiveMime = "audio/ogg";
+  }
+
   const formData = new FormData();
-  const blob = new Blob([audioBuffer], { type: mimeType });
-  formData.append("file", blob, fileName);
+  const blob = new Blob([audioBuffer], { type: effectiveMime });
+  formData.append("file", blob, cleanFileName);
   formData.append("model", model);
   if (language) {
     formData.append("language", language);

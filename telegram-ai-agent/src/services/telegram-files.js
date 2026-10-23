@@ -135,10 +135,12 @@ export async function downloadTelegramFile(
   const arrayBuffer = await response.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  let ext = path.extname(originalName || file.file_path || "");
+  const originalExt = path.extname(originalName || file.file_path || "");
+  let ext = originalExt.toLowerCase();
   if (!ext && isPhoto) ext = ".jpg";
+  if (ext === ".oga") ext = ".ogg";
 
-  const rawBase = path.basename(originalName || `media_${Date.now()}`, ext);
+  const rawBase = path.basename(originalName || `media_${Date.now()}`, originalExt);
   const safeBase =
     rawBase.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50) || "file";
   const savedFileName = `${Date.now()}_${safeBase}${ext}`;
