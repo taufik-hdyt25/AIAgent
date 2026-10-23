@@ -23,6 +23,7 @@ import { processNextQueue } from "./services/queue-service.js";
 import { loadMemories } from "./services/memory-service.js";
 import { initSkillStore } from "./services/skill-service.js";
 import { checkPendingUpdateNotification } from "./services/update-service.js";
+import { initAutoUpdateWatcher } from "./services/auto-update-watcher.js";
 
 // Mencegah process crash akibat unhandled promise rejection atau socket error saat sleep/wake pada Mac/Laptop
 process.on("unhandledRejection", (reason) => {
@@ -176,6 +177,7 @@ if (
               initNotionWatcher(bot);
               initDailyCleanup(bot);
               initServerSentry(bot);
+              initAutoUpdateWatcher(bot);
             }
           },
         });

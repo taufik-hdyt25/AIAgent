@@ -1,23 +1,58 @@
 import { readFile, writeFile, unlink } from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
-import { DATA_DIR } from "../config/env.js";
+import { DATA_DIR, ROOT_DIR } from "../config/env.js";
 import { truncate } from "./telegram-files.js";
+import { notifyUsers } from "./github-watcher.js";
 
 const execAsync = promisify(exec);
 const PENDING_UPDATE_FILE = path.join(DATA_DIR, "pending_update.json");
 
 /**
- * Jalankan perintah git pada folder /home/AIAgent host via docker container terisolasi
+ * Mencari direktori root git repository TH Agent
+ */
+export function getGitWorkingDir() {
+  const candidates = [
+    process.env.AGENT_REPO_DIR,
+    process.env.WORKSPACE_DIR,
+    path.resolve(ROOT_DIR, "projects/AIAgent"),
+    path.resolve(ROOT_DIR, "../projects/AIAgent"),
+    ROOT_DIR,
+    "/home/AIAgent",
+  ].filter(Boolean);
+
+  for (const dir of candidates) {
+    if (fs.existsSync(path.join(dir, ".git"))) {
+      return dir;
+    }
+  }
+  return ROOT_DIR;
+}
+
+/**
+ * Jalankan perintah git pada folder host (baik via native git atau Docker terisolasi jika di container)
  */
 async function runHostGit(gitCommand) {
-  const dockerCmd = `docker run --rm -v /home/AIAgent:/host -v /home/ubuntu/.ssh:/root/.ssh:ro -w /host alpine sh -c "
+  const gitDir = getGitWorkingDir();
+
+  // 1. Coba eksekusi git secara native di direktori repo host (macOS / Linux baremetal)
+  try {
+    return await execAsync(gitCommand, { cwd: gitDir });
+  } catch (nativeErr) {
+    // 2. Jika native gagal atau di dalam container Docker yang me-mount /host
+    try {
+      const dockerCmd = `docker run --rm -v /home/AIAgent:/host -v /home/ubuntu/.ssh:/root/.ssh:ro -w /host alpine sh -c "
 apk add --no-cache git openssh-client >/dev/null 2>&1
 git config --global --add safe.directory /host
 ${gitCommand}
 "`;
-  return await execAsync(dockerCmd);
+      return await execAsync(dockerCmd);
+    } catch {
+      throw nativeErr;
+    }
+  }
 }
 
 /**
@@ -79,7 +114,106 @@ export async function checkForUpdates() {
 }
 
 /**
- * Melakukan proses self-update langsung dari Telegram
+ * Helper untuk build ulang bundle th-agent-bin dan sync aset setelah update
+ */
+async function syncAndRebuildBundle() {
+  const gitDir = getGitWorkingDir();
+  const agentDir = fs.existsSync(path.join(gitDir, "telegram-ai-agent"))
+    ? path.join(gitDir, "telegram-ai-agent")
+    : gitDir;
+
+  // 1. Cek perubahan dependencies & npm install jika perlu
+  try {
+    const { stdout: diffOut } = await runHostGit("git diff HEAD~1 --name-only 2>/dev/null || echo ''");
+    if (diffOut.includes("package.json") || diffOut.includes("package-lock.json")) {
+      console.log("[Update Service] Dependencies berubah, menjalankan npm install...");
+      await execAsync("npm install --production 2>/dev/null || npm install", {
+        cwd: agentDir,
+        timeout: 120000,
+      });
+    }
+  } catch (_) {}
+
+  // 2. Re-bundle th-agent-bin jika ada
+  const binPath = path.join(ROOT_DIR, "th-agent-bin");
+  if (fs.existsSync(binPath)) {
+    console.log("[Update Service] Memperbarui bundle executable th-agent-bin...");
+    const entry = path.join(agentDir, "src/bot.js");
+    await execAsync(
+      `npx -y esbuild "${entry}" --bundle --platform=node --format=esm --banner:js="#!/usr/bin/env node\nimport { createRequire } from 'module'; const require = createRequire(import.meta.url);" --target=node20 --outfile="${binPath}"`,
+      { cwd: agentDir }
+    );
+  }
+
+  // 3. Salin public folder jika ada
+  const publicSrc = path.join(agentDir, "public");
+  const publicDst = path.join(ROOT_DIR, "public");
+  if (fs.existsSync(publicSrc) && fs.existsSync(publicDst)) {
+    await execAsync(`cp -r "${publicSrc}"/* "${publicDst}/" 2>/dev/null || true`);
+  }
+
+  // 4. Sinkronisasi container docker jika berlaku
+  try {
+    await execAsync(
+      `tar -cf - -C /host/src . 2>/dev/null | tar -xf - -C /app/src 2>/dev/null || true`
+    );
+  } catch (_) {}
+}
+
+/**
+ * Eksekusi update otomatis (dipanggil oleh Webhook atau Fallback Poller)
+ */
+export async function applyAutoUpdate(trigger = "polling", bot = null) {
+  const check = await checkForUpdates();
+  if (!check.hasUpdate) {
+    return { updated: false, reason: "Sudah di versi paling baru." };
+  }
+
+  console.log(`[Auto-Update] (${trigger}) Memulai pull pembaruan dari origin/main...`);
+
+  // 1. Git pull di host
+  await runHostGit("git pull origin main");
+
+  // 2. Sync dependencies & bundle
+  await syncAndRebuildBundle();
+
+  // 3. Ambil commit baru
+  const newCommit = await getCurrentCommit();
+
+  // 4. Simpan pending update notification
+  const pendingData = {
+    chatId: null,
+    broadcastAll: true,
+    fromCommit: check.currentCommit,
+    toCommit: newCommit,
+    updatedAt: new Date().toISOString(),
+    trigger,
+  };
+  await writeFile(PENDING_UPDATE_FILE, JSON.stringify(pendingData, null, 2), "utf8");
+
+  // 5. Kirim notifikasi Telegram sebelum restart
+  if (bot) {
+    const restartMsg =
+      `🔄 *Auto-Update Berhasil Diterapkan!*\n\n` +
+      `• Versi: \`${check.currentCommit}\` → \`${newCommit}\`\n` +
+      `• Trigger: ${trigger === "webhook" ? "GitHub Webhook 🔔" : "Auto-Polling ⏰"}\n` +
+      `• Changelog:\n\`\`\`\n${truncate(check.changelog, 400)}\n\`\`\`\n\n` +
+      `⚡ *Me-restart bot secara otomatis (1-2 detik)...*`;
+
+    await notifyUsers(bot, restartMsg).catch(() => {});
+  }
+
+  // 6. Graceful restart
+  setTimeout(() => {
+    console.log(`[Auto-Update] Restarting bot process to load new commit ${newCommit}...`);
+    process.exit(0);
+  }, 1200);
+
+  return { updated: true, newCommit };
+}
+
+/**
+ * Melakukan proses self-update langsung dari Telegram (/update command)
  */
 export async function performSelfUpdate({ ctx, force = false }) {
   const chatId = ctx.chat?.id;
@@ -130,12 +264,8 @@ export async function performSelfUpdate({ ctx, force = false }) {
   // 1. Git pull di host
   await runHostGit("git pull origin main");
 
-  // 2. Sinkronkan file src ke container saat ini
-  try {
-    await execAsync(
-      `tar -cf - -C /host/src . 2>/dev/null | tar -xf - -C /app/src 2>/dev/null || true`
-    );
-  } catch (_) {}
+  // 2. Sync dependencies & bundle
+  await syncAndRebuildBundle();
 
   // 3. Ambil commit hash baru setelah pull
   const newCommit = await getCurrentCommit();
@@ -146,6 +276,7 @@ export async function performSelfUpdate({ ctx, force = false }) {
     fromCommit: check.currentCommit,
     toCommit: newCommit,
     updatedAt: new Date().toISOString(),
+    trigger: "manual",
   };
   await writeFile(PENDING_UPDATE_FILE, JSON.stringify(pendingData, null, 2), "utf8");
 
@@ -164,7 +295,7 @@ export async function performSelfUpdate({ ctx, force = false }) {
     await ctx.reply(restartNotice, { parse_mode: "Markdown" });
   }
 
-  // 6. Graceful restart (Docker policy 'unless-stopped' otomatis me-restart container dengan kode baru)
+  // 6. Graceful restart (Docker policy 'unless-stopped' / Launchd KeepAlive otomatis me-restart)
   setTimeout(() => {
     console.log(`[Update Service] Restarting bot process to load new commit ${newCommit}...`);
     process.exit(0);
@@ -182,15 +313,30 @@ export async function checkPendingUpdateNotification(bot) {
     const data = JSON.parse(raw);
     await unlink(PENDING_UPDATE_FILE).catch(() => {});
 
-    if (data.chatId && bot) {
-      const msg =
-        `🚀 *TH Agent Berhasil Diperbarui & Siap Digunakan!*\n\n` +
-        `🆔 Versi Aktif: \`${data.toCommit || "latest"}\`\n` +
-        `⏱ Waktu Update: ${new Date(data.updatedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB\n\n` +
-        `✅ Semua pembaruan kode, fitur, dan perbaikan sudah diterapkan langsung tanpa perlu instalasi ulang!\n` +
-        `💡 _Ketik /help untuk melihat panduan fitur._`;
+    const triggerLabel =
+      data.trigger === "webhook"
+        ? "GitHub Webhook 🔔"
+        : data.trigger === "polling"
+        ? "Auto-Polling ⏰"
+        : "Manual /update ⚡";
 
-      await bot.api.sendMessage(data.chatId, msg, { parse_mode: "Markdown" }).catch(() => {});
+    const msg =
+      `🚀 *TH Agent Berhasil Diperbarui & Siap Digunakan!*\n\n` +
+      `🆔 Versi Aktif: \`${data.toCommit || "latest"}\`\n` +
+      `⏱ Waktu Update: ${new Date(data.updatedAt).toLocaleString("id-ID", { timeZone: "Asia/Jakarta" })} WIB\n` +
+      `🔧 Trigger: ${triggerLabel}\n\n` +
+      `✅ Semua pembaruan kode, fitur, dan perbaikan sudah diterapkan langsung tanpa perlu instalasi ulang!\n` +
+      `💡 _Ketik /help untuk melihat panduan fitur._`;
+
+    if (bot) {
+      if (data.broadcastAll) {
+        const { ALLOWED_IDS } = await import("../config/env.js");
+        for (const chatId of ALLOWED_IDS) {
+          await bot.api.sendMessage(chatId, msg, { parse_mode: "Markdown" }).catch(() => {});
+        }
+      } else if (data.chatId) {
+        await bot.api.sendMessage(data.chatId, msg, { parse_mode: "Markdown" }).catch(() => {});
+      }
     }
   } catch (_) {
     // Tidak ada pending update, abaikan

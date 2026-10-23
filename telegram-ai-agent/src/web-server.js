@@ -71,6 +71,7 @@ import {
   readEnvFile,
   updateEnvFile,
 } from "./services/env-service.js";
+import { handleWebhookPush } from "./services/auto-update-watcher.js";
 
 // MIME Types untuk file statis
 const MIME_TYPES = {
@@ -516,6 +517,36 @@ export function createWebServer() {
         }
       });
       return;
+    }
+
+    // Webhook: GitHub Auto-Update (Push Event & Status Check)
+    if (pathname === "/webhook/update") {
+      if (req.method === "GET") {
+        return sendJson(200, {
+          ok: true,
+          service: "TH Agent Auto-Update Webhook",
+          status: "listening",
+          description: "Endpoint ini siap menerima GitHub webhook push event untuk auto-update.",
+        });
+      }
+
+      if (req.method === "POST") {
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk;
+          if (body.length > 500 * 1024) req.destroy();
+        });
+
+        req.on("end", async () => {
+          try {
+            const result = await handleWebhookPush(body, req.headers);
+            return sendJson(result.ok ? 200 : 403, result);
+          } catch (err) {
+            return sendError(500, `Webhook error: ${err.message}`);
+          }
+        });
+        return;
+      }
     }
 
     // Sajikan File Statis dari folder public/
