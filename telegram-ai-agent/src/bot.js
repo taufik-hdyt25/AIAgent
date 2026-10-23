@@ -11,6 +11,7 @@ import { registerEngineHandlers } from "./bot/handlers/engine.js";
 import { registerModelHandlers } from "./bot/handlers/model.js";
 import { registerMessageHandlers } from "./bot/handlers/messages.js";
 import { initGithubWatcher } from "./services/github-watcher.js";
+import { initNotionWatcher } from "./services/notion-watcher.js";
 import { initDailyCleanup } from "./services/cleanup-service.js";
 import { initServerSentry } from "./services/sentry-service.js";
 import {
@@ -112,6 +113,7 @@ if (
         { command: "sentry", description: "Kesehatan container & auto-healing" },
         { command: "setwhisper", description: "Atur API Whisper untuk Voice Note" },
         { command: "projects", description: "Daftar proyek coding di ./projects" },
+        { command: "notion", description: "Cek & kelola auto-sync task Notion" },
         { command: "syncprojects", description: "Sinkronisasi peta arsitektur semua project" },
         { command: "swarm", description: "Eksekusi multi-tugas dengan Sub-Agent Swarm" },
         { command: "memories", description: "Daftar memori jangka panjang AI" },
@@ -171,6 +173,7 @@ if (
               initGithubWatcher(bot).catch((err) => {
                 console.warn("Gagal memulai GitHub Issue Watcher:", err.message);
               });
+              initNotionWatcher(bot);
               initDailyCleanup(bot);
               initServerSentry(bot);
             }
