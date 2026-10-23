@@ -2,7 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { UPLOADS_DIR, MAX_OUTPUT, PROJECTS_DIR } from "../../config/env.js";
+import { UPLOADS_DIR, MAX_OUTPUT, PROJECTS_DIR, IS_PI } from "../../config/env.js";
 import {
   AVAILABLE_AGY_MODELS,
   AVAILABLE_CLAUDE_MODELS,
@@ -371,9 +371,13 @@ export function registerBasicCommands(bot) {
         }
       }
 
+      const piNotice = IS_PI
+        ? "🔒 *Aturan Raspberry Pi:* Eksekusi proyek dibatasi HANYA di dalam folder `./projects/intiva/`."
+        : "🌐 *Mode Server/VPS:* Akses penuh ke seluruh proyek di `./projects/` (aturan intiva hanya aktif di perangkat model Raspberry Pi).";
+
       const list = displayList.join("\n");
       await ctx.reply(
-        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n🔒 *Aturan Raspberry Pi:* Eksekusi proyek dibatasi HANYA di dalam folder \`./projects/intiva/\`.\n💡 *Tip:* Gunakan \`/syncprojects\` untuk memperbarui peta proyek.`,
+        `📁 *Daftar Proyek di \`./projects\` (${dirs.length}):*\n\n${list}\n\n${piNotice}\n💡 *Tip:* Gunakan \`/syncprojects\` untuk memperbarui peta proyek.`,
         { parse_mode: "Markdown" }
       );
     } catch (err) {

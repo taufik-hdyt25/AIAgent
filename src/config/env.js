@@ -1,5 +1,6 @@
 import path from "node:path";
 import os from "node:os";
+import fs from "node:fs";
 import { mkdir } from "node:fs/promises";
 
 export const ROOT_DIR = process.cwd();
@@ -8,6 +9,29 @@ export const LOG_DIR = path.resolve(ROOT_DIR, "logs");
 export const PROJECTS_DIR = path.resolve(ROOT_DIR, "projects");
 export const UPLOADS_DIR = path.resolve(ROOT_DIR, process.env.UPLOADS_DIR || "uploads");
 export const CONTEXT_FILE = path.join(DATA_DIR, "context.json");
+
+// Deteksi apakah bot berjalan di perangkat model Raspberry Pi
+export const IS_PI = (() => {
+  if (
+    process.env.IS_PI === "true" ||
+    process.env.DEVICE_MODEL === "pi" ||
+    process.env.TARGET_ENV === "pi"
+  ) {
+    return true;
+  }
+  try {
+    if (fs.existsSync("/proc/device-tree/model")) {
+      const model = fs.readFileSync("/proc/device-tree/model", "utf8");
+      if (/Raspberry Pi/i.test(model)) return true;
+    }
+    if (fs.existsSync("/proc/cpuinfo")) {
+      const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
+      if (/Raspberry Pi/i.test(cpuinfo)) return true;
+    }
+    if (fs.existsSync("/etc/rpi-issue")) return true;
+  } catch (_) {}
+  return false;
+})();
 
 export const BOT_TOKEN = process.env.BOT_TOKEN || "";
 export const AGY_BIN = process.env.AGY_BIN || path.join(os.homedir(), ".local/bin/agy");

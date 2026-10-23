@@ -13,6 +13,7 @@ import { searchMemories, formatMemoriesForPrompt } from "./memory-service.js";
 import { findMatchingSkills, formatSkillsForPrompt } from "./skill-service.js";
 import { processNextQueue } from "./queue-service.js";
 import { truncate } from "./telegram-files.js";
+import { IS_PI } from "../config/env.js";
 
 export const WORKER_PROFILES = [
   { name: "Alpha", emoji: "🐺", label: "Worker 1" },
@@ -225,7 +226,7 @@ ${fileContext}${memPrompt ? `\n${memPrompt}\n` : ""}${skillPrompt ? `\n${skillPr
 PANDUAN EKSEKUSI OTONOM:
 1. Kamu fokus 100% menyelesaikan HANYA tugas spesifik kamu di atas.
 2. Gunakan tools terminal, git, dan manajemen file server secara nyata (Zero-Confirmation).
-3. Aturan Sandbox Intiva: Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Dilarang mengeksekusi di luar folder tersebut.
+${IS_PI ? "3. Aturan Sandbox Intiva (Khusus Raspberry Pi): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder './projects/intiva/'. Dilarang mengeksekusi di luar folder tersebut." : "3. Akses Penuh: Kamu memiliki akses penuh ke seluruh proyek di './projects/'."}
 4. Setelah selesai, berikan laporan hasil eksekusi yang jelas, ringkas, terstruktur, dan to the point.
 `.trim();
 
