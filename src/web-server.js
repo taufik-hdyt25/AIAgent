@@ -39,6 +39,10 @@ import {
   saveSentryConfig,
   checkServerHealth,
   formatSentryStatus,
+  getDockerContainers,
+  addWatchedContainer,
+  removeWatchedContainer,
+  setWatchedContainers,
 } from "./services/sentry-service.js";
 
 
@@ -166,6 +170,7 @@ export function createWebServer() {
         const agySessionActive = await stat(path.join(os.homedir(), ".gemini")).then(() => true).catch(() => false);
         const voiceConfig = await getVoiceConfig();
         const sentryConfig = await getSentryConfig();
+        const dockerStatus = await getDockerContainers();
 
         return sendJson(200, {
           ok: true,
@@ -203,6 +208,7 @@ export function createWebServer() {
           },
           voiceConfig,
           sentryConfig,
+          dockerStatus,
           options: {
             agyModels: await getModelList("agy"),
             claudeModels: await getModelList("claude"),
@@ -368,10 +374,12 @@ export function createWebServer() {
       try {
         const health = await checkServerHealth(null, true);
         const config = await getSentryConfig();
+        const dockerStatus = await getDockerContainers();
         return sendJson(200, {
           ok: true,
           health,
           config,
+          dockerStatus,
           summary: formatSentryStatus(config, health),
         });
       } catch (err) {
@@ -465,13 +473,18 @@ export function createWebServer() {
           // Simpan konfigurasi Sentry jika ada
           if (payload.sentryConfig) {
             await saveSentryConfig(payload.sentryConfig);
-          } else if (payload.sentryEnabled !== undefined || payload.sentryAutoHeal !== undefined) {
-            await saveSentryConfig({
-              enabled: Boolean(payload.sentryEnabled),
-              autoHeal: Boolean(payload.sentryAutoHeal),
-              checkIntervalMinutes: Number(payload.sentryIntervalMinutes) || 5,
-              diskThresholdPercent: Number(payload.sentryDiskThreshold) || 88,
-            });
+          } else {
+            const sentryUpdates = {};
+            if (payload.sentryEnabled !== undefined) sentryUpdates.enabled = Boolean(payload.sentryEnabled);
+            if (payload.sentryAutoHeal !== undefined) sentryUpdates.autoHeal = Boolean(payload.sentryAutoHeal);
+            if (payload.sentryIntervalMinutes !== undefined) sentryUpdates.checkIntervalMinutes = Number(payload.sentryIntervalMinutes) || 5;
+            if (payload.sentryDiskThreshold !== undefined) sentryUpdates.diskThresholdPercent = Number(payload.sentryDiskThreshold) || 88;
+            if (payload.targetContainers !== undefined && Array.isArray(payload.targetContainers)) {
+              sentryUpdates.targetContainers = payload.targetContainers;
+            }
+            if (Object.keys(sentryUpdates).length > 0) {
+              await saveSentryConfig(sentryUpdates);
+            }
           }
 
           return sendJson(200, {

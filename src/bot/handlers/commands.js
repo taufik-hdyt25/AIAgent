@@ -89,6 +89,9 @@ import {
   formatSentryStatus,
   toggleSentry,
   toggleAutoHeal,
+  addWatchedContainer,
+  removeWatchedContainer,
+  getDockerContainers,
 } from "../../services/sentry-service.js";
 
 export function registerBasicCommands(bot) {
@@ -1779,6 +1782,59 @@ export function registerBasicCommands(bot) {
       await ctx.reply(
         `🩺 *Status Auto-Healing Sentry:* ${cfg.autoHeal ? "Aktif ✅" : "Nonaktif ❌"}\n` +
           `Ketik \`/sentry autoheal on\` untuk mengaktifkan atau \`/sentry autoheal off\` untuk mematikan.`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (action === "watch") {
+      const target = parts[1];
+      if (!target) {
+        await ctx.reply("💡 *Format:* `/sentry watch <nama_kontainer>`\nContoh: `/sentry watch ai-podcast-live`", { parse_mode: "Markdown" });
+        return;
+      }
+      const list = await addWatchedContainer(target);
+      await ctx.reply(
+        `✅ Kontainer \`${target}\` berhasil ditambahkan ke daftar pantauan Sentry!\n\n` +
+          `📦 *Total Pantauan (${list.length}):*\n` +
+          list.map((c) => `• \`${c}\``).join("\n"),
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (action === "unwatch") {
+      const target = parts[1];
+      if (!target) {
+        await ctx.reply("💡 *Format:* `/sentry unwatch <nama_kontainer>`", { parse_mode: "Markdown" });
+        return;
+      }
+      const list = await removeWatchedContainer(target);
+      await ctx.reply(
+        `🗑️ Kontainer \`${target}\` telah dihapus dari pantauan Sentry.\n\n` +
+          `📦 *Sisa Pantauan (${list.length}):*\n` +
+          (list.length > 0 ? list.map((c) => `• \`${c}\``).join("\n") : "_Tidak ada kontainer yang dipantau_"),
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (action === "containers" || action === "list") {
+      const dockerInfo = await getDockerContainers();
+      if (!dockerInfo.available) {
+        await ctx.reply("💻 *Mode Lokal:* Docker daemon tidak ditemukan di lingkungan ini.", { parse_mode: "Markdown" });
+        return;
+      }
+      const cfg = await getSentryConfig();
+      const watched = new Set(cfg.targetContainers || []);
+      const lines = dockerInfo.containers.map((c) => {
+        const isWatched = watched.has(c.name) ? " *(Dipantau 🩺)*" : "";
+        const icon = c.running ? "🟢" : "🔴";
+        return `• ${icon} \`${c.name}\` (${c.status})${isWatched}`;
+      });
+      await ctx.reply(
+        `📦 *Daftar Kontainer Docker di Server:*\n\n${lines.join("\n")}\n\n` +
+          `💡 Ketik \`/sentry watch <nama>\` untuk memantau atau \`/sentry unwatch <nama>\` untuk menghapus.`,
         { parse_mode: "Markdown" }
       );
       return;

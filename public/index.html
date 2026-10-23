@@ -724,9 +724,12 @@
             </div>
 
             <!-- Monitored Containers List & Live Audit -->
-            <div class="form-group">
+            <div class="form-group" id="containerMonitoringSection">
               <div class="label-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                <label class="form-label" style="margin-bottom: 0;">STATUS KONTAINER YANG DIPANTAU (5 SERVICES)</label>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <label class="form-label" style="margin-bottom: 0;">STATUS KONTAINER YANG DIPANTAU</label>
+                  <span id="dockerEnvBadge" class="switch-status-text on">VPS Docker</span>
+                </div>
                 <button type="button" class="btn btn-secondary btn-sm" id="btnAuditSentry">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="23 4 23 10 17 10"></polyline>
@@ -737,42 +740,37 @@
                 </button>
               </div>
 
-              <!-- Interactive Container Health Grid -->
-              <div class="container-health-grid" id="containerHealthGrid">
-                <div class="container-health-card">
-                  <div class="container-health-info">
-                    <span class="container-health-name font-mono">ai-podcast-live</span>
-                    <span class="container-health-desc">Port 3005 • Stream</span>
+              <!-- Local Environment Notice (Ditampilkan otomatis jika Docker tidak terdeteksi) -->
+              <div id="localDockerNotice" class="token-result-box" style="display: none; background: rgba(59, 130, 246, 0.08); border-color: rgba(59, 130, 246, 0.25); margin-top: 0.5rem;">
+                <div class="token-result-content">
+                  <span style="font-size: 1.5rem;">💻</span>
+                  <div>
+                    <strong style="color: #93c5fd;">Mode Lokal Terdeteksi</strong>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.2rem;">
+                      Docker daemon tidak ditemukan di mesin lokal ini. Kontainer VPS otomatis disembunyikan agar tidak memicu alarm palsu. Fitur Sentry kontainer aktif otomatis saat dijalankan di server VPS.
+                    </p>
                   </div>
-                  <span class="container-status-dot" id="dot-ai-podcast-live" title="Running"></span>
                 </div>
-                <div class="container-health-card">
-                  <div class="container-health-info">
-                    <span class="container-health-name font-mono">wa-dashboard</span>
-                    <span class="container-health-desc">Port 3333 • Dashboard</span>
-                  </div>
-                  <span class="container-status-dot" id="dot-wa-dashboard" title="Running"></span>
+              </div>
+
+              <!-- Kontrol Tambah & Konfigurasi Kontainer -->
+              <div id="containerConfigControls" style="margin-top: 0.75rem;">
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                  <input
+                    type="text"
+                    id="newContainerInput"
+                    class="form-input font-mono"
+                    placeholder="Tambah nama kontainer yang ingin dipantau..."
+                    style="flex: 1;"
+                  >
+                  <button type="button" class="btn btn-secondary" id="btnAddContainer" style="white-space: nowrap; font-size: 0.85rem;">
+                    <span>+ Tambah</span>
+                  </button>
                 </div>
-                <div class="container-health-card">
-                  <div class="container-health-info">
-                    <span class="container-health-name font-mono">wa-bot</span>
-                    <span class="container-health-desc">Port 3001 • Bot</span>
-                  </div>
-                  <span class="container-status-dot" id="dot-wa-bot" title="Running"></span>
-                </div>
-                <div class="container-health-card">
-                  <div class="container-health-info">
-                    <span class="container-health-name font-mono">th-blogs-app</span>
-                    <span class="container-health-desc">Port 3000 • Next.js</span>
-                  </div>
-                  <span class="container-status-dot" id="dot-th-blogs-app" title="Running"></span>
-                </div>
-                <div class="container-health-card">
-                  <div class="container-health-info">
-                    <span class="container-health-name font-mono">th-blogs-db</span>
-                    <span class="container-health-desc">Port 5433 • PostgreSQL</span>
-                  </div>
-                  <span class="container-status-dot" id="dot-th-blogs-db" title="Running"></span>
+
+                <!-- Interactive Container Health Grid (Dirender secara dinamis) -->
+                <div class="container-health-grid" id="containerHealthGrid">
+                  <!-- Populated dynamically via app.js -->
                 </div>
               </div>
 

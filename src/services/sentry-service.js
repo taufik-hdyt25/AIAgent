@@ -14,7 +14,7 @@ let sentryInterval = null;
 let sentryConfigCache = null;
 const alertCooldowns = new Map(); // containerName -> timestamp
 
-// Daftar container utama yang dipantau kesehatannya 24/7
+// Daftar container default awal jika ada di server VPS
 const DEFAULT_TARGET_CONTAINERS = [
   "ai-podcast-live",
   "wa-dashboard",
@@ -24,6 +24,36 @@ const DEFAULT_TARGET_CONTAINERS = [
 ];
 
 /**
+ * Dapatkan daftar semua container Docker di host secara realtime
+ */
+export async function getDockerContainers() {
+  try {
+    const { stdout } = await execAsync(
+      "docker ps -a --format '{{.Names}}|{{.Status}}|{{.State}}' 2>&1"
+    );
+    const lines = stdout.trim().split("\n").filter(Boolean);
+    const containers = [];
+    for (const line of lines) {
+      const [name, statusStr, state] = line.split("|");
+      if (name) {
+        const cleanName = name.trim();
+        const cleanStatus = (statusStr || "").trim();
+        const cleanState = (state || "").trim().toLowerCase();
+        containers.push({
+          name: cleanName,
+          status: cleanStatus,
+          state: cleanState,
+          running: cleanState === "running",
+        });
+      }
+    }
+    return { available: true, containers };
+  } catch (err) {
+    return { available: false, error: err.message, containers: [] };
+  }
+}
+
+/**
  * Muat konfigurasi Sentry
  */
 export async function getSentryConfig() {
@@ -31,19 +61,64 @@ export async function getSentryConfig() {
   try {
     const raw = await readFile(SENTRY_CONFIG_FILE, "utf8");
     sentryConfigCache = JSON.parse(raw);
+    if (!Array.isArray(sentryConfigCache.targetContainers)) {
+      sentryConfigCache.targetContainers = DEFAULT_TARGET_CONTAINERS;
+    }
   } catch {
+    // Deteksi container yang sebenarnya ada di host
+    const dockerInfo = await getDockerContainers().catch(() => ({ available: false, containers: [] }));
+    const initialTargets = dockerInfo.available && dockerInfo.containers.length > 0
+      ? dockerInfo.containers.map((c) => c.name).filter((n) => n !== "telegram-coding-agent")
+      : DEFAULT_TARGET_CONTAINERS;
+
     sentryConfigCache = {
       enabled: true,
       autoHeal: true,
       checkIntervalMinutes: 5,
       diskThresholdPercent: 88,
-      targetContainers: DEFAULT_TARGET_CONTAINERS,
+      targetContainers: initialTargets,
       lastCheck: null,
       lastAlert: null,
       incidentCount: 0,
     };
   }
   return sentryConfigCache;
+}
+
+/**
+ * Tambah container ke daftar pantauan
+ */
+export async function addWatchedContainer(containerName) {
+  const config = await getSentryConfig();
+  const clean = containerName.trim();
+  const list = config.targetContainers || [];
+  if (!list.includes(clean)) {
+    list.push(clean);
+    await saveSentryConfig({ targetContainers: list });
+  }
+  return list;
+}
+
+/**
+ * Hapus container dari daftar pantauan
+ */
+export async function removeWatchedContainer(containerName) {
+  const config = await getSentryConfig();
+  const clean = containerName.trim();
+  const list = (config.targetContainers || []).filter((c) => c !== clean);
+  await saveSentryConfig({ targetContainers: list });
+  return list;
+}
+
+/**
+ * Atur seluruh daftar container yang dipantau sekaligus
+ */
+export async function setWatchedContainers(containers) {
+  const cleanList = Array.isArray(containers)
+    ? containers.map((c) => String(c).trim()).filter(Boolean)
+    : [];
+  await saveSentryConfig({ targetContainers: cleanList });
+  return cleanList;
 }
 
 /**
@@ -79,6 +154,8 @@ export async function checkServerHealth(bot = null, isManual = false) {
 
   const now = Date.now();
   const incidents = [];
+  let dockerAvailable = true;
+  let dockerError = null;
 
   // 1. Audit status container Docker
   try {
@@ -100,12 +177,12 @@ export async function checkServerHealth(bot = null, isManual = false) {
     }
 
     // Periksa target containers
-    const monitored = config.targetContainers || DEFAULT_TARGET_CONTAINERS;
+    const monitored = config.targetContainers || [];
     for (const target of monitored) {
       const info = containerMap.get(target);
 
       if (!info) {
-        // Container tidak terdaftar sama sekali
+        // Container tidak terdaftar sama sekali di host docker ini
         continue;
       }
 
@@ -157,7 +234,9 @@ export async function checkServerHealth(bot = null, isManual = false) {
       }
     }
   } catch (err) {
-    console.warn("[Server Sentry] Gagal memeriksa status docker:", err.message);
+    dockerAvailable = false;
+    dockerError = err.message;
+    console.warn("[Server Sentry] Docker tidak terdeteksi (Mode Lokal):", err.message);
   }
 
   // 2. Audit kapasitas disk
@@ -233,6 +312,8 @@ export async function checkServerHealth(bot = null, isManual = false) {
 
   return {
     checkedAt: new Date().toISOString(),
+    dockerAvailable,
+    dockerError,
     incidents,
     diskIncident,
     healthy: incidents.length === 0 && !diskIncident,
@@ -253,9 +334,20 @@ export function formatSentryStatus(config, healthResult = null) {
   msg += `• Ambang Batas Disk: *${config.diskThresholdPercent || 88}%*\n`;
   msg += `• Total Insiden Tertangani: *${config.incidentCount || 0} kejadian*\n\n`;
 
-  msg += `📦 *Container yang Dipantau:*\n`;
-  for (const c of config.targetContainers || DEFAULT_TARGET_CONTAINERS) {
-    msg += `• \`${c}\`\n`;
+  if (healthResult && healthResult.dockerAvailable === false) {
+    msg += `💻 *Mode Lokal Terdeteksi:*\n`;
+    msg += `• Docker daemon tidak terdeteksi di mesin lokal ini.\n`;
+    msg += `• Layanan monitoring kontainer otomatis dinonaktifkan di mode lokal dan hanya aktif saat bot di-deploy ke server VPS.\n`;
+  } else {
+    msg += `📦 *Container yang Dipantau:*\n`;
+    const list = config.targetContainers || [];
+    if (list.length === 0) {
+      msg += `_Belum ada kontainer yang dipantau. Gunakan \`/sentry watch <nama>\` atau atur lewat Web Dashboard._\n`;
+    } else {
+      for (const c of list) {
+        msg += `• \`${c}\`\n`;
+      }
+    }
   }
 
   if (config.lastCheck) {
@@ -273,6 +365,8 @@ export function formatSentryStatus(config, healthResult = null) {
 
   msg += `\n\n💡 *Perintah Sentry:*\n`;
   msg += `• \`/sentry check\` - Jalankan health check sekarang\n`;
+  msg += `• \`/sentry watch <nama>\` - Tambah kontainer ke pantauan\n`;
+  msg += `• \`/sentry unwatch <nama>\` - Hapus kontainer dari pantauan\n`;
   msg += `• \`/sentry on\` / \`/sentry off\` - Toggle monitor sentry\n`;
   msg += `• \`/sentry autoheal [on|off]\` - Toggle auto-restart container`;
 

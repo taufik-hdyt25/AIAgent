@@ -353,7 +353,22 @@ async function loadSettings() {
       if (sentryAutoHealCheckbox) sentryAutoHealCheckbox.checked = data.sentryConfig.autoHeal !== false;
       if (sentryIntervalSelect) sentryIntervalSelect.value = String(data.sentryConfig.checkIntervalMinutes || 5);
       if (sentryDiskThresholdInput) sentryDiskThresholdInput.value = String(data.sentryConfig.diskThresholdPercent || 88);
+      if (Array.isArray(data.sentryConfig.targetContainers)) {
+        monitoredContainers = [...data.sentryConfig.targetContainers];
+      }
     }
+
+    if (data.dockerStatus) {
+      isDockerHostAvailable = data.dockerStatus.available !== false;
+      if (Array.isArray(data.dockerStatus.containers)) {
+        liveContainerStatusMap.clear();
+        for (const c of data.dockerStatus.containers) {
+          liveContainerStatusMap.set(c.name, c);
+        }
+      }
+    }
+
+    renderContainerGrid();
 
     // Populate Voice Config
     if (data.voiceConfig) {
@@ -574,6 +589,7 @@ form.addEventListener("submit", async (e) => {
       autoHeal: sentryAutoHealCheckbox ? sentryAutoHealCheckbox.checked : true,
       checkIntervalMinutes: sentryIntervalSelect ? Number(sentryIntervalSelect.value) : 5,
       diskThresholdPercent: sentryDiskThresholdInput ? Number(sentryDiskThresholdInput.value) : 88,
+      targetContainers: monitoredContainers,
     },
   };
 
@@ -661,6 +677,105 @@ if (toggleOpenaiKeyBtn && openaiApiKeyInput) {
   });
 }
 
+// Sentry Dynamic Containers State
+let monitoredContainers = [];
+let isDockerHostAvailable = true;
+const liveContainerStatusMap = new Map();
+
+const localDockerNotice = document.getElementById("localDockerNotice");
+const dockerEnvBadge = document.getElementById("dockerEnvBadge");
+const containerConfigControls = document.getElementById("containerConfigControls");
+const newContainerInput = document.getElementById("newContainerInput");
+const btnAddContainer = document.getElementById("btnAddContainer");
+const containerHealthGrid = document.getElementById("containerHealthGrid");
+
+// Render Grid Kontainer secara dinamis
+function renderContainerGrid() {
+  if (!containerHealthGrid) return;
+
+  if (!isDockerHostAvailable) {
+    if (localDockerNotice) localDockerNotice.style.display = "flex";
+    if (dockerEnvBadge) {
+      dockerEnvBadge.textContent = "💻 Mode Lokal";
+      dockerEnvBadge.className = "switch-status-text off";
+    }
+    if (containerConfigControls) containerConfigControls.style.display = "none";
+    return;
+  }
+
+  if (localDockerNotice) localDockerNotice.style.display = "none";
+  if (containerConfigControls) containerConfigControls.style.display = "block";
+  if (dockerEnvBadge) {
+    dockerEnvBadge.textContent = "🟢 VPS Docker Aktif";
+    dockerEnvBadge.className = "switch-status-text on";
+  }
+
+  containerHealthGrid.innerHTML = "";
+
+  if (monitoredContainers.length === 0) {
+    containerHealthGrid.innerHTML = `
+      <div style="grid-column: 1 / -1; padding: 1.25rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; border: 1px dashed var(--border-subtle); border-radius: var(--radius-md);">
+        Belum ada kontainer yang dipantau. Tambahkan nama kontainer di atas untuk memantau.
+      </div>
+    `;
+    return;
+  }
+
+  for (const name of monitoredContainers) {
+    const card = document.createElement("div");
+    card.className = "container-health-card";
+
+    const statusInfo = liveContainerStatusMap.get(name);
+    const isExited = statusInfo ? !statusInfo.running : false;
+    const statusText = statusInfo ? (statusInfo.running ? "Running" : "Exited") : "Terdaftar";
+
+    card.innerHTML = `
+      <div class="container-health-info" style="flex: 1;">
+        <span class="container-health-name font-mono">${name}</span>
+        <span class="container-health-desc">${statusText}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.6rem;">
+        <span class="container-status-dot ${isExited ? "exited" : ""}" title="${statusText}"></span>
+        <button type="button" class="btn-del-container" data-container="${name}" title="Hapus dari pantauan" style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; padding: 2px 4px; border-radius: 4px;">✕</button>
+      </div>
+    `;
+
+    const delBtn = card.querySelector(".btn-del-container");
+    if (delBtn) {
+      delBtn.addEventListener("click", () => {
+        monitoredContainers = monitoredContainers.filter((c) => c !== name);
+        renderContainerGrid();
+        showToast(`Kontainer ${name} dihapus dari pantauan.`, "info");
+      });
+    }
+
+    containerHealthGrid.appendChild(card);
+  }
+}
+
+if (btnAddContainer && newContainerInput) {
+  const handleAdd = () => {
+    const val = newContainerInput.value.trim();
+    if (!val) return;
+    if (monitoredContainers.includes(val)) {
+      showToast(`Kontainer ${val} sudah ada di daftar pantauan.`, "info");
+      return;
+    }
+    monitoredContainers.push(val);
+    newContainerInput.value = "";
+    renderContainerGrid();
+    showToast(`Kontainer ${val} ditambahkan ke daftar pantauan!`, "success");
+  };
+
+  btnAddContainer.addEventListener("click", handleAdd);
+  newContainerInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleAdd();
+    }
+  });
+}
+
 // Listener untuk Audit Server Sentry via Web UI
 if (btnAuditSentry) {
   btnAuditSentry.addEventListener("click", async () => {
@@ -675,7 +790,18 @@ if (btnAuditSentry) {
       if (data.ok && data.summary) {
         if (sentryAuditResult) sentryAuditResult.style.display = "block";
         if (sentryAuditText) sentryAuditText.textContent = data.summary;
-        if (data.health) updateContainerDots(data.health);
+
+        if (data.dockerStatus) {
+          isDockerHostAvailable = data.dockerStatus.available !== false;
+          if (Array.isArray(data.dockerStatus.containers)) {
+            liveContainerStatusMap.clear();
+            for (const c of data.dockerStatus.containers) {
+              liveContainerStatusMap.set(c.name, c);
+            }
+          }
+        }
+        renderContainerGrid();
+
         showToast(
           data.health?.healthy ? "✅ Seluruh kontainer & disk prima!" : "⚠️ Peringatan kesehatan server terdeteksi",
           data.health?.healthy ? "success" : "warning",
@@ -691,28 +817,6 @@ if (btnAuditSentry) {
       btnAuditSentry.innerHTML = origHtml;
     }
   });
-}
-
-// Update live dots untuk status kontainer
-function updateContainerDots(healthResult) {
-  if (!healthResult) return;
-  const containerNames = [
-    "ai-podcast-live",
-    "wa-dashboard",
-    "wa-bot",
-    "th-blogs-app",
-    "th-blogs-db",
-  ];
-  const incidentTargets = new Set((healthResult.incidents || []).map((i) => i.target));
-
-  for (const name of containerNames) {
-    const dot = document.getElementById(`dot-${name}`);
-    if (dot) {
-      const isDown = incidentTargets.has(name);
-      dot.className = `container-status-dot ${isDown ? "exited" : ""}`;
-      dot.title = isDown ? "Down / Exited" : "Healthy & Running";
-    }
-  }
 }
 
 // Dynamic Switch Badges
