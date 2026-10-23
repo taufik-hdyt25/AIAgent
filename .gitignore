@@ -1,6 +1,8 @@
 # Node & dependencies
 node_modules/
 telegram-ai-agent/node_modules/
+dist/
+telegram-ai-agent/dist/
 
 # Environment files
 .env

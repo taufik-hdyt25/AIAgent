@@ -88,9 +88,15 @@ if [ ! -d "node_modules" ]; then
   npm install --silent 2>/dev/null || npm install
 fi
 
+mkdir -p "$AGENT_DIR/dist"
 npx -y esbuild src/bot.js --bundle --platform=node --format=esm \
   --banner:js="import { createRequire } from 'module'; const require = createRequire(import.meta.url);" \
   --target=node20 --outfile="$GLOBAL_AGENT_DIR/bot.bundle.js"
+
+cp "$GLOBAL_AGENT_DIR/bot.bundle.js" "$AGENT_DIR/dist/bot.bundle.js" 2>/dev/null || true
+echo -e "${GREEN}✓ File bundle berhasil dibuat:${NC}"
+echo -e "   • Background Service: ${CYAN}$GLOBAL_AGENT_DIR/bot.bundle.js${NC}"
+echo -e "   • Local Workspace:    ${CYAN}$AGENT_DIR/dist/bot.bundle.js${NC}"
 
 # Bersihkan node_modules di folder kerja agar tetap bersih total
 rm -rf node_modules package-lock.json 2>/dev/null || true
