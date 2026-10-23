@@ -23,6 +23,7 @@ import {
   updateEnvFile,
   maskSecret,
 } from "../../services/env-service.js";
+import { syncPiModelDirectly } from "../../services/pi-service.js";
 import {
   getActiveTask,
   setActiveTask,
@@ -173,6 +174,7 @@ export function registerBasicCommands(bot) {
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
         "• `/detectmodels` - Pindai & deteksi otomatis daftar model di server\n" +
+        "• `/getpi` - Ambil dan aktifkan langsung model asli dari server Pi\n" +
         "• `/setpi <key>` - Setup instan model Pi via OpenRouter / OpenAI URL\n" +
         "• `/pisandbox` - Toggle mode sandbox folder projects/intiva\n" +
         "• `/compact` - Padatkan konteks obrolan agar token input hemat\n" +
@@ -1947,9 +1949,68 @@ export function registerBasicCommands(bot) {
       .catch(() => {});
   });
 
+  // /getpi, /syncpi, /tarikpi - Langsung tarik dan aktifkan model dari server Pi
+  bot.command(["getpi", "syncpi", "tarikpi"], async (ctx) => {
+    const userId = ctx.from?.id;
+    const url = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+    const key = process.env.UNIVERSAL_API_KEY || "";
+
+    const loadingMsg = await ctx.reply(
+      `🔍 *Menghubungi server Pi:* \`${url}\`...\n_Sedang mengambil model langsung dari Pi..._`,
+      { parse_mode: "Markdown" }
+    );
+
+    const res = await syncPiModelDirectly(url, key, userId);
+
+    if (!res.ok) {
+      await ctx.api
+        .editMessageText(
+          ctx.chat.id,
+          loadingMsg.message_id,
+          `❌ *Gagal mengambil model dari Pi:*\n${res.error}\n\n` +
+          `Server: \`${url}\`\n\n` +
+          `💡 *Solusi:*\n` +
+          `• Pastikan server Pi sedang aktif dan dapat diakses.\n` +
+          `• Coba periksa URL dengan \`/seturl <URL>\`.\n` +
+          `• Atau ketik manual model kamu: \`/model <NAMA_MODEL>\` (misal \`/model pi\`).`,
+          { parse_mode: "Markdown" }
+        )
+        .catch(() => {});
+      return;
+    }
+
+    const modelListStr = res.allModels
+      .slice(0, 10)
+      .map((m) => `• \`${m.id}\`${m.id === res.activeModel ? " *(Sedang Dipakai ✅)*" : ""}`)
+      .join("\n");
+
+    const moreStr =
+      res.allModels.length > 10
+        ? `\n_...dan ${res.allModels.length - 10} model lainnya._`
+        : "";
+
+    await ctx.api
+      .editMessageText(
+        ctx.chat.id,
+        loadingMsg.message_id,
+        `🎉 *Berhasil Get Model Langsung dari Server Pi!*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `✅ *Model Terpilih:* \`${res.activeModel}\`\n` +
+        `🌐 *Server Pi:* \`${res.serverUrl}\`\n` +
+        `⚙️ *Engine:* \`Universal API (Zero-CLI)\`\n\n` +
+        `📋 *Daftar Model yang Ditemukan di Pi:*\n` +
+        modelListStr +
+        moreStr +
+        `\n\n_Default koding sekarang langsung mengarah ke model asli dari Pi kamu bro! 🚀_`,
+        { parse_mode: "Markdown" }
+      )
+      .catch(() => {});
+  });
+
   // /seturl <URL>
   bot.command(["seturl", "setbaseurl"], async (ctx) => {
     const url = ctx.match?.trim();
+    const userId = ctx.from?.id;
     if (!url) {
       const current = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
       await ctx.reply(
@@ -1976,7 +2037,17 @@ export function registerBasicCommands(bot) {
     finalUrl = finalUrl.replace(/\/+$/, "");
 
     await updateEnvFile({ UNIVERSAL_BASE_URL: finalUrl });
-    await ctx.reply(`✅ *Base URL API berhasil diubah ke:*\n\`${finalUrl}\``, {
+
+    // Coba langsung tarik model dari server baru
+    let syncInfo = "";
+    try {
+      const syncRes = await syncPiModelDirectly(finalUrl, process.env.UNIVERSAL_API_KEY || "", userId);
+      if (syncRes.ok) {
+        syncInfo = `\n🎯 *Model Auto-Sync:* Langsung terhubung ke model \`${syncRes.activeModel}\` dari server!`;
+      }
+    } catch {}
+
+    await ctx.reply(`✅ *Base URL API berhasil diubah ke:*\n\`${finalUrl}\`${syncInfo}`, {
       parse_mode: "Markdown",
     });
   });

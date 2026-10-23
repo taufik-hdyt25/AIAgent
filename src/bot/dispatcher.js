@@ -12,6 +12,7 @@ import {
   IS_PI,
 } from "../config/env.js";
 import { isPiSandboxActive } from "../services/sandbox-service.js";
+import { syncPiModelDirectly } from "../services/pi-service.js";
 import {
   getUserConversationId,
   getUserAgyConversationId,
@@ -380,7 +381,30 @@ ${userMessage}
         }
 
         const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-        const universalModel = await getUserUniversalModel(userId);
+        let universalModel = await getUserUniversalModel(userId);
+
+        // Auto-get model langsung dari server Pi jika menggunakan custom URL / local endpoint
+        const isCustomServer =
+          universalBaseUrl.startsWith("http://") ||
+          universalBaseUrl.includes(":") ||
+          universalBaseUrl.includes("localhost") ||
+          !universalBaseUrl.includes("deepseek.com");
+
+        if (
+          isCustomServer &&
+          (universalModel === "deepseek-chat" ||
+            universalModel === "inflection/inflection-3-pi" ||
+            !universalModel)
+        ) {
+          try {
+            const syncResult = await syncPiModelDirectly(universalBaseUrl, universalApiKey, userId);
+            if (syncResult.ok && syncResult.activeModel) {
+              universalModel = syncResult.activeModel;
+            }
+          } catch {
+            // Lanjut jika gagal
+          }
+        }
 
         const replyText = await runUniversalAgent({
           prompt,
@@ -733,7 +757,27 @@ export async function runAgentAutonomous({
     }
 
     const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-    const universalModel = userId ? await getUserUniversalModel(userId) : (process.env.UNIVERSAL_MODEL || "deepseek-chat");
+    let universalModel = userId ? await getUserUniversalModel(userId) : (process.env.UNIVERSAL_MODEL || "deepseek-chat");
+
+    const isCustomServer =
+      universalBaseUrl.startsWith("http://") ||
+      universalBaseUrl.includes(":") ||
+      universalBaseUrl.includes("localhost") ||
+      !universalBaseUrl.includes("deepseek.com");
+
+    if (
+      isCustomServer &&
+      (universalModel === "deepseek-chat" ||
+        universalModel === "inflection/inflection-3-pi" ||
+        !universalModel)
+    ) {
+      try {
+        const syncResult = await syncPiModelDirectly(universalBaseUrl, universalApiKey, userId);
+        if (syncResult.ok && syncResult.activeModel) {
+          universalModel = syncResult.activeModel;
+        }
+      } catch {}
+    }
 
     const replyText = await runUniversalAgent({
       prompt,

@@ -63,12 +63,28 @@ export async function getModelList(engine) {
     return custom?.claudeModels || AVAILABLE_CLAUDE_MODELS;
   }
   if (engine === "universal") {
+    const uniUrl = process.env.UNIVERSAL_BASE_URL;
+    const uniKey = process.env.UNIVERSAL_API_KEY || "";
+    if (uniUrl && (uniUrl.startsWith("http://") || uniUrl.includes(":") || !uniUrl.includes("deepseek.com"))) {
+      try {
+        const remote = await fetchRemoteModels(uniUrl, uniKey);
+        if (remote.length > 0) {
+          const remoteIds = new Set(remote.map((r) => r.id));
+          const filtered = (custom?.universalModels || AVAILABLE_UNIVERSAL_MODELS).filter(
+            (d) => !remoteIds.has(d.id)
+          );
+          return [...remote, ...filtered];
+        }
+      } catch {
+        // Fallback ke default
+      }
+    }
     return custom?.universalModels || AVAILABLE_UNIVERSAL_MODELS;
   }
   return custom?.agyModels || AVAILABLE_AGY_MODELS;
 }
 
-// Fetch model real-time dari provider OpenAI-compatible (misal OpenRouter / custom http://ip:port/v1/models)
+// Fetch model real-time dari provider OpenAI-compatible (misal OpenRouter / custom http://ip:port/v1/models / Ollama)
 export async function fetchRemoteModels(baseUrl, apiKey) {
   if (!baseUrl) return [];
   const cleanUrl = baseUrl.replace(/\/+$/, "");
@@ -76,26 +92,59 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-  try {
-    const res = await fetch(`${cleanUrl}/models`, {
-      headers,
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
-    const data = await res.json();
-    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
-    return list.map((item) => ({
-      id: typeof item === "string" ? item : (item.id || item.name || "unknown"),
-      name: typeof item === "object" ? (item.name || item.id || "Unknown") : String(item),
-      badge: "Server",
-      description: (typeof item === "object" && item.description) || "",
-    }));
-  } catch {
-    return [];
-  } finally {
-    clearTimeout(timeoutId);
+  // Coba beberapa variasi endpoint yang umum pada OpenAI-compatible & local LLM server
+  const candidateEndpoints = [`${cleanUrl}/models`];
+  if (cleanUrl.endsWith("/v1")) {
+    const rootUrl = cleanUrl.slice(0, -3);
+    candidateEndpoints.push(`${rootUrl}/models`);
+    candidateEndpoints.push(`${rootUrl}/api/tags`); // Format Ollama
+    candidateEndpoints.push(`${rootUrl}/v1/models`);
+  } else {
+    candidateEndpoints.push(`${cleanUrl}/v1/models`);
+    candidateEndpoints.push(`${cleanUrl}/api/tags`);
   }
+
+  for (const endpoint of candidateEndpoints) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    try {
+      const res = await fetch(endpoint, {
+        headers,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) continue;
+
+      const data = await res.json();
+      let list = [];
+      if (Array.isArray(data?.data)) {
+        list = data.data;
+      } else if (Array.isArray(data?.models)) {
+        list = data.models;
+      } else if (Array.isArray(data)) {
+        list = data;
+      } else if (data?.id || data?.name) {
+        list = [data];
+      }
+
+      if (list.length > 0) {
+        return list.map((item) => {
+          const id = typeof item === "string" ? item : (item.id || item.name || "unknown");
+          const name = typeof item === "object" ? (item.name || item.id || "Unknown") : String(item);
+          return {
+            id,
+            name,
+            badge: "Server",
+            description: (typeof item === "object" && item.description) || "",
+          };
+        });
+      }
+    } catch {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  return [];
 }
