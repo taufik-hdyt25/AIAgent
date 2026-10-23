@@ -547,6 +547,261 @@ setup_env_file() {
 }
 
 # ==============================================================================
+# UNIVERSAL STANDALONE BINARY BUNDLE & 24/7 BACKGROUND SERVICE
+# ==============================================================================
+setup_binary_bundle_and_service() {
+    local workspace_dir="$(pwd)"
+    local agent_dir="$workspace_dir/telegram-ai-agent"
+    local global_dir="$HOME/.th-agent"
+    local bin_link="$HOME/.local/bin/th-agent"
+    local node_bin="$(command -v node || which node)"
+
+    echo -e "\n${BLUE}======================================================${NC}"
+    echo -e "${BLUE}📦 Mem-bundle TH Agent Menjadi Standalone Binary...   ${NC}"
+    echo -e "${BLUE}======================================================${NC}"
+
+    mkdir -p "$global_dir/logs" "$global_dir/data" "$global_dir/uploads" "$global_dir/public" "$HOME/.local/bin"
+
+    # 1. Pastikan esbuild tersedia & build single-file executable bundle
+    echo -e "${CYAN}Mengompilasi single-file executable bundle dengan esbuild...${NC}"
+    cd "$agent_dir"
+    if [ ! -d "node_modules" ]; then
+        npm install --silent 2>/dev/null || npm install
+    fi
+
+    npx -y esbuild src/bot.js --bundle --platform=node --format=esm \
+        --banner:js="#!/usr/bin/env node
+import { createRequire } from 'module'; const require = createRequire(import.meta.url);" \
+        --target=node20 --outfile="$global_dir/th-agent-bin"
+    chmod +x "$global_dir/th-agent-bin"
+
+    # Salin juga ke local dist agar terlihat jika dibuka
+    mkdir -p "$agent_dir/dist"
+    cp "$global_dir/th-agent-bin" "$agent_dir/dist/bot.bundle.js" 2>/dev/null || true
+
+    # Bersihkan node_modules sementara di folder kerja agar workspace 100% bersih
+    rm -rf node_modules package-lock.json 2>/dev/null || true
+    cd "$workspace_dir"
+
+    # 2. Salin asset Web UI & file .env ke isolated directory
+    cp -r "$agent_dir/public"/* "$global_dir/public/" 2>/dev/null || true
+    if [ -f "$agent_dir/.env" ]; then
+        cp "$agent_dir/.env" "$global_dir/.env"
+    fi
+
+    # 3. Buat CLI Command Wrapper di ~/.local/bin/th-agent
+    cat << 'EOF' > "$bin_link"
+#!/usr/bin/env bash
+GLOBAL_DIR="$HOME/.th-agent"
+LOG_FILE="$GLOBAL_DIR/logs/bot.log"
+ERR_FILE="$GLOBAL_DIR/logs/error.log"
+
+case "$1" in
+  logs)
+    if [ -f "$LOG_FILE" ] || [ -f "$ERR_FILE" ]; then
+      tail -f "$LOG_FILE" "$ERR_FILE" 2>/dev/null
+    else
+      tail -f "$GLOBAL_DIR/logs/"*.log 2>/dev/null || echo "Belum ada file log di $GLOBAL_DIR/logs/"
+    fi
+    ;;
+  status)
+    if [ "$(uname -s)" = "Darwin" ]; then
+      if launchctl list 2>/dev/null | grep -q "com.taufik.th-agent"; then
+        echo "🟢 Status: Aktif di macOS LaunchAgent (24/7 Background)"
+      else
+        echo "🔴 Status: Tidak aktif di LaunchAgent"
+      fi
+    else
+      if systemctl --user is-active th-agent &>/dev/null; then
+        echo "🟢 Status: Aktif di systemd user service (24/7)"
+      elif pgrep -f "th-agent-bin" &>/dev/null; then
+        echo "🟢 Status: Aktif (Process PID $(pgrep -f "th-agent-bin" | head -n 1))"
+      else
+        echo "🔴 Status: Tidak aktif"
+      fi
+    fi
+    ;;
+  restart)
+    if [ "$(uname -s)" = "Darwin" ]; then
+      launchctl unload "$HOME/Library/LaunchAgents/com.taufik.th-agent.plist" 2>/dev/null || true
+      launchctl load "$HOME/Library/LaunchAgents/com.taufik.th-agent.plist"
+      echo "✓ Service berhasil di-restart di macOS LaunchAgent"
+    else
+      if systemctl --user restart th-agent 2>/dev/null; then
+        echo "✓ Service berhasil di-restart via systemd"
+      else
+        pkill -f "th-agent-bin" 2>/dev/null || true
+        nohup "$GLOBAL_DIR/th-agent-bin" > "$LOG_FILE" 2> "$ERR_FILE" &
+        echo "✓ Service berhasil di-restart di background"
+      fi
+    fi
+    ;;
+  stop)
+    if [ "$(uname -s)" = "Darwin" ]; then
+      launchctl unload "$HOME/Library/LaunchAgents/com.taufik.th-agent.plist" 2>/dev/null || true
+      echo "✓ Service berhasil dihentikan"
+    else
+      systemctl --user stop th-agent 2>/dev/null || pkill -f "th-agent-bin" 2>/dev/null || true
+      echo "✓ Service berhasil dihentikan"
+    fi
+    ;;
+  start)
+    if [ "$(uname -s)" = "Darwin" ]; then
+      launchctl load "$HOME/Library/LaunchAgents/com.taufik.th-agent.plist" 2>/dev/null || true
+      echo "✓ Service berhasil dijalankan"
+    else
+      if systemctl --user start th-agent 2>/dev/null; then
+        echo "✓ Service berhasil dijalankan via systemd"
+      else
+        nohup "$GLOBAL_DIR/th-agent-bin" > "$LOG_FILE" 2> "$ERR_FILE" &
+        echo "✓ Service berhasil dijalankan di background"
+      fi
+    fi
+    ;;
+  run)
+    exec "$GLOBAL_DIR/th-agent-bin"
+    ;;
+  help|--help|-h)
+    echo "⚡ TH Agent CLI Binary Runner"
+    echo "Penggunaan: th-agent [perintah]"
+    echo ""
+    echo "Perintah:"
+    echo "  th-agent          Jalankan bot (default)"
+    echo "  th-agent logs     Pantau log aktivitas bot secara real-time"
+    echo "  th-agent status   Cek status service background 24/7"
+    echo "  th-agent restart  Mulai ulang bot"
+    echo "  th-agent stop     Hentikan service bot"
+    echo "  th-agent start    Jalankan service bot di background"
+    ;;
+  *)
+    exec "$GLOBAL_DIR/th-agent-bin" "$@"
+    ;;
+esac
+EOF
+    chmod +x "$bin_link"
+    ensure_local_bin_in_path
+
+    # Hentikan sisa container Docker lama jika ada agar tidak bentrok
+    if command -v docker &>/dev/null; then
+        docker stop telegram-coding-agent 2>/dev/null || true
+        docker rm telegram-coding-agent 2>/dev/null || true
+    fi
+
+    # 4. Daftarkan Background Service 24/7
+    echo -e "\n${BLUE}⚙️  Mengonfigurasi 24/7 Background Service...${NC}"
+    local web_port="$(grep -E "^WEB_PORT=" "$global_dir/.env" | cut -d '=' -f2- | tr -d ' ' || echo "3030")"
+    web_port="${web_port:-3030}"
+
+    if [ "$OS" = "Darwin" ]; then
+        # macOS: LaunchAgent dengan anti-sleep caffeinate
+        local plist_path="$HOME/Library/LaunchAgents/com.taufik.th-agent.plist"
+        mkdir -p "$HOME/Library/LaunchAgents"
+
+        local safe_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$PATH"
+        cat << EOF > "$plist_path"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.taufik.th-agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/caffeinate</string>
+        <string>-ims</string>
+        <string>$node_bin</string>
+        <string>$global_dir/th-agent-bin</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$global_dir</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$global_dir/logs/bot.log</string>
+    <key>StandardErrorPath</key>
+    <string>$global_dir/logs/error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PROJECTS_DIR</key>
+        <string>$workspace_dir/projects</string>
+        <key>WORKSPACE_DIR</key>
+        <string>$workspace_dir</string>
+        <key>WEB_PORT</key>
+        <string>$web_port</string>
+        <key>NODE_ENV</key>
+        <string>production</string>
+        <key>PATH</key>
+        <string>$safe_path</string>
+    </dict>
+</dict>
+</plist>
+EOF
+        launchctl unload "$plist_path" 2>/dev/null || true
+        launchctl load "$plist_path"
+        echo -e "${GREEN}✓ macOS LaunchAgent aktif 24/7 (Anti-Sleep Caffeinate)${NC}"
+
+    elif [ "$OS" = "Linux" ]; then
+        # Linux: systemd user service
+        local systemd_user_dir="$HOME/.config/systemd/user"
+        mkdir -p "$systemd_user_dir"
+        local service_file="$systemd_user_dir/th-agent.service"
+
+        local safe_path="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+        cat << EOF > "$service_file"
+[Unit]
+Description=TH Agent - Telegram AI Coding Agent (Standalone Binary)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=$global_dir/th-agent-bin
+WorkingDirectory=$global_dir
+Restart=always
+RestartSec=5
+StandardOutput=append:$global_dir/logs/bot.log
+StandardError=append:$global_dir/logs/error.log
+Environment=NODE_ENV=production
+Environment=PROJECTS_DIR=$workspace_dir/projects
+Environment=WORKSPACE_DIR=$workspace_dir
+Environment=WEB_PORT=$web_port
+Environment=PATH=$safe_path
+
+[Install]
+WantedBy=default.target
+EOF
+        if systemctl --user daemon-reload 2>/dev/null; then
+            systemctl --user enable th-agent 2>/dev/null || true
+            systemctl --user restart th-agent 2>/dev/null || true
+            loginctl enable-linger "$USER" 2>/dev/null || true
+            echo -e "${GREEN}✓ systemd service 'th-agent' aktif 24/7 on boot${NC}"
+        else
+            # Fallback daemon jika systemd user tidak aktif di container/WSL
+            pkill -f "th-agent-bin" 2>/dev/null || true
+            nohup "$global_dir/th-agent-bin" > "$global_dir/logs/bot.log" 2> "$global_dir/logs/error.log" &
+            echo -e "${GREEN}✓ Process aktif di background (PID $!)${NC}"
+        fi
+    fi
+
+    echo -e "\n${GREEN}======================================================${NC}"
+    echo -e "${GREEN}🎉 SUKSES! TH Agent Terpasang & Langsung Aktif 24/7!  ${NC}"
+    echo -e "${GREEN}======================================================${NC}"
+    echo -e "• ${CYAN}Binary Command:${NC} ${YELLOW}th-agent${NC} (tersedia langsung di terminal)"
+    echo -e "• ${CYAN}Folder Proyek:${NC}  ${YELLOW}$workspace_dir/projects${NC} (Zero node_modules!)"
+    echo -e "• ${CYAN}Web Dashboard:${NC}  ${BLUE}http://localhost:${web_port}${NC}"
+    echo ""
+    echo -e "Perintah Cepat CLI:"
+    echo -e "  • Pantau Log Live : ${BLUE}th-agent logs${NC}"
+    echo -e "  • Cek Status 24/7 : ${BLUE}th-agent status${NC}"
+    echo -e "  • Restart Bot     : ${BLUE}th-agent restart${NC}"
+    echo -e "  • Hentikan Bot    : ${BLUE}th-agent stop${NC}"
+    echo ""
+    echo -e "Kirim ${GREEN}/start${NC} atau sapa ${GREEN}hallo${NC} di Telegram untuk mulai koding! 🚀"
+    echo -e "${GREEN}======================================================${NC}"
+}
+
+# ==============================================================================
 # DETEKSI INSTALASI EKSISTING / FAST UPDATE
 # ==============================================================================
 perform_fast_update() {
@@ -554,10 +809,8 @@ perform_fast_update() {
     echo -e "${GREEN}⚡ Mode Update Cepat: Telegram AI Coding Agent         ${NC}"
     echo -e "${BLUE}======================================================${NC}"
 
-    # 1. Bersihkan sisa direktori/file usang di root workspace agar bersih
     setup_directories
 
-    # 2. Ambil pembaruan dari GitHub
     echo -e "\n${CYAN}📦 Memeriksa pembaruan dari GitHub (origin/main)...${NC}"
     git fetch origin main 2>/dev/null || true
     local local_commit="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
@@ -573,54 +826,8 @@ perform_fast_update() {
         echo -e "${GREEN}✓ Kode lokal sudah sinkron dengan versi terbaru (${local_commit}).${NC}"
     fi
 
-    # 3. Validasi .env tanpa mengubah secret user
     setup_env_file
-
-    # 4. Bangun ulang / restart sesuai sistem operasi
-    if [ "$OS" = "Darwin" ]; then
-        echo -e "\n${BLUE}🍏 Memperbarui bundle & me-reload macOS LaunchAgent...${NC}"
-        if [ -f "telegram-ai-agent/scripts/setup-mac.sh" ]; then
-            bash telegram-ai-agent/scripts/setup-mac.sh
-        elif [ -f "setup-mac.sh" ]; then
-            bash setup-mac.sh
-        fi
-    elif [ "$OS" = "Linux" ]; then
-        local is_docker=false
-        if command -v docker &>/dev/null; then
-            if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "telegram-coding-agent"; then
-                is_docker=true
-            fi
-        fi
-
-        if [ "$is_docker" = true ]; then
-            echo -e "\n${CYAN}🐳 Membangun ulang dan me-restart container Docker...${NC}"
-            if [ -d "telegram-ai-agent" ]; then
-                cd telegram-ai-agent
-            fi
-            docker compose build 2>/dev/null || docker-compose build 2>/dev/null || true
-            docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null || true
-            cd .. 2>/dev/null || true
-        else
-            echo -e "\n${CYAN}🔄 Memperbarui dependensi & me-restart process PM2...${NC}"
-            if [ -d "telegram-ai-agent" ]; then
-                cd telegram-ai-agent
-            fi
-            npm install --omit=dev 2>/dev/null || true
-            if command -v pm2 &>/dev/null; then
-                pm2 restart telegram-coding-agent 2>/dev/null || pm2 start ecosystem.config.cjs 2>/dev/null || true
-            fi
-            cd .. 2>/dev/null || true
-        fi
-    fi
-
-    local final_commit="$(git rev-parse --short HEAD 2>/dev/null || echo "latest")"
-    echo -e "\n${GREEN}======================================================${NC}"
-    echo -e "${GREEN}🎉 UPDATE BERHASIL! TH Agent (${final_commit}) aktif!    ${NC}"
-    echo -e "${GREEN}======================================================${NC}"
-    echo -e "• Pengaturan .env, data memori, dan folder projects Anda tetap aman."
-    echo -e "• Web UI Settings: ${CYAN}http://localhost:3030${NC}"
-    echo -e "• Bot Telegram siap digunakan dengan fitur dan pembaruan terbaru! 🚀"
-    echo -e "${GREEN}======================================================${NC}"
+    setup_binary_bundle_and_service
     exit 0
 }
 
@@ -655,192 +862,61 @@ if [ "$IS_EXISTING_INSTALL" = true ]; then
 fi
 
 # ==============================================================================
-# ALUR INSTALASI LENGKAP (JIKA FRESH INSTALL ATAU RE-KONFIGURASI)
+# ALUR INSTALASI LENGKAP (STANDALONE BINARY RUNNER 24/7)
 # ==============================================================================
+echo -e "\n${CYAN}>>> Menyiapkan TH Agent (Standalone Binary Runner)...${NC}"
 
-if [ "$OS" = "Darwin" ]; then
-    # --------------------------------------------------------------------------
-    # MAC LOCAL INSTALLATION (Clean Isolated Workspace)
-    # --------------------------------------------------------------------------
-    echo -e "\n${CYAN}>>> Mode Instalasi: Local macOS (Clean Isolated Workspace)${NC}"
-
-    # 1. Cek Node.js & npm
-    if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
-        echo -e "${RED}Node.js belum terpasang.${NC}"
+# 1. Pastikan Node.js terpasang (v20+)
+if ! command -v node &>/dev/null || [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 20 ]; then
+    echo -e "${YELLOW}Node.js v20+ belum terpasang. Memulai pemasangan Node.js...${NC}"
+    if [ "$OS" = "Darwin" ]; then
         if command -v brew &>/dev/null; then
-            echo -e "${YELLOW}Memasang Node.js via Homebrew...${NC}"
             brew install node
         else
-            echo -e "${RED}Harap pasang Node.js (v20+ atau v22+) dari https://nodejs.org terlebih dahulu.${NC}"
+            echo -e "${RED}Harap pasang Node.js dari https://nodejs.org terlebih dahulu.${NC}"
             exit 1
         fi
-    fi
-    echo -e "${GREEN}✓ Node.js terdeteksi: $(node -v) / npm: $(npm -v)${NC}"
-
-    # 2. Interaktif: Checklist Engine, Model, dan GitHub CLI
-    choose_engines
-    choose_models
-    setup_github_cli
-
-    # 3. Pasang CLI yang dipilih
-    if [ "$SELECTED_AGY" = true ]; then
-        install_agy_cli
-    fi
-    if [ "$SELECTED_CLAUDE" = true ]; then
-        install_claude_cli
-    fi
-
-    # 4. Direktori & .env
-    setup_directories
-    setup_env_file
-
-    # 5. Cek Autentikasi CLI (khusus jika agy aktif)
-    if [ "$SELECTED_AGY" = true ]; then
-        echo -e "\n${BLUE}Memeriksa status login Antigravity CLI...${NC}"
-        AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
-        if [ -f "$HOME/.gemini/antigravity-cli/settings.json" ] || [ -d "$HOME/.gemini" ]; then
-            echo -e "${GREEN}✓ Sesi Antigravity CLI ($HOME/.gemini) terdeteksi.${NC}"
-        else
-            echo -e "${YELLOW}Antigravity CLI belum login di Mac ini.${NC}"
-            prompt_user "Apakah ingin melakukan login Antigravity sekarang? (y/n, default: y): " do_auth
-            if [ "$do_auth" != "n" ] && [ "$do_auth" != "N" ]; then
-                "$AGY_EXE" || true
-            fi
-        fi
-    fi
-
-    # 6. Bundle bot & LaunchAgent background service (Clean Isolated Workspace)
-    echo -e "\n${BLUE}Menyiapkan single-file bundle & macOS LaunchAgent background service...${NC}"
-    if [ -f "./telegram-ai-agent/scripts/setup-mac.sh" ]; then
-        bash ./telegram-ai-agent/scripts/setup-mac.sh
-    elif [ -f "./setup-mac.sh" ]; then
-        bash ./setup-mac.sh
-    elif [ -f "../setup-mac.sh" ]; then
-        bash ../setup-mac.sh
-    else
-        echo -e "${RED}setup-mac.sh tidak ditemukan.${NC}"
-        exit 1
-    fi
-
-elif [ "$OS" = "Linux" ]; then
-    # --------------------------------------------------------------------------
-    # LINUX VPS INSTALLATION
-    # --------------------------------------------------------------------------
-    echo -e "\n${CYAN}>>> Mode Instalasi: Linux VPS${NC}"
-    echo -e "Pilih metode instalasi yang diinginkan:"
-    echo -e "  ${BLUE}1)${NC} ${GREEN}Native Standalone (Node.js + PM2)${NC} - Direkomendasikan (Sangat ringan, hemat RAM 1GB-2GB)"
-    echo -e "  ${BLUE}2)${NC} ${CYAN}Docker Container (Docker + Compose)${NC} - Isolasi penuh container"
-    prompt_user "Pilihan Anda [1/2, default 1]: " vps_choice
-    vps_choice="${vps_choice:-1}"
-
-    if [ "$vps_choice" = "2" ]; then
-        # Mode Docker
-        echo -e "\n${CYAN}Memulai instalasi via Docker...${NC}"
-        if ! command -v docker &>/dev/null; then
-            echo -e "${YELLOW}Docker belum terpasang. Menginstall Docker...${NC}"
-            curl -fsSL https://get.docker.com | sh
-            sudo usermod -aG docker "$USER" 2>/dev/null || true
-        fi
-
-        if docker compose version &>/dev/null; then
-            DOCKER_COMPOSE="docker compose"
-        elif command -v docker-compose &>/dev/null; then
-            DOCKER_COMPOSE="docker-compose"
-        else
-            sudo apt-get update && sudo apt-get install -y docker-compose-plugin || true
-            DOCKER_COMPOSE="docker compose"
-        fi
-
-        choose_engines
-        choose_models
-        setup_github_cli
-
-        setup_directories
-        setup_env_file
-
-        echo -e "\n${BLUE}Membangun dan menjalankan container Docker...${NC}"
-        $DOCKER_COMPOSE build
-        $DOCKER_COMPOSE up -d
-
-        echo -e "\n${GREEN}✓ Container aktif!${NC}"
-        echo -e "Lakukan login agy dengan menjalankan: ${BLUE}./auth.sh${NC}"
-    else
-        # Mode Native VPS (PM2)
-        echo -e "\n${CYAN}Memulai instalasi Native Standalone (Node.js + PM2)...${NC}"
-
+    elif [ "$OS" = "Linux" ]; then
         if command -v apt-get &>/dev/null; then
-            echo -e "${BLUE}Memperbarui package dan menginstall dependensi dasar...${NC}"
-            sudo apt-get update -y
-            sudo apt-get install -y curl git build-essential procps unzip
-        fi
-
-        if ! command -v node &>/dev/null || [ "$(node -v | cut -d'.' -f1 | tr -d 'v')" -lt 20 ]; then
-            echo -e "${YELLOW}Menginstall Node.js 22 LTS...${NC}"
+            sudo apt-get update -y && sudo apt-get install -y curl build-essential procps
             curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
             sudo apt-get install -y nodejs
         fi
-        echo -e "${GREEN}✓ Node.js terdeteksi: $(node -v)${NC}"
+    fi
+fi
+echo -e "${GREEN}✓ Node.js terdeteksi: $(node -v)${NC}"
 
-        if ! command -v pm2 &>/dev/null; then
-            echo -e "${BLUE}Menginstall PM2 process manager...${NC}"
-            sudo npm install -g pm2
-        fi
+# 2. Interaktif: Checklist Engine, Model, dan GitHub CLI
+choose_engines
+choose_models
+setup_github_cli
 
-        choose_engines
-        choose_models
-        setup_github_cli
+# 3. Pasang CLI yang dipilih
+if [ "$SELECTED_AGY" = true ]; then
+    install_agy_cli
+fi
+if [ "$SELECTED_CLAUDE" = true ]; then
+    install_claude_cli
+fi
 
-        if [ "$SELECTED_AGY" = true ]; then
-            install_agy_cli
-        fi
-        if [ "$SELECTED_CLAUDE" = true ]; then
-            install_claude_cli
-        fi
+# 4. Direktori & .env
+setup_directories
+setup_env_file
 
-        setup_directories
-        setup_env_file
-
-        echo -e "\n${BLUE}Menginstall dependensi proyek (npm install)...${NC}"
-        if [ -d "telegram-ai-agent" ]; then
-            cd telegram-ai-agent
-        fi
-        npm install
-
-        if [ "$SELECTED_AGY" = true ]; then
-            AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
-            if [ ! -f "$HOME/.gemini/antigravity-cli/settings.json" ] && [ ! -d "$HOME/.gemini" ]; then
-                echo -e "\n${YELLOW}Silakan login Antigravity CLI sekarang:${NC}"
-                "$AGY_EXE" || true
-            fi
-        fi
-
-        echo -e "\n${BLUE}Menjalankan bot via PM2 di background...${NC}"
-        pm2 start ecosystem.config.cjs
-        pm2 save || true
-
-        echo -e "\n${GREEN}======================================================${NC}"
-        if [ "$IS_PI" = true ]; then
-            echo -e "${GREEN}🎉 INSTALASI RASPBERRY PI BERHASIL SELESAI!          ${NC}"
-        else
-            echo -e "${GREEN}🎉 INSTALASI VPS / LINUX BERHASIL SELESAI!            ${NC}"
-        fi
-        echo -e "${GREEN}======================================================${NC}"
-        echo -e "Status Process:"
-        pm2 status
-        echo ""
-        WEB_PORT_VAL="$(grep -E "^WEB_PORT=" .env | cut -d '=' -f2- | tr -d ' ' || echo "3030")"
-        WEB_PORT_VAL="${WEB_PORT_VAL:-3030}"
-        echo -e "${CYAN}Web UI Control Panel:${NC} ${BLUE}http://IP_SERVER_ANDA:${WEB_PORT_VAL}${NC}"
-        echo -e "• Cek log live:   ${BLUE}pm2 logs telegram-coding-agent${NC}"
-        echo -e "• Restart bot:    ${BLUE}pm2 restart telegram-coding-agent${NC}"
-        echo -e "• Hentikan bot:   ${BLUE}pm2 stop telegram-coding-agent${NC}"
-        if [ "$IS_PI" = true ]; then
-            echo -e "\n${CYAN}🍓 Ingin bot aktif otomatis 24/7 via systemd saat Raspberry Pi dinyalakan?${NC}"
-            if [ -f "scripts/setup-pi-autostart.sh" ]; then
-            echo -e "   Cukup jalankan: ${BLUE}bash scripts/setup-pi-autostart.sh${NC}"
-        else
-            echo -e "   Cukup jalankan: ${BLUE}bash telegram-ai-agent/scripts/setup-pi-autostart.sh${NC}"
-        fi
+# 5. Cek Autentikasi CLI (khusus jika agy aktif)
+if [ "$SELECTED_AGY" = true ]; then
+    echo -e "\n${BLUE}Memeriksa status login Antigravity CLI...${NC}"
+    AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
+    if [ -f "$HOME/.gemini/antigravity-cli/settings.json" ] || [ -d "$HOME/.gemini" ]; then
+        echo -e "${GREEN}✓ Sesi Antigravity CLI ($HOME/.gemini) terdeteksi.${NC}"
+    else
+        echo -e "${YELLOW}Antigravity CLI belum login di sistem ini.${NC}"
+        prompt_user "Apakah ingin melakukan login Antigravity sekarang? (y/n, default: y): " do_auth
+        if [ "$do_auth" != "n" ] && [ "$do_auth" != "N" ]; then
+            "$AGY_EXE" || true
         fi
     fi
 fi
+
+# 6. Kompilasi Standalone Binary Bundle & Jalankan Service 24/7
+setup_binary_bundle_and_service

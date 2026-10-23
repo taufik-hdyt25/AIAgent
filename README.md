@@ -30,10 +30,10 @@ curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.
 > curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh | bash -s -- --update
 > ```
 
-Installer otomatis mendeteksi sistem operasi dan lingkungan kerja Anda:
-- 🍏 **Di macOS (Local):** Otomatis membuat folder kerja `th-agent/`, mem-bundle bot ke direktori terisolasi `~/.th-agent/`, mendaftarkan background service macOS LaunchAgent 24/7 (anti-sleep `caffeinate -ims`), dan menjaga workspace `th-agent/projects/` **100% bersih tanpa `node_modules`**.
-- 🐧 **Di Linux VPS / Server:** Mengonfigurasi container Docker (`docker compose up -d`) atau Native PM2 secara otomatis dengan port dan resource terisolasi.
-- 🍓 **Di Raspberry Pi:** Menyiapkan konfigurasi ringan yang dioptimalkan untuk resource ARM.
+Installer otomatis mengompilasi dan mengaktifkan **Standalone Binary Runner 24/7** langsung di sistem Anda:
+- 🍏 **Di macOS (Local):** Mem-bundle bot ke `~/.th-agent/th-agent-bin`, mendaftarkan background service macOS LaunchAgent 24/7 (anti-sleep `caffeinate -ims`), dan menjaga workspace `th-agent/projects/` **100% bersih tanpa `node_modules`**.
+- 🐧 **Di Linux VPS / Server / Raspberry Pi:** Mem-bundle bot ke `~/.th-agent/th-agent-bin`, mendaftarkan systemd service 24/7 (on boot), tanpa Docker container dan tanpa PM2.
+- ⚡ **CLI Binary Command:** Perintah `th-agent` otomatis tersedia di terminal (`th-agent logs`, `th-agent status`, `th-agent restart`, `th-agent stop`).
 
 ---
 
@@ -51,37 +51,23 @@ th-agent/
     ├── public/                #    Web Dashboard Control Panel (Port 3030)
     ├── data/                  #    Penyimpanan status proyek & context JSON
     ├── scripts/               #    Skrip utilitas & autostart (Mac / Pi / Linux)
-    ├── Dockerfile             #    Spesifikasi container Docker (Node 26)
-    ├── docker-compose.yml     #    Orkestrasi Docker standalone
     ├── package.json           #    Dependencies Node.js
     └── .env                   #    Konfigurasi environment & API keys
 ```
 
 ---
 
-## 🛠️ Cara Menjalankan Manual (Alternatif)
+## 🛠️ Perintah CLI `th-agent`
 
-Jika Anda sudah meng-clone repositori ini secara manual (`git clone https://github.com/taufik-hdyt25/AIAgent.git th-agent`):
+Setelah terpasang, perintah `th-agent` dapat dipanggil langsung dari terminal mana pun:
 
-### 1. 🌐 Di Linux VPS / Server (Docker Mode - Direkomendasikan)
-Jalankan container dari folder bot `telegram-ai-agent/`:
 ```bash
-cd telegram-ai-agent
-docker compose up -d
-```
-
-### 2. 💻 Di Local Mac (Manual Isolated Setup)
-Di Mac, jalankan skrip setup berikut:
-```bash
-bash telegram-ai-agent/scripts/setup-mac.sh
-```
-*(Untuk menghapus background service di Mac kapan saja: `bash telegram-ai-agent/scripts/uninstall-mac.sh`)*
-
-### 3. ⚙️ Mode Native Node.js (Dev / Debug)
-```bash
-cd telegram-ai-agent
-npm install
-npm start
+th-agent logs       # Pantau log aktivitas Telegram bot secara real-time
+th-agent status     # Cek status service background 24/7
+th-agent restart    # Mulai ulang service bot
+th-agent stop       # Hentikan service bot
+th-agent start      # Jalankan service bot
+th-agent run        # Jalankan di foreground terminal untuk testing live
 ```
 
 ---
