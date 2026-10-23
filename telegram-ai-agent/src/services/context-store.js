@@ -101,9 +101,19 @@ export async function setUserAgyModel(userId, modelId) {
   if (!userId) return;
   const context = await loadContext();
   if (!context.agyModels) context.agyModels = {};
+  const prevModel = context.agyModels[String(userId)];
   context.agyModels[String(userId)] = modelId;
   if (!context.models) context.models = {};
   context.models[String(userId)] = modelId;
+
+  // Jika berganti model, reset session conversation ID agar model baru
+  // tidak mewarisi riwayat token besar dari model lama yang memicu Rate Limit / Kuota
+  if (prevModel && prevModel !== modelId) {
+    if (context.agyConversations) {
+      delete context.agyConversations[String(userId)];
+    }
+  }
+
   await saveContext(context);
 }
 
@@ -117,7 +127,15 @@ export async function setUserClaudeModel(userId, modelId) {
   if (!userId) return;
   const context = await loadContext();
   if (!context.claudeModels) context.claudeModels = {};
+  const prevModel = context.claudeModels[String(userId)];
   context.claudeModels[String(userId)] = modelId;
+
+  if (prevModel && prevModel !== modelId) {
+    if (context.conversations) {
+      context.conversations[String(userId)] = randomUUID();
+    }
+  }
+
   await saveContext(context);
 }
 
