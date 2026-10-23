@@ -137,19 +137,6 @@ export async function processAutonomousOutput(rawText) {
   }
   cleaned = cleaned.replace(skillRegex, "").trim();
 
-  // Tambahkan feedback visual jika ada memori atau skill baru yang tersimpan
-  const badges = [];
-  if (savedMemories.length > 0) {
-    badges.push(`🧠 _[Tersimpan ke Memori: "${truncate(savedMemories[0].content, 60)}"]_`);
-  }
-  if (savedSkills.length > 0) {
-    badges.push(`⚡ _[Skill Baru Dipelajari: "${savedSkills.join(", ")}"]_`);
-  }
-
-  if (badges.length > 0) {
-    cleaned = `${cleaned}\n\n${badges.join("\n")}`.trim();
-  }
-
   return {
     cleanedText: cleaned,
     savedMemories,
