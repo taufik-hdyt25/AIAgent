@@ -10,11 +10,18 @@ import {
 } from "../../config/models.js";
 import {
   getUserEngine,
+  setUserEngine,
   getUserAgyModel,
   getUserClaudeModel,
   getUserUniversalModel,
+  setUserUniversalModel,
   resetUserConversation,
 } from "../../services/context-store.js";
+import {
+  readEnvFile,
+  updateEnvFile,
+  maskSecret,
+} from "../../services/env-service.js";
 import {
   getActiveTask,
   setActiveTask,
@@ -164,6 +171,8 @@ export function registerBasicCommands(bot) {
         "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
         "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
+        "• `/setpi <key>` - Setup instan model Pi via OpenRouter / OpenAI URL\n" +
+        "• `/pisandbox` - Toggle mode sandbox folder projects/intiva\n" +
         "• `/compact` - Padatkan konteks obrolan agar token input hemat\n" +
         "• `/clean` - Bersihkan build cache Docker & temporary files\n" +
         "• `/update` - Perbarui TH Agent langsung dari GitHub tanpa instal ulang\n" +
@@ -1619,12 +1628,24 @@ export function registerBasicCommands(bot) {
 
     const sandboxCfg = await getSandboxConfig();
 
+    const universalUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+    const hasUniversalKey = Boolean(process.env.UNIVERSAL_API_KEY);
+    const maskedUniversalKey = maskSecret(process.env.UNIVERSAL_API_KEY);
+
+    let universalInfo = "";
+    if (isUniversal) {
+      universalInfo =
+        `🔗 *Base URL:* \`${universalUrl}\`\n` +
+        `🔑 *API Key:* ${hasUniversalKey ? "`" + maskedUniversalKey + "` ✅" : "⚠️ Belum diatur (/setkey)"}\n`;
+    }
+
     const port = process.env.WEB_PORT || 3030;
     const text =
       `⚙️ *Pusat Pengaturan TH Agent*\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `🧠 *Engine AI:* \`${engineLabel}\`\n` +
       `🤖 *Model AI:* \`${activeModel}\`\n` +
+      universalInfo +
       `🍓 *Mode Pi (Intiva):* ${sandboxCfg.piSandbox ? "🔒 Aktif (Hanya projects/intiva)" : "🌐 Nonaktif (Full Access Semua Proyek)"}\n` +
       `🩺 *Sentry 24/7:* ${sentryCfg.enabled ? "🟢 Aktif (" + (sentryCfg.checkIntervalMinutes || 5) + "m)" : "🔴 Nonaktif"}\n` +
       `🛠️ *Auto-Healing:* ${sentryCfg.autoHeal ? "✅ Aktif (Auto-restart)" : "❌ Nonaktif"}\n` +
@@ -1636,7 +1657,13 @@ export function registerBasicCommands(bot) {
     const keyboard = new InlineKeyboard()
       .text("🔄 Ganti Engine", "setting_engine")
       .text("🤖 Ganti Model", "setting_model")
-      .row()
+      .row();
+
+    if (isUniversal) {
+      keyboard.text("🌐 Atur API Key & URL", "setting_universal").row();
+    }
+
+    keyboard
       .text(sandboxCfg.piSandbox ? "🍓 Matikan Mode Pi" : "🍓 Nyalakan Mode Pi", "setting_toggle_pisandbox")
       .row()
       .text(sentryCfg.enabled ? "🩺 Matikan Sentry" : "🩺 Nyalakan Sentry", "setting_toggle_sentry")
@@ -1735,6 +1762,179 @@ export function registerBasicCommands(bot) {
         { parse_mode: "Markdown" }
       );
     }
+  });
+
+  // /setpi [API_KEY] atau /setpi [BASE_URL] [API_KEY]
+  bot.command(["setpi", "pi", "setupi"], async (ctx) => {
+    const rawArgs = ctx.match?.trim();
+    const userId = ctx.from?.id;
+
+    if (!rawArgs) {
+      const currentUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+      const hasKey = Boolean(process.env.UNIVERSAL_API_KEY);
+      const maskedKey = maskSecret(process.env.UNIVERSAL_API_KEY);
+      const currentEngine = await getUserEngine(userId);
+      const currentModel = await getUserUniversalModel(userId);
+
+      await ctx.reply(
+        `🍓 *Setup Model Pi (Inflection 3 AI)*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `Model Pi (Inflection 3) dapat digunakan melalui penyedia API OpenAI-compatible seperti *OpenRouter* atau endpoint kustom.\n\n` +
+        `📌 *Status Saat Ini:*\n` +
+        `• Engine: \`${currentEngine}\`\n` +
+        `• Model: \`${currentModel}\`\n` +
+        `• Base URL: \`${currentUrl}\`\n` +
+        `• API Key: ${hasKey ? "`" + maskedKey + "` ✅" : "⚠️ _Belum diatur_"}\n\n` +
+        `🚀 *Cara Praktis 1-Langkah (via OpenRouter):*\n` +
+        `Cukup kirim API Key OpenRouter kamu:\n` +
+        `👉 \`/setpi sk-or-v1-xxxxxxxxxxxx\`\n\n` +
+        `_Bot akan otomatis mengatur Base URL ke OpenRouter, memasang API Key, mengaktifkan Universal Engine, dan memilih model Inflection 3 Pi!_\n\n` +
+        `🌐 *Atau dengan Custom URL:*\n` +
+        `👉 \`/setpi <URL_API> <API_KEY>\`\n` +
+        `Contoh:\n` +
+        `\`/setpi https://openrouter.ai/api/v1 sk-or-v1-xxxx\`\n\n` +
+        `🛠️ *Perintah Terpisah:*\n` +
+        `• \`/seturl <URL>\` - Mengubah Base URL saja\n` +
+        `• \`/setkey <KEY>\` - Mengubah API Key saja\n` +
+        `• \`/pisandbox on\` - Kunci eksekusi ke projects/intiva\n` +
+        `• Web Dashboard: \`http://localhost:${process.env.WEB_PORT || 3030}\``,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    const parts = rawArgs.split(/\s+/);
+    let targetUrl = "https://openrouter.ai/api/v1";
+    let targetKey = "";
+
+    if (parts.length === 1) {
+      targetKey = parts[0];
+    } else {
+      targetUrl = parts[0];
+      targetKey = parts[1];
+    }
+
+    if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+      targetUrl = "https://" + targetUrl;
+    }
+
+    await updateEnvFile({
+      UNIVERSAL_BASE_URL: targetUrl,
+      UNIVERSAL_API_KEY: targetKey,
+      CLI_ENGINE: "universal",
+      UNIVERSAL_MODEL: "inflection/inflection-3-pi",
+    });
+
+    await setUserEngine(userId, "universal");
+    await setUserUniversalModel(userId, "inflection/inflection-3-pi");
+
+    await ctx.reply(
+      `🎉 *Setup Model Pi Berhasil!*\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `✅ *Engine Aktif:* \`Universal API (Zero-CLI)\`\n` +
+      `✅ *Model Aktif:* \`Inflection 3 Pi\` (\`inflection/inflection-3-pi\`)\n` +
+      `✅ *Base URL:* \`${targetUrl}\`\n` +
+      `✅ *API Key:* \`${maskSecret(targetKey)}\` (Tersimpan aman di .env)\n\n` +
+      `🍓 *Kombinasi Sandbox Intiva:*\n` +
+      `Jika ingin membatasi coding HANYA di dalam folder \`projects/intiva/\`:\n` +
+      `👉 \`/pisandbox on\`\n\n` +
+      `Sekarang kamu sudah bisa langsung chat atau kirim tugas koding ke bot bro! 🚀`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // /seturl <URL>
+  bot.command(["seturl", "setbaseurl"], async (ctx) => {
+    const url = ctx.match?.trim();
+    if (!url) {
+      const current = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+      await ctx.reply(
+        `🔗 *Pengaturan Base URL API*\n\n` +
+        `Base URL saat ini:\n\`${current}\`\n\n` +
+        `Untuk mengubah, gunakan:\n` +
+        `👉 \`/seturl <URL>\`\n\n` +
+        `Contoh:\n` +
+        `• OpenRouter: \`/seturl https://openrouter.ai/api/v1\`\n` +
+        `• DeepSeek: \`/seturl https://api.deepseek.com/v1\`\n` +
+        `• OpenAI: \`/seturl https://api.openai.com/v1\``,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    let finalUrl = url;
+    if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+      finalUrl = "https://" + finalUrl;
+    }
+
+    await updateEnvFile({ UNIVERSAL_BASE_URL: finalUrl });
+    await ctx.reply(`✅ *Base URL API berhasil diubah ke:*\n\`${finalUrl}\``, {
+      parse_mode: "Markdown",
+    });
+  });
+
+  // /setkey <API_KEY>
+  bot.command(["setkey", "setapikey"], async (ctx) => {
+    const key = ctx.match?.trim();
+    if (!key) {
+      const hasKey = Boolean(process.env.UNIVERSAL_API_KEY);
+      const masked = maskSecret(process.env.UNIVERSAL_API_KEY);
+      await ctx.reply(
+        `🔑 *Pengaturan Universal API Key*\n\n` +
+        `Status API Key saat ini: ${hasKey ? "`" + masked + "` ✅" : "⚠️ _Belum diatur_"}\n\n` +
+        `Untuk memasang atau mengganti, gunakan:\n` +
+        `👉 \`/setkey <API_KEY>\`\n\n` +
+        `_Contoh:_\n` +
+        `\`/setkey sk-or-v1-abcdef123456...\``,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    await updateEnvFile({ UNIVERSAL_API_KEY: key });
+    await ctx.reply(
+      `✅ *API Key berhasil disimpan!*\n\nKey: \`${maskSecret(key)}\`\nTersimpan aman di environment dan file \`.env\`.`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // /universal, /setuniversal
+  bot.command(["universal", "setuniversal"], async (ctx) => {
+    const userId = ctx.from?.id;
+    const currentUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+    const hasKey = Boolean(process.env.UNIVERSAL_API_KEY);
+    const maskedKey = maskSecret(process.env.UNIVERSAL_API_KEY);
+    const currentEngine = await getUserEngine(userId);
+    const currentModel = await getUserUniversalModel(userId);
+
+    await ctx.reply(
+      `🌐 *Konfigurasi Universal API (Zero-CLI)*\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `• *Engine Aktif:* \`${currentEngine}\` ${currentEngine === "universal" ? "✅" : "*(Ganti dengan /engine universal)*"}\n` +
+      `• *Model Universal:* \`${currentModel}\`\n` +
+      `• *Base URL:* \`${currentUrl}\`\n` +
+      `• *API Key:* ${hasKey ? "`" + maskedKey + "` ✅" : "⚠️ _Belum diatur_"}\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `💡 *Perintah Cepat:*\n` +
+      `• \`/setpi <API_KEY>\` - Setup otomatis Model Pi via OpenRouter\n` +
+      `• \`/seturl <URL>\` - Ubah Base URL\n` +
+      `• \`/setkey <KEY>\` - Ubah Universal API Key\n` +
+      `• \`/model\` - Pilih daftar model AI`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // Callback: setting_universal
+  bot.callbackQuery("setting_universal", async (ctx) => {
+    await ctx.answerCallbackQuery();
+    await ctx.reply(
+      "🌐 *Pengaturan Universal API & Pi:*\n\n" +
+      "• Atur Base URL: `/seturl <URL>`\n" +
+      "• Atur API Key: `/setkey <API_KEY>`\n" +
+      "• Setup instan Model Pi: `/setpi <API_KEY>`\n\n" +
+      "Atau buka Web Control Panel untuk konfigurasi lengkap.",
+      { parse_mode: "Markdown" }
+    );
   });
 
   // Callback: setting_toggle_sentry

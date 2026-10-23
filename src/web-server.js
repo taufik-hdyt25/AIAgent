@@ -48,80 +48,10 @@ import {
   getSandboxConfig,
   togglePiSandbox,
 } from "./services/sandbox-service.js";
-
-
-// Helper membaca dan parse file .env
-async function readEnvFile() {
-  try {
-    const raw = await readFile(ENV_PATH, "utf8");
-    const parsed = {};
-    const lines = raw.split(/\r?\n/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx !== -1) {
-        const key = trimmed.slice(0, eqIdx).trim();
-        let val = trimmed.slice(eqIdx + 1).trim();
-        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-          val = val.slice(1, -1);
-        }
-        parsed[key] = val;
-      }
-    }
-    return { raw, parsed };
-  } catch (err) {
-    return { raw: "", parsed: {} };
-  }
-}
-
-// Helper memperbarui nilai .env dengan mempertahankan komentar dan format
-async function updateEnvFile(updates) {
-  let content = "";
-  try {
-    content = await readFile(ENV_PATH, "utf8");
-  } catch {
-    content = "";
-  }
-
-  const lines = content ? content.split(/\r?\n/) : [];
-  const processedKeys = new Set();
-  const newLines = [];
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) {
-      newLines.push(line);
-      continue;
-    }
-
-    const eqIdx = line.indexOf("=");
-    if (eqIdx === -1) {
-      newLines.push(line);
-      continue;
-    }
-
-    const key = line.slice(0, eqIdx).trim();
-    if (Object.prototype.hasOwnProperty.call(updates, key)) {
-      newLines.push(`${key}=${updates[key]}`);
-      processedKeys.add(key);
-      process.env[key] = String(updates[key]);
-    } else {
-      newLines.push(line);
-    }
-  }
-
-  // Tambahkan key baru yang belum ada di file
-  for (const [key, value] of Object.entries(updates)) {
-    if (!processedKeys.has(key)) {
-      newLines.push(`${key}=${value}`);
-      process.env[key] = String(value);
-    }
-  }
-
-  const finalContent = newLines.join("\n") + "\n";
-  await writeFile(ENV_PATH, finalContent, { mode: 0o600 });
-}
+import {
+  readEnvFile,
+  updateEnvFile,
+} from "./services/env-service.js";
 
 // MIME Types untuk file statis
 const MIME_TYPES = {
