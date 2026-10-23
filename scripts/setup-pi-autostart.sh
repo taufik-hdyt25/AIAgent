@@ -61,6 +61,8 @@ RestartSec=5
 StandardOutput=append:$PROJECT_DIR/logs/pi-service.log
 StandardError=append:$PROJECT_DIR/logs/pi-error.log
 Environment=NODE_ENV=production
+Environment=IS_PI=true
+Environment=DEVICE_MODEL=pi
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin
 
 [Install]
@@ -104,6 +106,8 @@ RestartSec=5
 StandardOutput=append:$PROJECT_DIR/logs/pi-service.log
 StandardError=append:$PROJECT_DIR/logs/pi-error.log
 Environment=NODE_ENV=production
+Environment=IS_PI=true
+Environment=DEVICE_MODEL=pi
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME/.local/bin
 
 [Install]
