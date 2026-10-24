@@ -22,7 +22,9 @@ import {
   getUserAgyConversationId,
   setUserAgyConversationId,
   getUserEngine,
+  setUserEngine,
   getUserAgyModel,
+  setUserAgyModel,
   getUserClaudeModel,
   getUserUniversalModel,
   isClaudeSessionStarted,
@@ -146,7 +148,7 @@ export async function processAutonomousOutput(rawText) {
 }
 
 // Fungsi inti eksekusi instruksi AI (CLI atau Universal API)
-export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null, targetProject = null }) {
+export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null, targetProject = null, engineOverride = null, _fallbackAttempted = false }) {
   const userId = ctx.from?.id;
   const taskId = id || randomUUID().slice(0, 8);
   const resolvedProject = targetProject || await detectTargetProject(userMessage, fileInfo);
@@ -220,7 +222,7 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       }
     }
 
-    const engine = await getUserEngine(userId);
+    const engine = engineOverride || await getUserEngine(userId);
     const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
     const isOngoingSession = Boolean(
       (engine === "claude" && (await isClaudeSessionStarted(convId))) ||
@@ -554,6 +556,8 @@ ${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan e
       let settled = false;
       let timer;
       let killTimer;
+      // Track jika sudah pernah fallback agar tidak loop
+      const hasFallbackAttempted = _fallbackAttempted;
 
       const finish = async (error, code, signal) => {
         if (settled) return;
@@ -653,6 +657,94 @@ ${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan e
 
         if (hasError) {
           let errText = jsonError || stderr.trim() || error?.message || (code !== null ? `Exit code ${code}` : "");
+
+          // ── AUTO-FALLBACK ENGINE saat quota habis ──────────────────────────
+          const isQuotaError =
+            errText.includes("Individual quota reached") ||
+            errText.includes("quota reached") ||
+            errText.includes("upgrade your subscription") ||
+            errText.includes("upgrade your plan") ||
+            errText.includes("Resets in") ||
+            errText.includes("rate limit exceeded") ||
+            errText.includes("Too Many Requests");
+
+          if (isQuotaError && userId && !hasFallbackAttempted) {
+            const currentEngine = engineOverride || await getUserEngine(userId);
+
+            // 1. Jika di agy dan model Claude habis kuota, auto-switch ke Gemini Flash dulu
+            if (currentEngine === "agy") {
+              const currentModel = await getUserAgyModel(userId);
+              if (currentModel && (currentModel.includes("claude") || currentModel.includes("opus") || currentModel.includes("sonnet"))) {
+                task._fallbackAttempted = true;
+                const fallbackModel = "gemini-3.8-flash-medium";
+                await setUserAgyModel(userId, fallbackModel);
+                const resetMatch = errText.match(/Resets in (\d+h\d+m\d+s|\d+m\d+s)/);
+                const resetInfo = resetMatch ? ` *(quota reset: ${resetMatch[1]})*` : "";
+
+                await ctx.reply(
+                  `⚠️ *Quota model ${currentModel} habis!*${resetInfo}\n\n` +
+                    `🔄 Auto-switching model ke *Gemini 3.8 Flash* dan mencoba ulang instruksi...`,
+                  { parse_mode: "Markdown" }
+                );
+
+                console.log(`[Auto-Fallback] Model agy ${currentModel} → ${fallbackModel} (quota limit terdeteksi)`);
+
+                const retryItem = {
+                  ...task,
+                  _fallbackAttempted: true,
+                };
+                setTimeout(() => {
+                  executeTaskInternal(retryItem).catch((err) =>
+                    console.error("[Auto-Fallback] Model retry error:", err.message)
+                  );
+                }, 1500);
+                return;
+              }
+            }
+
+            // 2. Chain antar-engine: agy → claude → universal → (stop)
+            const fallbackChain = { agy: "claude", claude: "universal" };
+            const nextEngine = fallbackChain[currentEngine];
+
+            if (nextEngine) {
+              task._fallbackAttempted = true;
+              await setUserEngine(userId, nextEngine);
+              const nextLabel =
+                nextEngine === "claude" ? "Claude Code CLI" : "Universal API";
+              const resetMatch = errText.match(/Resets in (\d+h\d+m\d+s|\d+m\d+s)/);
+              const resetInfo = resetMatch ? ` *(quota reset: ${resetMatch[1]})*` : "";
+
+              await ctx.reply(
+                `⚠️ *Quota ${engineLabel} habis!*${resetInfo}\n\n` +
+                  `🔄 Auto-switching ke *${nextLabel}* dan mencoba ulang instruksi...\n\n` +
+                  `_Gunakan /engine untuk mengatur engine secara manual._`,
+                { parse_mode: "Markdown" }
+              );
+
+              console.log(`[Auto-Fallback] ${currentEngine} → ${nextEngine} (quota limit terdeteksi)`);
+
+              // Retry task dengan engine baru
+              const retryItem = {
+                ...task,
+                engineOverride: nextEngine,
+                _fallbackAttempted: true,
+              };
+              // Delay singkat lalu eksekusi ulang
+              setTimeout(() => {
+                executeTaskInternal(retryItem).catch((err) =>
+                  console.error("[Auto-Fallback] Retry error:", err.message)
+                );
+              }, 1500);
+              return;
+            } else {
+              // Semua engine sudah dicoba
+              errText = "❌ Semua engine sudah mencapai limit quota! Tunggu quota reset atau konfigurasi API key Universal di .env";
+              await ctx.reply(errText, { parse_mode: "Markdown" }).catch(() => ctx.reply(errText));
+              processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
+              return;
+            }
+          }
+          // ── END AUTO-FALLBACK ──────────────────────────────────────────────
 
           if (isTimedOut) {
             errText = `⏱️ *Batas Waktu Eksekusi Terlampaui (Timeout)*\n\n${engineLabel} memerlukan waktu pemrosesan lebih lama dari batas waktu yang ditentukan. Coba persempit atau pecah instruksi menjadi langkah-langkah yang lebih terarah.`;
