@@ -16,65 +16,65 @@
 
 ---
 
-## ⚡ Instalasi Cepat Sekali Jalan (Universal One-Line Installer)
+## ⚡ Quick Universal One-Line Installer
 
-Cukup salin dan jalankan satu baris perintah ini di terminal **macOS**, **Linux VPS / Server**, atau **Raspberry Pi**:
+Simply copy and run this single command in your **macOS**, **Linux VPS / Server**, or **Raspberry Pi** terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh | bash
 ```
 
-> 💡 **Smart Auto-Update:** Jika TH Agent sudah terpasang, perintah curl di atas otomatis mendeteksi instalasi lama dan beralih ke **Mode Update Cepat** (mengambil pembaruan terbaru dari GitHub, re-bundle, dan restart service) dalam hitungan detik tanpa mengulang setup dari awal dan tanpa mengubah konfigurasi `.env` atau folder `projects/` Anda.
-> Bisa juga dipanggil langsung dengan:
+> 💡 **Smart Auto-Update:** If TH Agent is already installed, the curl command above automatically detects existing installations and switches to **Quick Update Mode** (pulls the latest updates from GitHub, re-bundles, and restarts the service) in seconds without repeating setup from scratch and without modifying your `.env` configuration or `projects/` directory.  
+> You can also trigger it directly with:
 > ```bash
 > curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh | bash -s -- --update
 > ```
 
-Installer otomatis mengompilasi dan mengaktifkan **Standalone Binary Runner 24/7** langsung di sistem Anda:
-- 🍏 **Di macOS (Local):** Mem-bundle bot ke `~/.th-agent/th-agent-bin`, mendaftarkan background service macOS LaunchAgent 24/7 (anti-sleep `caffeinate -ims`), dan menjaga workspace `th-agent/projects/` **100% bersih tanpa `node_modules`**.
-- 🐧 **Di Linux VPS / Server / Raspberry Pi:** Mem-bundle bot ke `~/.th-agent/th-agent-bin`, mendaftarkan systemd service 24/7 (on boot), tanpa Docker container dan tanpa PM2.
-- ⚡ **CLI Binary Command:** Perintah `th-agent` otomatis tersedia di terminal (`th-agent logs`, `th-agent status`, `th-agent restart`, `th-agent stop`).
+The installer automatically compiles and configures a **24/7 Standalone Binary Runner** directly on your system:
+- 🍏 **On macOS (Local):** Bundles the bot to `~/.th-agent/th-agent-bin`, registers a 24/7 background LaunchAgent service (anti-sleep `caffeinate -ims`), and keeps the `th-agent/projects/` workspace **100% clean without `node_modules`**.
+- 🐧 **On Linux VPS / Server / Raspberry Pi:** Bundles the bot to `~/.th-agent/th-agent-bin`, registers a 24/7 systemd service (auto-starts on boot), without Docker containers or PM2 overhead.
+- ⚡ **CLI Binary Command:** The `th-agent` command is automatically available in your terminal (`th-agent logs`, `th-agent status`, `th-agent restart`, `th-agent stop`).
 
 ---
 
-## 🏗️ Struktur Arsitektur Workspace
+## 🏗️ Workspace Architecture
 
-Workspace **TH Agent** disusun secara bersih dan modular agar alur kerja (*flow*) koding, isolasi proyek, dan pengoperasian bot mudah dibaca:
+The **TH Agent** workspace is organized in a clean and modular structure for transparent coding workflows, project isolation, and seamless bot operations:
 
 ```text
 th-agent/
-├── projects/                  # 📂 Workspace Folder Seluruh Proyek Koding Anda
-│   └── ...                    #    (Otomatis terisolasi & bersih dari file engine bot)
+├── projects/                  # 📂 Workspace directory for all your coding projects
+│   └── ...                    #    (Automatically isolated & clean from bot engine files)
 │
-└── telegram-ai-agent/         # 🤖 Core Aplikasi TH Agent (Bot & Control Panel)
-    ├── src/                   #    Source code bot (handlers, services, config)
+└── telegram-ai-agent/         # 🤖 Core TH Agent Application (Bot & Control Panel)
+    ├── src/                   #    Bot source code (handlers, services, config)
     ├── public/                #    Web Dashboard Control Panel (Port 3030)
-    ├── data/                  #    Penyimpanan status proyek & context JSON
-    ├── scripts/               #    Skrip utilitas & autostart (Mac / Pi / Linux)
-    ├── package.json           #    Dependencies Node.js
-    └── .env                   #    Konfigurasi environment & API keys
+    ├── data/                  #    Project status storage & context JSON
+    ├── scripts/               #    Utility & autostart scripts (macOS / Pi / Linux)
+    ├── package.json           #    Node.js dependencies
+    └── .env                   #    Environment configurations & API keys
 ```
 
 ---
 
-## 🛠️ Perintah CLI `th-agent`
+## 🛠️ `th-agent` CLI Commands
 
-Setelah terpasang, perintah `th-agent` dapat dipanggil langsung dari terminal mana pun:
+Once installed, the `th-agent` command can be executed directly from any terminal:
 
 ```bash
-th-agent logs       # Pantau log aktivitas Telegram bot secara real-time
-th-agent status     # Cek status service background 24/7
-th-agent restart    # Mulai ulang service bot
-th-agent stop       # Hentikan service bot
-th-agent start      # Jalankan service bot
-th-agent run        # Jalankan di foreground terminal untuk testing live
+th-agent logs       # Stream real-time Telegram bot activity logs
+th-agent status     # Check 24/7 background service status
+th-agent restart    # Restart the bot service
+th-agent stop       # Stop the bot service
+th-agent start      # Start the bot service
+th-agent run        # Run in foreground terminal for live debugging
 ```
 
 ---
 
-## 🎛️ Layanan & Port Server
+## 🎛️ Services & Server Ports
 - **Web UI Control Panel:** `http://localhost:3030`
-- **Telegram Bot:** Terhubung langsung ke bot Telegram via Webhook / Polling
-- **Folder Kerja Koding:** Seluruh eksekusi AI terkunci di dalam `./projects/`
+- **Telegram Bot:** Directly connected via Telegram Webhook / Long Polling
+- **Coding Workspace:** All autonomous AI execution is strictly scoped within `./projects/`
 
-Dokumentasi teknis lengkap mengenai bot dapat dibaca di [telegram-ai-agent/README.md](./telegram-ai-agent/README.md).
+Detailed technical documentation for the bot can be found in [telegram-ai-agent/README.md](./telegram-ai-agent/README.md).
