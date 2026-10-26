@@ -44,12 +44,20 @@ function getEnvConfig() {
       try {
         const content = fs.readFileSync(envPath, "utf-8");
         const tokenMatch = content.match(/BOT_TOKEN=([^\r\n]+)/);
+        const backupChatMatch = content.match(/TELEGRAM_BACKUP_CHAT_ID=([^\r\n]+)/);
         const idsMatch = content.match(/ALLOWED_TELEGRAM_IDS=([^\r\n]+)/);
-        if (tokenMatch && idsMatch) {
-          return {
-            botToken: tokenMatch[1].trim(),
-            chatId: idsMatch[1].split(",")[0].trim(),
-          };
+        if (tokenMatch) {
+          const chatId = backupChatMatch
+            ? backupChatMatch[1].trim()
+            : idsMatch
+            ? idsMatch[1].split(",")[0].trim()
+            : null;
+          if (chatId) {
+            return {
+              botToken: tokenMatch[1].trim(),
+              chatId,
+            };
+          }
         }
       } catch (_) {}
     }
