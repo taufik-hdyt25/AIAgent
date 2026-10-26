@@ -102,6 +102,9 @@ async function executeToolCall(toolCall, options = {}) {
     switch (name) {
       case "execute_command": {
         const targetCwd = args.cwd ? path.resolve(baseDir, args.cwd) : baseDir;
+        if (options.sandboxed && !targetCwd.startsWith(baseDir)) {
+          return `Akses Ditolak: Direktori kerja '${args.cwd}' berada di luar scope folder yang diizinkan (${baseDir}).`;
+        }
         await mkdir(targetCwd, { recursive: true });
 
         // Sanitasi environment agar tidak membocorkan BOT_TOKEN
@@ -127,6 +130,9 @@ async function executeToolCall(toolCall, options = {}) {
         const resolvedPath = path.isAbsolute(args.file_path)
           ? args.file_path
           : path.resolve(baseDir, args.file_path);
+        if (options.sandboxed && !resolvedPath.startsWith(baseDir)) {
+          return `Akses Ditolak: Path file '${args.file_path}' berada di luar scope folder yang diizinkan (${baseDir}).`;
+        }
         const content = await readFile(resolvedPath, "utf8");
         return content.length > 50000 ? content.slice(0, 50000) + "\n...[output dipotong]" : content;
       }
@@ -135,6 +141,9 @@ async function executeToolCall(toolCall, options = {}) {
         const resolvedPath = path.isAbsolute(args.file_path)
           ? args.file_path
           : path.resolve(baseDir, args.file_path);
+        if (options.sandboxed && !resolvedPath.startsWith(baseDir)) {
+          return `Akses Ditolak: Path file '${args.file_path}' berada di luar scope folder yang diizinkan (${baseDir}).`;
+        }
         await mkdir(path.dirname(resolvedPath), { recursive: true });
         await writeFile(resolvedPath, args.content, "utf8");
         return `File berhasil ditulis: ${args.file_path} (${Buffer.byteLength(args.content)} bytes)`;
@@ -142,6 +151,9 @@ async function executeToolCall(toolCall, options = {}) {
 
       case "list_directory": {
         const resolvedPath = args.dir_path ? path.resolve(baseDir, args.dir_path) : baseDir;
+        if (options.sandboxed && !resolvedPath.startsWith(baseDir)) {
+          return `Akses Ditolak: Direktori '${args.dir_path}' berada di luar scope folder yang diizinkan (${baseDir}).`;
+        }
         await mkdir(resolvedPath, { recursive: true });
         const items = await readdir(resolvedPath, { withFileTypes: true });
         const list = items.map((it) => `${it.isDirectory() ? "📁 [DIR] " : "📄 [FILE]"} ${it.name}`);
@@ -179,6 +191,7 @@ export async function runUniversalAgent({
   model = "",
   systemPrompt,
   workingDir = null,
+  sandboxed = false,
   onToolStart,
 }) {
   if (!apiKey) {
@@ -313,7 +326,7 @@ export async function runUniversalAgent({
           onToolStart(toolCall.function.name, toolCall.function.arguments);
         }
 
-        const toolResult = await executeToolCall(toolCall, { workingDir });
+        const toolResult = await executeToolCall(toolCall, { workingDir, sandboxed });
         messages.push({
           role: "tool",
           tool_call_id: toolCall.id,

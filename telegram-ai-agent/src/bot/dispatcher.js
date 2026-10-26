@@ -263,12 +263,13 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
     const skillPrompt = formatSkillsForPrompt(matchingSkills);
 
+    const isPiModel = typeof userModel === "string" && userModel.toLowerCase().includes("pi");
     const sandboxCfg = await getSandboxConfig();
-    const isCustomRole = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
-    const allowedList = await getAllowedFolders();
+    const isCustomRole = sandboxCfg.role === "custom" || sandboxCfg.piSandbox || isPiModel;
+    const allowedList = await getAllowedFolders(userModel);
     const allowedDisplay = allowedList.length > 0
       ? allowedList.map((f) => `'${f}'`).join(", ")
-      : "(Belum ditentukan folder kustom - Akses proyek dibatasi)";
+      : "'projects/intiva/*'";
 
     let prompt = "";
     if (isOngoingSession) {
@@ -426,12 +427,18 @@ ${userMessage}
           }
         }
 
+        const workingDir = isCustomRole && allowedList[0]
+          ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
+          : PROJECTS_DIR;
+
         const replyText = await runUniversalAgent({
           prompt,
           convId,
           apiKey: universalApiKey,
           baseUrl: universalBaseUrl,
           model: universalModel,
+          workingDir,
+          sandboxed: isCustomRole,
           systemPrompt: `Kamu adalah TH Agent, asisten software engineer cowok (pria) yang memiliki AKSES PENUH & 100% OTONOM di server ini melalui tools mandiri (execute_command, read_file, write_file, list_directory).
 ATURAN UTAMA:
 1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses.
