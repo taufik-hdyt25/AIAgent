@@ -1140,6 +1140,24 @@ export function registerBasicCommands(bot) {
     }
   });
 
+  // /id, /chatid
+  bot.command(["id", "chatid"], async (ctx) => {
+    const chatType = ctx.chat.type;
+    const isGroup = chatType === "group" || chatType === "supergroup";
+    const title = ctx.chat.title || ctx.from?.first_name || "Chat";
+    await ctx.reply(
+      `🆔 *Informasi Chat Telegram:*\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `• *Nama/Judul:* ${title}\n` +
+      `• *Tipe:* \`${chatType}\`\n` +
+      `• *Chat ID:* \`${ctx.chat.id}\`\n` +
+      `• *User ID Anda:* \`${ctx.from?.id}\`\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      (isGroup ? `_Gunakan Chat ID di atas untuk target channel/grup backup._` : ""),
+      { parse_mode: "Markdown" }
+    );
+  });
+
   // ==================== PERSISTENT MEMORY & SKILL COMMANDS ====================
 
   // /memories, /memory
