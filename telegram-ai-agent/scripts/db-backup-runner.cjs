@@ -24,21 +24,69 @@ const DB_USER = "th_user";
 const BACKUP_ROOT = path.join("/home/ubuntu/.th-agent/backups");
 const STATE_FILE = path.join("/home/ubuntu/.th-agent/data/last_db_backup_hash.json");
 
-// Standalone SQLite databases to back up alongside PostgreSQL
-const SQLITE_DATABASES = [
+// Known databases and auto-discovery rules
+const KNOWN_SQLITE_DATABASES = [
   {
     name: "artosku_db",
     filePath: "/home/th-agent/projects/dompet-bulanan/dompet.sqlite",
-    type: "SQLite",
     label: "Artosku (Dompet Bulanan)",
   },
   {
     name: "whatsapp_bot_db",
     filePath: "/home/th-agent/projects/wa-chat-bot/whatsapp-bot/prisma/dev.db",
-    type: "SQLite",
-    label: "WhatsApp Bot",
+    label: "WhatsApp Bot Prisma",
+  },
+  {
+    name: "nine_router_db",
+    filePath: "/home/ubuntu/.9router/db/data.sqlite",
+    label: "9Router Database",
   },
 ];
+
+const AI_AGENT_STORES = [
+  {
+    name: "ai_agent_memories",
+    filePath: "/home/th-agent/telegram-ai-agent/data/memories.json",
+    type: "JSON-Store",
+    label: "TH Agent Vector Memories",
+  },
+];
+
+function discoverSqliteDatabases() {
+  const dbMap = new Map();
+  for (const db of KNOWN_SQLITE_DATABASES) {
+    if (fs.existsSync(db.filePath)) {
+      dbMap.set(path.resolve(db.filePath), { ...db, type: "SQLite", source: "sqlite" });
+    }
+  }
+
+  // Auto-discover any other active SQLite databases across /home/th-agent/projects/
+  try {
+    const cmd = `find /home/th-agent/projects/ -type f \\( -name "*.sqlite" -o -name "*.sqlite3" -o -name "*.db" \\) 2>/dev/null | grep -v "/node_modules/" | grep -v "/\\.git/" | grep -v "/\\.cache/" | grep -v "/\\.next/"`;
+    const found = execSync(cmd, { encoding: "utf-8" }).trim().split("\n").filter(Boolean);
+    for (const f of found) {
+      const absPath = path.resolve(f);
+      if (!dbMap.has(absPath)) {
+        const parts = absPath.split(path.sep);
+        const projIdx = parts.indexOf("projects");
+        const projName = projIdx !== -1 && parts[projIdx + 1] ? parts[projIdx + 1] : "db";
+        const baseName = path.basename(absPath, path.extname(absPath));
+        const cleanName = `${projName}_${baseName}`.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
+        dbMap.set(absPath, {
+          name: cleanName,
+          filePath: absPath,
+          type: "SQLite",
+          source: "sqlite",
+          label: `${projName} (${path.basename(absPath)})`,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn("⚠️ Warning during SQLite dynamic discovery:", err.message);
+  }
+
+  return Array.from(dbMap.values());
+}
 
 // Ensure directories exist
 if (!fs.existsSync(BACKUP_ROOT)) {
@@ -201,24 +249,21 @@ async function runBackup() {
   const pgDatabases = getDatabases();
   console.log(`📋 Found active PostgreSQL databases in ${CONTAINER_NAME}:`, pgDatabases);
 
-  const activeSqliteDatabases = SQLITE_DATABASES.filter((s) => {
-    const exists = fs.existsSync(s.filePath);
-    if (!exists) {
-      console.warn(`⚠️ SQLite database not found at: ${s.filePath}`);
-    }
-    return exists;
-  });
-  console.log(`📋 Found active SQLite databases:`, activeSqliteDatabases.map((s) => `${s.name} (${s.label})`));
+  const sqliteDatabases = discoverSqliteDatabases();
+  console.log(`📋 Found active SQLite databases:`, sqliteDatabases.map((s) => `${s.name} (${s.label})`));
+
+  const activeStores = AI_AGENT_STORES.filter((s) => fs.existsSync(s.filePath)).map((s) => ({
+    ...s,
+    source: "json_store",
+  }));
+  if (activeStores.length > 0) {
+    console.log(`📋 Found active persistent stores:`, activeStores.map((s) => `${s.name} (${s.label})`));
+  }
 
   const allDbEntries = [
     ...pgDatabases.map((db) => ({ name: db, type: "PostgreSQL", source: "postgres" })),
-    ...activeSqliteDatabases.map((s) => ({
-      name: s.name,
-      type: "SQLite",
-      source: "sqlite",
-      filePath: s.filePath,
-      label: s.label,
-    })),
+    ...sqliteDatabases,
+    ...activeStores,
   ];
 
   const now = new Date();
@@ -238,9 +283,12 @@ async function runBackup() {
       fs.mkdirSync(dbDir, { recursive: true });
 
       let sqlContent = "";
+      let primaryFile = "";
       if (item.source === "postgres") {
         const dumpCmd = `docker exec ${CONTAINER_NAME} pg_dump -U ${DB_USER} ${item.name}`;
         sqlContent = execSync(dumpCmd, { encoding: "utf-8", maxBuffer: 100 * 1024 * 1024 });
+        primaryFile = path.join(dbDir, `${item.name}.sql`);
+        fs.writeFileSync(primaryFile, sqlContent, "utf-8");
       } else if (item.source === "sqlite") {
         const dumpCmd = `python3 -c "import sqlite3, sys; conn = sqlite3.connect('${item.filePath}'); sys.stdout.write('\\n'.join(conn.iterdump()))"`;
         sqlContent = execSync(dumpCmd, { encoding: "utf-8", maxBuffer: 100 * 1024 * 1024 });
@@ -248,15 +296,18 @@ async function runBackup() {
         // Copy raw .sqlite file alongside .sql dump for instant file recovery
         const rawFileName = path.basename(item.filePath);
         fs.copyFileSync(item.filePath, path.join(dbDir, rawFileName));
+        primaryFile = path.join(dbDir, `${item.name}.sql`);
+        fs.writeFileSync(primaryFile, sqlContent, "utf-8");
+      } else if (item.source === "json_store") {
+        sqlContent = fs.readFileSync(item.filePath, "utf-8");
+        primaryFile = path.join(dbDir, path.basename(item.filePath));
+        fs.writeFileSync(primaryFile, sqlContent, "utf-8");
       }
-
-      const sqlFile = path.join(dbDir, `${item.name}.sql`);
-      fs.writeFileSync(sqlFile, sqlContent, "utf-8");
 
       const hash = calculateDeterministicHash(sqlContent);
       dbHashes[item.name] = hash;
 
-      const stat = fs.statSync(sqlFile);
+      const stat = fs.statSync(primaryFile);
       dbSummaries.push({
         database: item.name,
         type: item.type,
