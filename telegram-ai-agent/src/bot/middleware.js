@@ -1,7 +1,19 @@
 import { ALLOWED_IDS } from "../config/env.js";
 
 export function isAuthorized(ctx) {
-  return ctx.from && ALLOWED_IDS.has(String(ctx.from.id));
+  if (!ctx.from) return false;
+  const idStr = String(ctx.from.id);
+  if (ALLOWED_IDS.has(idStr)) return true;
+  // Dynamic sync jika baru diupdate via Web UI / .env
+  const currentEnv = (process.env.ALLOWED_TELEGRAM_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (currentEnv.includes(idStr)) {
+    ALLOWED_IDS.add(idStr);
+    return true;
+  }
+  return false;
 }
 
 export function registerMiddleware(bot) {
