@@ -24,6 +24,22 @@ const DB_USER = "th_user";
 const BACKUP_ROOT = path.join("/home/ubuntu/.th-agent/backups");
 const STATE_FILE = path.join("/home/ubuntu/.th-agent/data/last_db_backup_hash.json");
 
+// Standalone SQLite databases to back up alongside PostgreSQL
+const SQLITE_DATABASES = [
+  {
+    name: "artosku_db",
+    filePath: "/home/th-agent/projects/dompet-bulanan/dompet.sqlite",
+    type: "SQLite",
+    label: "Artosku (Dompet Bulanan)",
+  },
+  {
+    name: "whatsapp_bot_db",
+    filePath: "/home/th-agent/projects/wa-chat-bot/whatsapp-bot/prisma/dev.db",
+    type: "SQLite",
+    label: "WhatsApp Bot",
+  },
+];
+
 // Ensure directories exist
 if (!fs.existsSync(BACKUP_ROOT)) {
   fs.mkdirSync(BACKUP_ROOT, { recursive: true });
@@ -132,7 +148,14 @@ function sendToTelegram(archivePath, dbList, totalSizeBytes) {
     timeStyle: "short",
   }).format(now);
 
-  const dbBullets = dbList.map((db) => `  • \`${db}\``).join("\n");
+  const dbBullets = dbList
+    .map((db) => {
+      if (typeof db === "object" && db.name) {
+        return `  • \`${db.name}\` _(${db.type || "DB"})_`;
+      }
+      return `  • \`${db}\``;
+    })
+    .join("\n");
   const caption =
     `📦 *Auto-Backup Database TH Studio*\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -175,8 +198,28 @@ function sendToTelegram(archivePath, dbList, totalSizeBytes) {
 async function runBackup() {
   console.log("🚀 Starting TH Database Backup Runner...");
 
-  const databases = getDatabases();
-  console.log(`📋 Found active databases in ${CONTAINER_NAME}:`, databases);
+  const pgDatabases = getDatabases();
+  console.log(`📋 Found active PostgreSQL databases in ${CONTAINER_NAME}:`, pgDatabases);
+
+  const activeSqliteDatabases = SQLITE_DATABASES.filter((s) => {
+    const exists = fs.existsSync(s.filePath);
+    if (!exists) {
+      console.warn(`⚠️ SQLite database not found at: ${s.filePath}`);
+    }
+    return exists;
+  });
+  console.log(`📋 Found active SQLite databases:`, activeSqliteDatabases.map((s) => `${s.name} (${s.label})`));
+
+  const allDbEntries = [
+    ...pgDatabases.map((db) => ({ name: db, type: "PostgreSQL", source: "postgres" })),
+    ...activeSqliteDatabases.map((s) => ({
+      name: s.name,
+      type: "SQLite",
+      source: "sqlite",
+      filePath: s.filePath,
+      label: s.label,
+    })),
+  ];
 
   const now = new Date();
   const pad = (n) => String(n).padStart(2, "0");
@@ -189,27 +232,38 @@ async function runBackup() {
   const dbSummaries = [];
 
   try {
-    for (const db of databases) {
-      console.log(`⏳ Dumping database: ${db}...`);
-      const dbDir = path.join(tempDir, db);
+    for (const item of allDbEntries) {
+      console.log(`⏳ Dumping database: ${item.name} (${item.type})...`);
+      const dbDir = path.join(tempDir, item.name);
       fs.mkdirSync(dbDir, { recursive: true });
 
-      const dumpCmd = `docker exec ${CONTAINER_NAME} pg_dump -U ${DB_USER} ${db}`;
-      const sqlContent = execSync(dumpCmd, { encoding: "utf-8", maxBuffer: 100 * 1024 * 1024 });
+      let sqlContent = "";
+      if (item.source === "postgres") {
+        const dumpCmd = `docker exec ${CONTAINER_NAME} pg_dump -U ${DB_USER} ${item.name}`;
+        sqlContent = execSync(dumpCmd, { encoding: "utf-8", maxBuffer: 100 * 1024 * 1024 });
+      } else if (item.source === "sqlite") {
+        const dumpCmd = `python3 -c "import sqlite3, sys; conn = sqlite3.connect('${item.filePath}'); sys.stdout.write('\\n'.join(conn.iterdump()))"`;
+        sqlContent = execSync(dumpCmd, { encoding: "utf-8", maxBuffer: 100 * 1024 * 1024 });
 
-      const sqlFile = path.join(dbDir, `${db}.sql`);
+        // Copy raw .sqlite file alongside .sql dump for instant file recovery
+        const rawFileName = path.basename(item.filePath);
+        fs.copyFileSync(item.filePath, path.join(dbDir, rawFileName));
+      }
+
+      const sqlFile = path.join(dbDir, `${item.name}.sql`);
       fs.writeFileSync(sqlFile, sqlContent, "utf-8");
 
       const hash = calculateDeterministicHash(sqlContent);
-      dbHashes[db] = hash;
+      dbHashes[item.name] = hash;
 
       const stat = fs.statSync(sqlFile);
       dbSummaries.push({
-        database: db,
+        database: item.name,
+        type: item.type,
         sizeBytes: stat.size,
         hash: hash,
       });
-      console.log(`   ✓ ${db}: ${(stat.size / 1024).toFixed(1)} KB (hash: ${hash.slice(0, 12)}...)`);
+      console.log(`   ✓ ${item.name} (${item.type}): ${(stat.size / 1024).toFixed(1)} KB (hash: ${hash.slice(0, 12)}...)`);
     }
 
     // Compute composite hash for all databases
@@ -285,7 +339,7 @@ async function runBackup() {
 
     // Dispatch to Telegram
     if (!skipTelegram) {
-      sendToTelegram(archivePath, databases, archiveStat.size);
+      sendToTelegram(archivePath, allDbEntries, archiveStat.size);
     }
 
     return {
