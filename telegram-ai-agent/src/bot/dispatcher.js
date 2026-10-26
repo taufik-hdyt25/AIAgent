@@ -223,6 +223,7 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     }
 
     const engine = engineOverride || await getUserEngine(userId);
+    const userModel = await getUserModel(userId, engine);
     const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
     const isOngoingSession = Boolean(
       (engine === "claude" && (await isClaudeSessionStarted(convId))) ||
@@ -263,7 +264,11 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
     const skillPrompt = formatSkillsForPrompt(matchingSkills);
 
-    const isPiModel = typeof userModel === "string" && userModel.toLowerCase().includes("pi");
+    const isPiModel = Boolean(
+      IS_PI ||
+      (typeof userModel === "string" && userModel.toLowerCase().includes("pi")) ||
+      (typeof engine === "string" && engine.toLowerCase().includes("pi"))
+    );
     const sandboxCfg = await getSandboxConfig();
     const isCustomRole = sandboxCfg.role === "custom" || sandboxCfg.piSandbox || isPiModel;
     const allowedList = await getAllowedFolders(userModel);
@@ -402,7 +407,7 @@ ${userMessage}
         }
 
         const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-        let universalModel = await getUserUniversalModel(userId);
+        let universalModel = (engine === "universal" && userModel) ? userModel : await getUserUniversalModel(userId);
 
         // Auto-get model langsung dari server Pi jika menggunakan custom URL / local endpoint
         const isCustomServer =
@@ -498,12 +503,12 @@ ${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan e
         }
       } else {
         binToRun = AGY_BIN;
-        const userModel = await getUserAgyModel(userId);
-        taskStartModel = userModel; // Catat model saat task mulai
+        const agyModel = (engine === "agy" && userModel) ? userModel : await getUserAgyModel(userId);
+        taskStartModel = agyModel; // Catat model saat task mulai
         const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
         cliArgs = [
           "--model",
-          userModel,
+          agyModel,
           "-p",
           prompt,
           "--output-format",
