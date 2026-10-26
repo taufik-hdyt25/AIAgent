@@ -187,6 +187,7 @@ export function registerBasicCommands(bot) {
         "• `/setpi <key>` - Setup instan model Pi via OpenRouter / OpenAI URL\n" +
         "• `/pisandbox` - Toggle mode sandbox folder projects/intiva\n" +
         "• `/compact` - Padatkan konteks obrolan agar token input hemat\n" +
+        "• `/backup` - Backup semua database Postgres & kirim bundle ke Telegram\n" +
         "• `/clean` - Bersihkan build cache Docker & temporary files\n" +
         "• `/update` - Perbarui TH Agent langsung dari GitHub tanpa instal ulang\n" +
         "• `/cekupdate` - Cek apakah ada rilis/commit baru di GitHub\n" +
@@ -1116,6 +1117,27 @@ export function registerBasicCommands(bot) {
       "/compact\n\n(Tolong rangkum dan padatkan konteks sesi percakapan ini. Buang log terminal usang atau output build yang panjang, pertahankan rangkuman pekerjaan terakhir agar input token hemat).",
       ctx
     );
+  });
+
+  // /backup, /backupdb
+  bot.command(["backup", "backupdb"], async (ctx) => {
+    const statusMsg = await ctx.reply(
+      "⏳ *Sedang memeriksa dan memproses backup semua database...*",
+      { parse_mode: "Markdown" }
+    );
+
+    try {
+      const { execSync } = await import("child_process");
+      execSync("/usr/local/bin/th-backup-db --force");
+      await ctx.api.deleteMessage(ctx.chat.id, statusMsg.message_id).catch(() => {});
+    } catch (err) {
+      await ctx.api.editMessageText(
+        ctx.chat.id,
+        statusMsg.message_id,
+        `❌ *Gagal membuat backup database:* ${err.message}`,
+        { parse_mode: "Markdown" }
+      ).catch(() => {});
+    }
   });
 
   // ==================== PERSISTENT MEMORY & SKILL COMMANDS ====================
