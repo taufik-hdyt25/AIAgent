@@ -418,6 +418,25 @@ export async function recordUsage({
 }
 
 /**
+ * Format nama model yang ramah dibaca
+ */
+export function getModelDisplayName(modelId) {
+  if (!modelId || modelId === "default") return "Default Model";
+  const id = String(modelId).toLowerCase();
+  if (id === "gemini-3.8-flash-high") return "Gemini 3.8 Flash (High Thinking)";
+  if (id === "gemini-3.8-flash-medium") return "Gemini 3.8 Flash (Medium Thinking)";
+  if (id === "gemini-3.8-flash-low") return "Gemini 3.8 Flash (Low Thinking)";
+  if (id.includes("claude-3-7-sonnet") || id.includes("claude-3.7-sonnet")) return "Claude 3.7 Sonnet (Hybrid Reasoning)";
+  if (id.includes("claude-3-5-sonnet") || id.includes("claude-3.5-sonnet")) return "Claude 3.5 Sonnet (Coding Specialist)";
+  if (id.includes("claude-sonnet-4-6")) return "Claude Sonnet 4.6 (Thinking)";
+  if (id.includes("claude-opus-4-6")) return "Claude Opus 4.6 (Thinking)";
+  if (id.includes("gpt-oss-120b")) return "GPT-OSS 120B (Medium)";
+  if (id.includes("qwen")) return "Qwen 2.5 Coder (Pi)";
+  if (id.includes("deepseek")) return "DeepSeek R1 (Pi)";
+  return modelId;
+}
+
+/**
  * Format laporan ringkasan penggunaan token untuk chat Telegram
  */
 export async function getUsageReport({ activeEngine = "agy", activeModel = "default", convId = null }) {
@@ -438,56 +457,42 @@ export async function getUsageReport({ activeEngine = "agy", activeModel = "defa
     sessionStats = await getAgySessionTokens(convId);
   }
 
-  let text = `📊 *Statistik & Kapasitas Token Model AI*\n\n`;
-
-  // Info Total Kapasitas Token yang Tersedia dari Model Aktif
+  const modelName = getModelDisplayName(activeModel);
   const capacity = getModelCapacity(activeModel);
-  text += `🧠 *Total Kapasitas Model Tersedia (${activeModel}):*\n`;
-  text += `• Batas Context Window: *${capacity.contextDisplay}*\n`;
-  text += `• Batas Output per Turn: \`${capacity.maxOutput}\`\n`;
-  text += `• Karakteristik: _${capacity.type}_\n\n`;
+  const engineLabel =
+    activeEngine === "agy" ? "Antigravity CLI (agy)" :
+    activeEngine === "claude" ? "Claude Code CLI" :
+    activeEngine === "universal" ? "Universal / Pi Server" : activeEngine;
+
+  let text = `📊 *Statistik Token (Current Model)*\n\n`;
+
+  // Info Langsung Current Model & Kapasitasnya
+  text += `🤖 *Current Model:* *${modelName}*\n`;
+  text += `⚙️ *Engine:* ${engineLabel} (\`${activeModel}\`)\n`;
+  text += `🧠 *Total Kapasitas (Context Window):* *${capacity.contextDisplay}*\n`;
+  text += `⚡ *Batas Output per Turn:* \`${capacity.maxOutput}\`\n\n`;
 
   // Sesi Aktif
   if (sessionStats && sessionStats.totalTokens > 0) {
-    text += `💬 *Sesi Chat Ini (${activeModel}):*\n`;
+    text += `💬 *Pemakaian Sesi Chat Ini:*\n`;
     text += `• Input Tokens: \`${formatTokenCount(sessionStats.inputTokens)}\`\n`;
     text += `• Output Tokens: \`${formatTokenCount(sessionStats.outputTokens)}\`\n`;
-    text += `• Total Sesi Ini: *${formatTokenCount(sessionStats.totalTokens)} token*\n\n`;
+    text += `• Total Sesi: *${formatTokenCount(sessionStats.totalTokens)} token*\n\n`;
   }
 
   // Hari Ini
   text += `📅 *Pemakaian Hari Ini (${today}):*\n`;
-  text += `• Input Tokens: \`${formatTokenCount(day.totalInputTokens)}\`\n`;
-  text += `• Output Tokens: \`${formatTokenCount(day.totalOutputTokens)}\`\n`;
-  text += `• Total Hari Ini: *${formatTokenCount(day.totalTokens)} token*\n`;
-  text += `• Total Request: \`${day.requests || 0} tugas\`\n\n`;
-
-  // Engine Breakdown
-  const engines = Object.keys(day.byEngine || {});
-  if (engines.length > 0) {
-    text += `⚙️ *Rincian per Engine (Hari Ini):*\n`;
-    for (const eng of engines) {
-      const e = day.byEngine[eng];
-      const label =
-        eng === "agy" ? "Antigravity CLI (agy)" :
-        eng === "claude" ? "Claude Code CLI" :
-        eng === "universal" ? "Universal / Pi Server" : eng;
-      text += `• ${label}: \`${formatTokenCount(e.totalTokens)}\` (${e.requests}x)\n`;
-    }
-    text += "\n";
-  }
+  text += `• Total Hari Ini: *${formatTokenCount(day.totalTokens)} token* (\`${day.requests || 0} tugas\`)\n`;
+  text += `• Rincian: \`${formatTokenCount(day.totalInputTokens)}\` in / \`${formatTokenCount(day.totalOutputTokens)}\` out\n\n`;
 
   // Total Akumulasi
-  text += `📈 *Total Akumulasi (Semua Waktu):*\n`;
-  text += `• Total Input: \`${formatTokenCount(stats.totals?.totalInputTokens || 0)}\`\n`;
-  text += `• Total Output: \`${formatTokenCount(stats.totals?.totalOutputTokens || 0)}\`\n`;
-  text += `• *TOTAL TOKEN:* *${formatTokenCount(stats.totals?.totalTokens || 0)} token*\n`;
-  text += `• Total Tugas AI: \`${stats.totals?.requests || 0} tugas\`\n\n`;
+  text += `📈 *Akumulasi Semua Waktu:*\n`;
+  text += `• TOTAL TOKEN: *${formatTokenCount(stats.totals?.totalTokens || 0)} token* (\`${stats.totals?.requests || 0} tugas\`)\n\n`;
 
   // Penjelasan Kuota
-  text += `ℹ️ *Status Batas / Kuota Token:*\n`;
+  text += `ℹ️ *Status Kuota Token:*\n`;
   text += `• Bot tidak menerapkan batasan kuota hard cap (unmetered by bot).\n`;
-  text += `• Pemakaian berjalan mengikuti kuota & rate limit akun provider (${activeEngine === "agy" ? "Google AI Antigravity" : activeEngine}).\n\n`;
+  text += `• Berjalan sesuai kapasitas kuota & rate limit akun provider (${engineLabel}).\n\n`;
   text += `💡 _Gunakan \`/model\` untuk memilih model atau \`/engine\` untuk mengganti engine._`;
 
   return text;

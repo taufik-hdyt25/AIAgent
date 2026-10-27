@@ -19,6 +19,7 @@ import {
   setUserUniversalModel,
   resetUserConversation,
   getUserAgyConversationId,
+  getUserModel,
 } from "../../services/context-store.js";
 import {
   readEnvFile,
@@ -120,17 +121,8 @@ import { checkNotionTasks } from "../../services/notion-watcher.js";
 export async function sendUsageResponse(ctx) {
   const userId = ctx.from?.id;
   const currentEngine = (userId ? await getUserEngine(userId) : null) || process.env.CLI_ENGINE || "agy";
-  let activeModel = "default";
-  let convId = null;
-
-  if (currentEngine === "agy") {
-    activeModel = (userId ? await getUserAgyModel(userId) : null) || "gemini-3.8-flash-high";
-    convId = userId ? await getUserAgyConversationId(userId) : null;
-  } else if (currentEngine === "claude") {
-    activeModel = (userId ? await getUserClaudeModel(userId) : null) || "claude-sonnet";
-  } else {
-    activeModel = (userId ? await getUserUniversalModel(userId) : null) || "default";
-  }
+  const activeModel = (userId ? await getUserModel(userId, currentEngine) : null) || "gemini-3.8-flash-high";
+  const convId = (userId && currentEngine === "agy") ? await getUserAgyConversationId(userId) : null;
 
   const report = await getUsageReport({ activeEngine: currentEngine, activeModel, convId });
   await ctx.reply(report, { parse_mode: "Markdown" }).catch(() => ctx.reply(report));
