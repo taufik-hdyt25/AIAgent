@@ -57,6 +57,9 @@ export function killAllWorkers(signal = "SIGTERM") {
     if (worker.process) {
       killProcessTree(worker.process, signal);
     }
+    if (worker.abortController?.abort) {
+      worker.abortController.abort();
+    }
   }
   activeWorkers.clear();
   return count;

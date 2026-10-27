@@ -443,6 +443,9 @@ export function registerBasicCommands(bot) {
       } else if (activeTask) {
         activeTask.cancelled = true;
       }
+      if (activeTask?.abortController?.abort) {
+        activeTask.abortController.abort();
+      }
       const cleared = clearQueue();
       await ctx.reply(
         `🛑 *Semua Dibatalkan:*\nTugas aktif & sub-agent dihentikan, serta *${cleared} instruksi di antrean* telah dibatalkan.`,
@@ -480,6 +483,7 @@ export function registerBasicCommands(bot) {
     if (queueLen === 0) {
       activeTask.cancelled = true;
       if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
+      if (activeTask.abortController?.abort) activeTask.abortController.abort();
       await ctx.reply(`🛑 Permintaan pembatalan tugas aktif (\`${activeTask.id}\`)${workerNotice} telah dikirim.`);
       return;
     }
@@ -488,6 +492,7 @@ export function registerBasicCommands(bot) {
     pauseQueue();
     activeTask.cancelled = true;
     if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
+    if (activeTask.abortController?.abort) activeTask.abortController.abort();
 
     const queueList = getQueue()
       .slice(0, 3)

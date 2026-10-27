@@ -35,12 +35,10 @@ export async function getSandboxConfig() {
 }
 
 /**
- * Memeriksa apakah mode custom scope (akses dibatasi ke folder tertentu) sedang aktif
- * Jika model aktif adalah model Pi (nama/id mengandung 'pi'), otomatis aktifkan custom scope.
+ * Memeriksa apakah mode custom scope (akses dibatasi ke folder tertentu) sedang aktif.
+ * Akses custom HANYA aktif jika secara eksplisit diset di pengaturan (role === "custom" atau piSandbox === true).
  */
 export async function isCustomScopeActive(modelId = "") {
-  const isPiModel = typeof modelId === "string" && modelId.toLowerCase().includes("pi");
-  if (isPiModel) return true;
   const cfg = await getSandboxConfig();
   return cfg.role === "custom" || Boolean(cfg.piSandbox);
 }
@@ -50,18 +48,16 @@ export const isPiSandboxActive = isCustomScopeActive;
 
 /**
  * Mendapatkan daftar folder yang diizinkan untuk mode custom
- * Default untuk model Pi adalah 'projects/intiva' jika belum ditentukan folder khusus.
  */
 export async function getAllowedFolders(modelId = "") {
-  const isPiModel = typeof modelId === "string" && modelId.toLowerCase().includes("pi");
   const cfg = await getSandboxConfig();
-  if (cfg.role !== "custom" && !cfg.piSandbox && !isPiModel) return [];
+  if (cfg.role !== "custom" && !cfg.piSandbox) return [];
   const raw = cfg.customFolders || cfg.restrictedDir || "";
   const folders = raw
     .split(/[\n,;]+/)
     .map((s) => s.trim())
     .filter(Boolean);
-  if (folders.length === 0 && (isPiModel || cfg.piSandbox)) {
+  if (folders.length === 0 && (cfg.role === "custom" || cfg.piSandbox)) {
     return ["projects/intiva"];
   }
   return folders;

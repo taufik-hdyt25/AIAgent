@@ -14,6 +14,7 @@ import { findMatchingSkills, formatSkillsForPrompt } from "./skill-service.js";
 import { processNextQueue } from "./queue-service.js";
 import { truncate, sendSmartReply } from "./telegram-files.js";
 import { isPiSandboxActive, getAllowedFolders, getSandboxConfig } from "./sandbox-service.js";
+import { getUserEngine } from "./context-store.js";
 
 export const WORKER_PROFILES = [
   { name: "Alpha", emoji: "🐺", label: "Worker 1" },
@@ -115,6 +116,7 @@ export async function executeSwarm({
   engine = null,
 }) {
   const actualUserId = userId || ctx.from?.id;
+  const actualEngine = engine || (actualUserId ? await getUserEngine(actualUserId) : null);
   const parsedTasks = tasks || decomposeTasks(userMessage);
 
   if (!parsedTasks || parsedTasks.length === 0) {
@@ -244,10 +246,11 @@ Eksekusi tugas khususmu secara nyata, tuntas, dan berikan laporan ringkas.`;
         convId: workerConvId,
         userId: actualUserId,
         systemPrompt,
-        engineOverride: engine,
+        engineOverride: actualEngine,
         onSpawn: (child) => {
           registerWorker(worker.id, {
-            process: child,
+            process: child?.kill ? child : null,
+            abortController: child?.abortController || null,
             name: worker.name,
             title: worker.task.title,
           });

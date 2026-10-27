@@ -266,17 +266,34 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
     const skillPrompt = formatSkillsForPrompt(matchingSkills);
 
-    const isPiModel = Boolean(
-      IS_PI ||
-      (typeof userModel === "string" && userModel.toLowerCase().includes("pi")) ||
-      (typeof engine === "string" && engine.toLowerCase().includes("pi"))
-    );
     const sandboxCfg = await getSandboxConfig();
-    const isCustomRole = sandboxCfg.role === "custom" || sandboxCfg.piSandbox || isPiModel;
+    const isCustomRole = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
     const allowedList = await getAllowedFolders(userModel);
     const allowedDisplay = allowedList.length > 0
       ? allowedList.map((f) => `'${f}'`).join(", ")
-      : "'projects/intiva/*'";
+      : "(Belum ditentukan folder kustom - Akses dibatasi)";
+
+    await ensureProjectsIndexed().catch((err) =>
+      console.warn("[Project Indexer] Check error:", err.message)
+    );
+
+    let availableProjectsPrompt = "";
+    try {
+      const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+      const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
+      if (dirs.length > 0) {
+        availableProjectsPrompt = `\n- Proyek aktif yang sudah ada di folder './projects': ${dirs.map((d) => `'./projects/${d}'`).join(", ")}.`;
+      }
+    } catch (_) {}
+
+    let projectsSummaryPrompt = "";
+    try {
+      const summaryFile = path.join(PROJECTS_DIR, "PROJECTS_SUMMARY.md");
+      const summaryContent = await readFile(summaryFile, "utf8");
+      projectsSummaryPrompt = `\n\nRINGKASAN ARSITEKTUR & PETA PROYEK (BACA INI DULU AGAR TIDAK SCAN DARI NOL):\n${summaryContent.trim()}\n\n*ATURAN WAJIB TOKEN EFFICIENCY & PROYEK BARU:*
+1. Jangan membaca atau menelusuri folder/file dari awal jika proyek sudah tercatat di ringkasan di atas (manfaatkan info port, stack, container, dan file utama yang ada).
+2. Jika ada proyek baru yang dibuat, di-clone, atau belum ada di ringkasan di atas, telusuri secara ringkas lalu WAJIB perbarui file './projects/PROJECTS_SUMMARY.md' agar sesi berikutnya langsung tahu tanpa perlu read dari awal lagi.`;
+    } catch (_) {}
 
     let prompt = "";
     if (isOngoingSession) {
@@ -302,27 +319,6 @@ ${scopeOngoingRule}
   * Cukup sampaikan: (1) Apa yang dilakukan/diperbaiki, (2) Poin perubahan penting, (3) Kesimpulan status akhir.
 `.trim();
     } else {
-      await ensureProjectsIndexed().catch((err) =>
-        console.warn("[Project Indexer] Check error:", err.message)
-      );
-
-      let availableProjectsPrompt = "";
-      try {
-        const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
-        const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
-        if (dirs.length > 0) {
-          availableProjectsPrompt = `\n- Proyek aktif yang sudah ada di folder './projects': ${dirs.map((d) => `'./projects/${d}'`).join(", ")}.`;
-        }
-      } catch (_) {}
-
-      let projectsSummaryPrompt = "";
-      try {
-        const summaryFile = path.join(PROJECTS_DIR, "PROJECTS_SUMMARY.md");
-        const summaryContent = await readFile(summaryFile, "utf8");
-        projectsSummaryPrompt = `\n\nRINGKASAN ARSITEKTUR & PETA PROYEK (BACA INI DULU AGAR TIDAK SCAN DARI NOL):\n${summaryContent.trim()}\n\n*ATURAN WAJIB TOKEN EFFICIENCY & PROYEK BARU:*
-1. Jangan membaca atau menelusuri folder/file dari awal jika proyek sudah tercatat di ringkasan di atas (manfaatkan info port, stack, container, dan file utama yang ada).
-2. Jika ada proyek baru yang dibuat, di-clone, atau belum ada di ringkasan di atas, telusuri secara ringkas lalu WAJIB perbarui file './projects/PROJECTS_SUMMARY.md' agar sesi berikutnya langsung tahu tanpa perlu read dari awal lagi.`;
-      } catch (_) {}
 
       const memorySkillInstructions = `
 FITUR OTONOM: PERSISTENT MEMORY & AUTO-SKILL CREATION:
@@ -445,14 +441,99 @@ ${userMessage}
         if (fileInfoPrompt) userTurnPrompt += `\n\n${fileInfoPrompt}`;
         if (issueInfoPrompt) userTurnPrompt += `\n\n${issueInfoPrompt}`;
 
-        const fullSystemPrompt = `Kamu adalah TH Agent, asisten software engineer cowok (pria) yang memiliki AKSES PENUH & 100% OTONOM di server ini melalui tools mandiri (execute_command, read_file, write_file, list_directory).
-ATURAN UTAMA:
-1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses.
+        const abortController = new AbortController();
+        task.abortController = abortController;
+
+        const onInvokeSubagent = async ({ task: subTask, target_project = "" }) => {
+          const activeWorkers = getActiveWorkers();
+          const usedNames = new Set(activeWorkers.map((w) => w.name));
+          const profile = WORKER_PROFILES.find((p) => !usedNames.has(p.name)) || WORKER_PROFILES[activeWorkers.length % WORKER_PROFILES.length];
+          const subWorkerId = `sub-${randomUUID().slice(0, 6)}`;
+
+          if (ctx.chat?.id) {
+            ctx.reply(
+              `🤖 *[Subagent ${profile.name} ${profile.emoji}] Diaktifkan!*\n` +
+              `📌 _"${truncate(subTask, 80)}"_${target_project ? ` (\`projects/${target_project}\`)` : ""}\n` +
+              `⏱ _Subagent sedang bekerja otonom di server..._`,
+              { parse_mode: "Markdown" }
+            ).catch(() => {});
+          }
+
+          const subCwd = target_project
+            ? path.resolve(PROJECTS_DIR, target_project.replace(/^projects\//, ""))
+            : workingDir;
+
+          const subSystemPrompt = `Kamu adalah Subagent [${profile.name} ${profile.emoji}] dari TH Agent yang bekerja otonom di server.
+Selesaikan tugas spesifik ini sampai tuntas menggunakan tools yang tersedia tanpa meminta konfirmasi (Zero-Confirmation).
+Berikan ringkasan hasil yang padat, jelas, dan to the point.`;
+
+          registerWorker(subWorkerId, {
+            id: subWorkerId,
+            name: profile.name,
+            emoji: profile.emoji,
+            title: subTask,
+            targetProject: target_project || "",
+          });
+
+          try {
+            const res = await runAgentAutonomous({
+              prompt: subTask,
+              convId: `sub-${subWorkerId}`,
+              userId,
+              cwd: subCwd,
+              systemPrompt: subSystemPrompt,
+              engineOverride: engine,
+              onSpawn: (child) => {
+                const w = activeWorkers.find((x) => x.id === subWorkerId);
+                if (w) {
+                  w.process = child?.kill ? child : null;
+                  w.abortController = child?.abortController || null;
+                }
+              },
+            });
+            unregisterWorker(subWorkerId);
+            if (ctx.chat?.id) {
+              ctx.reply(
+                `✅ *[Subagent ${profile.name} ${profile.emoji}] Selesai!*\n` +
+                `📌 _"${truncate(subTask, 60)}"_\n\n${truncate(res.output || "Tugas selesai.", 600)}`,
+                { parse_mode: "Markdown" }
+              ).catch(() => {});
+            }
+            return res.output || "Subagent selesai tanpa output.";
+          } catch (subErr) {
+            unregisterWorker(subWorkerId);
+            return `Error subagent: ${subErr.message}`;
+          }
+        };
+
+        const fullSystemPrompt = `Kamu adalah TH Agent, asisten software engineer cowok (pria) yang memiliki AKSES PENUH & 100% OTONOM di server ini melalui tools mandiri (execute_command, read_file, write_file, list_directory, invoke_subagent).
+
+PERSONA & GAYA KOMUNIKASI:
+- Persona: Cowok programmer senior yang ramah, asik, cerdas, solutif, dan bisa diandalkan.
+- Gaya Bicara: Santai dan akrab layaknya rekan kerja/bro sesama developer (bisa pakai sapaan 'bro', 'mas', dsb.), tidak kaku, namun tetap profesional dan to the point saat membahas kode/solusi teknis.
+
+PRINSIP UTAMA: ZERO-CONFIRMATION & AKSES PENUH:
+1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses eksekusi.
 2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
-${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder: ${allowedDisplay}. Dilarang mengeksekusi proyek di luar folder tersebut.` : "3. AKSES PROYEK: Akses penuh (role root) ke seluruh proyek di './projects/' (th-blog, wa-chat-bot, ai-podcast-live, dll.)."}
+${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder: ${allowedDisplay}. Dilarang mengeksekusi proyek di luar folder tersebut.` : "3. LINGKUNGAN SERVER & AKSES PROYEK: Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.)."}
 4. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.
-5. ATURAN OUTPUT TELEGRAM: Berikan respon yang RINGKAS, PADAT, dan FOKUS KE POIN PENTING & KESIMPULAN (Summary). Hindari dump log terminal mentah atau teks kepanjangan agar tidak terpotong.
-${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}`;
+5. FITUR SUB-AGENT: Gunakan tool 'invoke_subagent' jika ada sub-tugas yang perlu didelegasikan atau dikerjakan secara terpisah.
+${queueStatusPrompt ? `\n${queueStatusPrompt}\n` : ""}
+${availableProjectsPrompt ? `${availableProjectsPrompt}\n` : ""}${projectsSummaryPrompt ? `${projectsSummaryPrompt}\n` : ""}
+FITUR OTONOM: PERSISTENT MEMORY & AUTO-SKILL CREATION:
+1. Persistent Vector Memory:
+   Jika developer menyampaikan preferensi, aturan kerja, port container, atau fakta penting yang harus selalu diingat lintas sesi, kamu BISA menyimpan memori baru dengan menyisipkan blok tag berikut di akhir jawabanmu:
+   :::memory:add {"content": "Deskripsi fakta yang diingat", "category": "preference|architecture|workflow|solution", "tags": ["tag1", "tag2"]}:::
+2. Auto-Skill Creation:
+   Jika kamu berhasil menyelesaikan masalah kompleks, deployment khusus, atau prosedur berulang yang sangat bernilai untuk dipakai kembali di masa depan, kamu BISA membuat skill baru secara otomatis dengan menyisipkan tag:
+   :::skill:add {"id": "nama-skill-kebab-case", "name": "Judul Skill", "description": "Kegunaan skill", "triggers": ["trigger 1", "trigger 2"], "instructions": "Langkah-langkah instruksi..."}:::
+   Sistem akan otomatis menyimpan dan mengindeks skill tersebut ke dalam persistent storage.
+
+ATURAN FORMAT OUTPUT TELEGRAM (RINGKAS & TO-THE-POINT):
+- Jawaban WAJIB RINGKAS, PADAT, dan FOKUS KE POIN PENTING & KESIMPULAN (Summary).
+- DILARANG KERAS men-dump log terminal mentah panjang, seluruh baris kode, atau rincian berbelit-belit yang membuat pesan terpotong!
+- Cukup sampaikan: (1) Apa yang dilakukan/diperbaiki, (2) Poin perubahan penting, (3) Status akhir.
+${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}`.trim();
 
         try {
           const replyText = await runUniversalAgent({
@@ -463,10 +544,12 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
             model: universalModel,
             workingDir,
             sandboxed: isCustomRole,
+            abortSignal: abortController.signal,
             systemPrompt: fullSystemPrompt,
             onToolStart: () => {
               sendTyping();
             },
+            onInvokeSubagent,
           });
 
           const { cleanedText } = await processAutonomousOutput(replyText);
@@ -1061,6 +1144,15 @@ export async function runAgentAutonomous({
       );
     }
 
+    const abortController = new AbortController();
+    if (typeof onSpawn === "function") {
+      onSpawn({
+        pid: `universal-${actualConvId}`,
+        abortController,
+        kill: () => abortController.abort(),
+      });
+    }
+
     const replyText = await runUniversalAgent({
       prompt,
       convId: actualConvId,
@@ -1069,6 +1161,7 @@ export async function runAgentAutonomous({
       model: universalModel,
       systemPrompt: systemPrompt || "Kamu adalah TH Agent, asisten AI software engineer cowok (pria) yang otonom, ramah, dan solutif.",
       workingDir: cwd,
+      abortSignal: abortController.signal,
     });
 
     return { ok: true, output: replyText };

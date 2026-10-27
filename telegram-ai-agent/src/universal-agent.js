@@ -85,6 +85,27 @@ export const AGENT_TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "invoke_subagent",
+      description: "Mendelegasikan sub-tugas tertentu ke Sub-Agent independen yang berjalan secara otonom di server (misal untuk tugas paralel atau fokus pada satu proyek).",
+      parameters: {
+        type: "object",
+        properties: {
+          task: {
+            type: "string",
+            description: "Instruksi tugas yang jelas, terarah, dan spesifik untuk dikerjakan oleh sub-agent.",
+          },
+          target_project: {
+            type: "string",
+            description: "Nama direktori subfolder proyek di ./projects (contoh: 'th-blog', 'wa-chat-bot', default: sama dengan parent).",
+          },
+        },
+        required: ["task"],
+      },
+    },
+  },
 ];
 
 // Eksekusi fungsi tool lokal
@@ -127,9 +148,16 @@ async function executeToolCall(toolCall, options = {}) {
       }
 
       case "read_file": {
-        const resolvedPath = path.isAbsolute(args.file_path)
-          ? args.file_path
-          : path.resolve(baseDir, args.file_path);
+        let resolvedPath;
+        if (path.isAbsolute(args.file_path)) {
+          resolvedPath = args.file_path;
+        } else if (args.file_path.startsWith("uploads/") || args.file_path.startsWith("./uploads/")) {
+          resolvedPath = path.resolve(ROOT_DIR, args.file_path.replace(/^\.\//, ""));
+        } else if (args.file_path.startsWith("projects/") || args.file_path.startsWith("./projects/")) {
+          resolvedPath = path.resolve(ROOT_DIR, args.file_path.replace(/^\.\//, ""));
+        } else {
+          resolvedPath = path.resolve(baseDir, args.file_path);
+        }
         if (options.sandboxed && !resolvedPath.startsWith(baseDir)) {
           return `Akses Ditolak: Path file '${args.file_path}' berada di luar scope folder yang diizinkan (${baseDir}).`;
         }
@@ -138,9 +166,16 @@ async function executeToolCall(toolCall, options = {}) {
       }
 
       case "write_file": {
-        const resolvedPath = path.isAbsolute(args.file_path)
-          ? args.file_path
-          : path.resolve(baseDir, args.file_path);
+        let resolvedPath;
+        if (path.isAbsolute(args.file_path)) {
+          resolvedPath = args.file_path;
+        } else if (args.file_path.startsWith("uploads/") || args.file_path.startsWith("./uploads/")) {
+          resolvedPath = path.resolve(ROOT_DIR, args.file_path.replace(/^\.\//, ""));
+        } else if (args.file_path.startsWith("projects/") || args.file_path.startsWith("./projects/")) {
+          resolvedPath = path.resolve(ROOT_DIR, args.file_path.replace(/^\.\//, ""));
+        } else {
+          resolvedPath = path.resolve(baseDir, args.file_path);
+        }
         if (options.sandboxed && !resolvedPath.startsWith(baseDir)) {
           return `Akses Ditolak: Path file '${args.file_path}' berada di luar scope folder yang diizinkan (${baseDir}).`;
         }
@@ -158,6 +193,18 @@ async function executeToolCall(toolCall, options = {}) {
         const items = await readdir(resolvedPath, { withFileTypes: true });
         const list = items.map((it) => `${it.isDirectory() ? "📁 [DIR] " : "📄 [FILE]"} ${it.name}`);
         return list.length ? list.join("\n") : "[Direktori kosong]";
+      }
+
+      case "invoke_subagent": {
+        const subTask = args.task;
+        if (!subTask) return "Error: Parameter 'task' wajib diisi.";
+        if (typeof options.onInvokeSubagent === "function") {
+          return await options.onInvokeSubagent({
+            task: subTask,
+            target_project: args.target_project || "",
+          });
+        }
+        return "Error: Fitur subagent tidak tersedia pada sesi ini.";
       }
 
       default:
@@ -219,7 +266,9 @@ export async function runUniversalAgent({
   systemPrompt,
   workingDir = null,
   sandboxed = false,
+  abortSignal = null,
   onToolStart,
+  onInvokeSubagent,
 }) {
   let effectiveApiKey = apiKey;
   const isCustomOrLocal =
@@ -289,6 +338,9 @@ export async function runUniversalAgent({
 
   try {
     while (currentTurn < MAX_TURNS) {
+      if (abortSignal?.aborted) {
+        throw new Error("Tugas Universal Agent dibatalkan.");
+      }
       currentTurn++;
 
       // Sanitasi payload messages sebelum dikirim:
@@ -321,6 +373,10 @@ export async function runUniversalAgent({
 
       const controller = new AbortController();
       const fetchTimeout = setTimeout(() => controller.abort(), 90000); // Timeout 90 detik per turn
+      const onAbort = () => controller.abort();
+      if (abortSignal) {
+        abortSignal.addEventListener("abort", onAbort, { once: true });
+      }
 
       let res;
       try {
@@ -337,6 +393,10 @@ export async function runUniversalAgent({
         });
       } catch (fetchErr) {
         clearTimeout(fetchTimeout);
+        if (abortSignal) abortSignal.removeEventListener("abort", onAbort);
+        if (abortSignal?.aborted) {
+          throw new Error("Tugas Universal Agent dibatalkan.");
+        }
         if (fetchErr.name === "AbortError") {
           throw new Error(`Timeout: Server Pi di ${cleanBaseUrl} tidak merespon dalam 90 detik.`);
         }
@@ -346,6 +406,7 @@ export async function runUniversalAgent({
         throw fetchErr;
       }
       clearTimeout(fetchTimeout);
+      if (abortSignal) abortSignal.removeEventListener("abort", onAbort);
 
       if (!res.ok) {
         const errText = await res.text();
@@ -424,7 +485,11 @@ export async function runUniversalAgent({
             onToolStart(toolCall.function.name, toolCall.function.arguments);
           }
 
-          const toolResult = await executeToolCall(toolCall, { workingDir, sandboxed });
+          const toolResult = await executeToolCall(toolCall, {
+            workingDir,
+            sandboxed,
+            onInvokeSubagent,
+          });
           messages.push({
             role: "tool",
             tool_call_id: toolCall.id,
