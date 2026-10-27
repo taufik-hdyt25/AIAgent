@@ -187,13 +187,13 @@ export function createWebServer() {
       try {
         const { parsed } = await readEnvFile();
         const baseUrl =
-          urlObj.searchParams.get("baseUrl") ||
+          url.searchParams.get("baseUrl") ||
           parsed.UNIVERSAL_BASE_URL ||
           process.env.UNIVERSAL_BASE_URL ||
           "https://api.deepseek.com/v1";
         const apiKey =
-          urlObj.searchParams.get("apiKey") !== null
-            ? urlObj.searchParams.get("apiKey")
+          url.searchParams.get("apiKey") !== null
+            ? url.searchParams.get("apiKey")
             : (parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "");
 
         const models = await fetchRemoteModels(baseUrl, apiKey);
