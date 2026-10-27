@@ -74,11 +74,17 @@ Ini akan otomatis menambahkan flag `--dangerously-skip-permissions` saat memangg
 
 ## ⚡ Instalasi Cepat Sekali Jalan (One-Line Installer)
 
-Cukup salin dan jalankan satu perintah ini di terminal **macOS**, **Linux VPS**, atau **Raspberry Pi**:
-
+### 🍎 macOS, 🐧 Linux VPS & 🍓 Raspberry Pi:
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh)"
 ```
+
+### 🪟 Windows (PowerShell):
+Buka **PowerShell** (Run as Administrator / User biasa) dan jalankan:
+```powershell
+irm https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/telegram-ai-agent/install.ps1 | iex
+```
+*(Atau jalankan file `install.bat` dengan klik dua kali).*
 
 Atau jika sudah melakukan git clone:
 ```bash

@@ -39,6 +39,15 @@ else
     echo -e "${CYAN}Sistem Terdeteksi: ${OS} (${ARCH})${NC}"
 fi
 
+case "$OS" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo -e "${YELLOW}🪟 Terdeteksi Lingkungan Windows (Git Bash / MSYS)!${NC}"
+        echo -e "${CYAN}Untuk setup native Windows otomatis terbaik, jalankan perintah ini di PowerShell:${NC}"
+        echo -e "   ${GREEN}irm https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/telegram-ai-agent/install.ps1 | iex${NC}"
+        echo ""
+        ;;
+esac
+
 # ==============================================================================
 # Helper Fungsi
 # ==============================================================================

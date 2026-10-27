@@ -65,9 +65,30 @@ export const IS_PI = (() => {
   return false;
 })();
 
+export const IS_WINDOWS = process.platform === "win32";
+
+function findDefaultBin(binName, unixDefaultRel) {
+  if (IS_WINDOWS) {
+    const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const candidates = [
+      path.join(appData, "npm", `${binName}.cmd`),
+      path.join(appData, "npm", `${binName}.exe`),
+      path.join(localAppData, "Programs", binName, `${binName}.exe`),
+      path.join(os.homedir(), ".local", "bin", `${binName}.cmd`),
+      path.join(os.homedir(), ".local", "bin", binName),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+    return binName;
+  }
+  return path.join(os.homedir(), unixDefaultRel);
+}
+
 export const BOT_TOKEN = process.env.BOT_TOKEN || "";
-export const AGY_BIN = process.env.AGY_BIN || path.join(os.homedir(), ".local/bin/agy");
-export const CLAUDE_BIN = process.env.CLAUDE_BIN || path.join(os.homedir(), ".local/bin/claude");
+export const AGY_BIN = process.env.AGY_BIN || findDefaultBin("agy", ".local/bin/agy");
+export const CLAUDE_BIN = process.env.CLAUDE_BIN || findDefaultBin("claude", ".local/bin/claude");
 
 export const DEFAULT_ENGINE = process.env.CLI_ENGINE || "agy";
 export const DEFAULT_AGY_MODEL = process.env.AGY_MODEL || "gemini-3.8-flash-medium";

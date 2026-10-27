@@ -67,6 +67,16 @@ export function killAllWorkers(signal = "SIGTERM") {
 
 export function killProcessTree(childProcess, signal = "SIGTERM") {
   if (!childProcess || !childProcess.pid) return;
+  if (process.platform === "win32") {
+    try {
+      spawn("taskkill", ["/pid", String(childProcess.pid), "/T", "/F"], { stdio: "ignore" });
+    } catch (_) {
+      try {
+        childProcess.kill(signal);
+      } catch (_) {}
+    }
+    return;
+  }
   try {
     process.kill(-childProcess.pid, signal);
   } catch {
@@ -94,10 +104,11 @@ export function runProcess({
   onSpawn,
 }) {
   return new Promise((resolve) => {
+    const isWin = process.platform === "win32";
     const child = spawn(command, args, {
       cwd,
-      shell,
-      detached: true,
+      shell: isWin ? true : shell,
+      detached: !isWin,
       env,
       stdio: ["ignore", "pipe", "pipe"],
     });
