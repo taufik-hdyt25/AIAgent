@@ -233,7 +233,7 @@ export async function runUniversalAgent({
 
   const messages = getSessionMessages(convId);
 
-  // Jika sesi baru, tambahkan system message
+  // Jika sesi baru atau systemPrompt berbeda, perbarui system message
   if (messages.length === 0) {
     messages.push({
       role: "system",
@@ -241,15 +241,22 @@ export async function runUniversalAgent({
         systemPrompt ||
         "Kamu adalah TH Agent, asisten AI software engineer cowok (pria) yang memiliki AKSES PENUH dan OTONOM. DILARANG KERAS meminta izin/konfirmasi yang memperlama proses. Langsung eksekusi tugas nyata menggunakan tools sampai tuntas. ATURAN OUTPUT: Berikan respon yang RINGKAS, PADAT, dan LANGSUNG KE POIN PENTING & KESIMPULAN (Summary). Hindari dump log terminal panjang agar pesan pas di layar chat Telegram.",
     });
+  } else if (systemPrompt) {
+    messages[0] = { role: "system", content: systemPrompt };
+  }
+
+  // Bersihkan history yang korup (misal trailing user message dari turn sebelumnya yang gagal)
+  while (messages.length > 1 && messages[messages.length - 1].role === "user") {
+    messages.pop();
   }
 
   // Tambahkan prompt pengguna
   messages.push({ role: "user", content: prompt });
 
-  // Batasi history maksimal 25 pesan agar tidak melampaui context window
-  if (messages.length > 25) {
+  // Batasi history maksimal 8 pesan terakhir (system + 7 turn) agar hemat memori & context window server Pi
+  if (messages.length > 8) {
     const sysMsg = messages[0];
-    messages.splice(0, messages.length - 20);
+    messages.splice(1, messages.length - 7);
     if (messages[0].role !== "system") {
       messages.unshift(sysMsg);
     }
@@ -257,106 +264,156 @@ export async function runUniversalAgent({
 
   const MAX_TURNS = 10;
   let currentTurn = 0;
+  const initialMessageCount = messages.length - 1; // Posisi sebelum prompt user baru
 
-  while (currentTurn < MAX_TURNS) {
-    currentTurn++;
+  try {
+    while (currentTurn < MAX_TURNS) {
+      currentTurn++;
 
-    const payload = {
-      model: activeModel,
-      messages,
-      tools: AGENT_TOOLS,
-      tool_choice: "auto",
-      temperature: 0.3,
-    };
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${effectiveApiKey}`,
-        "HTTP-Referer": "https://github.com/taufik-hdyt25/AIAgent",
-        "X-Title": "TH Agent Telegram",
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      let errMsg = `HTTP Error ${res.status}`;
-      try {
-        const parsed = JSON.parse(errText);
-        errMsg = parsed.error?.message || errText;
-      } catch {
-        errMsg = errText;
-      }
-
-      // Fallback jika endpoint/server lokal tidak mendukung function calling / tools
-      if (
-        payload.tools &&
-        (errMsg.toLowerCase().includes("tool") ||
-          errMsg.toLowerCase().includes("function") ||
-          res.status === 400)
-      ) {
-        delete payload.tools;
-        delete payload.tool_choice;
-        try {
-          const retryRes = await fetch(endpoint, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${effectiveApiKey}`,
-              "HTTP-Referer": "https://github.com/taufik-hdyt25/AIAgent",
-              "X-Title": "TH Agent Telegram",
-            },
-            body: JSON.stringify(payload),
-          });
-          if (retryRes.ok) {
-            const retryData = await retryRes.json();
-            const retryChoice = retryData.choices?.[0];
-            if (retryChoice?.message) {
-              messages.push(retryChoice.message);
-              return retryChoice.message.content || "[Pesan kosong]";
-            }
+      // Sanitasi payload messages sebelum dikirim:
+      // Pastikan urutan role valid (tidak ada tool_calls tanpa respon tool, tidak ada consecutive user)
+      const sanitizedMessages = [];
+      for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0) {
+          // Periksa apakah pesan berikutnya adalah respon tool
+          const nextMsg = messages[i + 1];
+          if (!nextMsg || nextMsg.role !== "tool") {
+            // Hapus tool_calls menggantung yang tidak selesai
+            sanitizedMessages.push({
+              role: "assistant",
+              content: msg.content || "Menjalankan perintah...",
+            });
+            continue;
           }
-        } catch {
-          // Lanjut lempar error asli jika retry gagal
         }
+        sanitizedMessages.push(msg);
       }
 
-      throw new Error(`Gagal memanggil API (${cleanBaseUrl}): ${errMsg}`);
-    }
+      const payload = {
+        model: activeModel,
+        messages: sanitizedMessages,
+        tools: AGENT_TOOLS,
+        tool_choice: "auto",
+        temperature: 0.3,
+      };
 
-    const data = await res.json();
-    const choice = data.choices?.[0];
-    if (!choice || !choice.message) {
-      throw new Error("Respon dari penyedia AI kosong atau tidak valid.");
-    }
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 90000); // Timeout 90 detik per turn
 
-    const assistantMsg = choice.message;
-    messages.push(assistantMsg);
-
-    // Jika model meminta pemanggilan Tool
-    if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
-      for (const toolCall of assistantMsg.tool_calls) {
-        if (typeof onToolStart === "function") {
-          onToolStart(toolCall.function.name, toolCall.function.arguments);
-        }
-
-        const toolResult = await executeToolCall(toolCall, { workingDir, sandboxed });
-        messages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          name: toolCall.function.name,
-          content: String(toolResult),
+      let res;
+      try {
+        res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${effectiveApiKey}`,
+            "HTTP-Referer": "https://github.com/taufik-hdyt25/AIAgent",
+            "X-Title": "TH Agent Telegram",
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
         });
+      } catch (fetchErr) {
+        clearTimeout(fetchTimeout);
+        if (fetchErr.name === "AbortError") {
+          throw new Error(`Timeout: Server Pi di ${cleanBaseUrl} tidak merespon dalam 90 detik.`);
+        }
+        if (fetchErr.message?.includes("ECONNREFUSED") || fetchErr.cause?.code === "ECONNREFUSED") {
+          throw new Error(`Tidak dapat terhubung ke server Pi di ${cleanBaseUrl} (Connection Refused). Pastikan server Pi sedang berjalan dan port benar.`);
+        }
+        throw fetchErr;
       }
-      // Lanjut ke iterasi berikutnya agar model membaca hasil tool
-      continue;
+      clearTimeout(fetchTimeout);
+
+      if (!res.ok) {
+        const errText = await res.text();
+        let errMsg = `HTTP Error ${res.status}`;
+        try {
+          const parsed = JSON.parse(errText);
+          errMsg = parsed.error?.message || errText;
+        } catch {
+          errMsg = errText;
+        }
+
+        // Fallback jika endpoint/server lokal tidak mendukung function calling / tools
+        if (
+          payload.tools &&
+          (errMsg.toLowerCase().includes("tool") ||
+            errMsg.toLowerCase().includes("function") ||
+            res.status === 400)
+        ) {
+          delete payload.tools;
+          delete payload.tool_choice;
+          const retryController = new AbortController();
+          const retryTimeout = setTimeout(() => retryController.abort(), 90000);
+          try {
+            const retryRes = await fetch(endpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${effectiveApiKey}`,
+                "HTTP-Referer": "https://github.com/taufik-hdyt25/AIAgent",
+                "X-Title": "TH Agent Telegram",
+              },
+              body: JSON.stringify(payload),
+              signal: retryController.signal,
+            });
+            clearTimeout(retryTimeout);
+            if (retryRes.ok) {
+              const retryData = await retryRes.json();
+              const retryChoice = retryData.choices?.[0];
+              if (retryChoice?.message) {
+                messages.push(retryChoice.message);
+                return retryChoice.message.content || "[Pesan kosong]";
+              }
+            }
+          } catch {
+            clearTimeout(retryTimeout);
+          }
+        }
+
+        throw new Error(`Gagal memanggil API (${cleanBaseUrl}): ${errMsg}`);
+      }
+
+      const data = await res.json();
+      const choice = data.choices?.[0];
+      if (!choice || !choice.message) {
+        throw new Error("Respon dari penyedia AI kosong atau tidak valid.");
+      }
+
+      const assistantMsg = choice.message;
+      messages.push(assistantMsg);
+
+      // Jika model meminta pemanggilan Tool
+      if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
+        for (const toolCall of assistantMsg.tool_calls) {
+          if (typeof onToolStart === "function") {
+            onToolStart(toolCall.function.name, toolCall.function.arguments);
+          }
+
+          const toolResult = await executeToolCall(toolCall, { workingDir, sandboxed });
+          messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            name: toolCall.function.name,
+            content: String(toolResult),
+          });
+        }
+        // Lanjut ke iterasi berikutnya agar model membaca hasil tool
+        continue;
+      }
+
+      // Jika model sudah selesai dan mengembalikan teks jawaban
+      return assistantMsg.content || "[Pesan kosong]";
     }
 
-    // Jika model sudah selesai dan mengembalikan teks jawaban
-    return assistantMsg.content || "[Pesan kosong]";
+    return "⚠️ Batas maksimum pemanggilan tools tercapai (10 turn). Tugas dihentikan untuk keamanan.";
+  } catch (err) {
+    // Rollback session messages ke posisi sebelum prompt ini agar turn berikutnya tidak korup!
+    while (messages.length > initialMessageCount) {
+      messages.pop();
+    }
+    throw err;
   }
-
-  return "⚠️ Batas maksimum pemanggilan tools tercapai (10 turn). Tugas dihentikan untuk keamanan.";
 }

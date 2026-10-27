@@ -236,9 +236,10 @@ export async function setUserModel(userId, modelId) {
 }
 
 export async function getUserEngine(userId) {
-  if (!userId) return DEFAULT_ENGINE;
+  const envEngine = process.env.CLI_ENGINE;
+  if (!userId) return envEngine || DEFAULT_ENGINE;
   const context = await loadContext();
-  return context.engines?.[String(userId)] || DEFAULT_ENGINE;
+  return context.engines?.[String(userId)] || envEngine || DEFAULT_ENGINE;
 }
 
 export async function setUserEngine(userId, engine) {
@@ -246,5 +247,16 @@ export async function setUserEngine(userId, engine) {
   const context = await loadContext();
   if (!context.engines) context.engines = {};
   context.engines[String(userId)] = engine;
+  await saveContext(context);
+}
+
+export async function setGlobalEngine(engine) {
+  if (!engine) return;
+  process.env.CLI_ENGINE = engine;
+  const context = await loadContext();
+  if (!context.engines) context.engines = {};
+  for (const uId of Object.keys(context.engines)) {
+    context.engines[uId] = engine;
+  }
   await saveContext(context);
 }

@@ -38,7 +38,7 @@ import {
   normalizePiUrl,
 } from "./config/models.js";
 import { syncPiModelDirectly } from "./services/pi-service.js";
-import { setGlobalUniversalModel } from "./services/context-store.js";
+import { setGlobalUniversalModel, setGlobalEngine } from "./services/context-store.js";
 import { loadWatchConfig, saveWatchConfig } from "./services/github-service.js";
 import {
   getDeployConfig,
@@ -564,6 +564,7 @@ export function createWebServer() {
           }
           if (payload.CLI_ENGINE !== undefined) {
             updates.CLI_ENGINE = String(payload.CLI_ENGINE).trim();
+            await setGlobalEngine(updates.CLI_ENGINE).catch(() => {});
           }
           if (payload.AGY_AUTO_APPROVE_PERMISSIONS !== undefined) {
             updates.AGY_AUTO_APPROVE_PERMISSIONS = String(payload.AGY_AUTO_APPROVE_PERMISSIONS);
