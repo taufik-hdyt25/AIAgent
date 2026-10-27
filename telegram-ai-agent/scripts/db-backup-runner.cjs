@@ -36,11 +36,6 @@ const KNOWN_SQLITE_DATABASES = [
     filePath: "/home/th-agent/projects/wa-chat-bot/whatsapp-bot/prisma/dev.db",
     label: "WhatsApp Bot Prisma",
   },
-  {
-    name: "nine_router_db",
-    filePath: "/home/ubuntu/.9router/db/data.sqlite",
-    label: "9Router Database",
-  },
 ];
 
 const AI_AGENT_STORES = [
