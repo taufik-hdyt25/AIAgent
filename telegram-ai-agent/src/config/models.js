@@ -9,6 +9,8 @@ export const DEFAULT_AGY_MODELS = [
   { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High Thinking)", badge: "Maksimal" },
   { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low Thinking)", badge: "Cepat" },
   { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)", badge: "Populer" },
+  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
+  { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
   { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)", badge: "Kuat" },
   { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)", badge: "Open" },
 ];
@@ -20,6 +22,7 @@ export const DEFAULT_CLAUDE_MODELS = [
   { id: "fable", name: "Claude Fable (Experimental Creative Agent)", badge: "Eksperimental" },
   { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
   { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
+  { id: "claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Dot Notation)", badge: "Populer" },
   { id: "claude-3-5-haiku", name: "Claude 3.5 Haiku (Fast & Cost Efficient)", badge: "Hemat" },
   { id: "claude-3-opus", name: "Claude 3 Opus (Deep Analysis)", badge: "Maksimal" },
 ];
@@ -33,6 +36,10 @@ export const DEFAULT_UNIVERSAL_MODELS = [
   { id: "deepseek/deepseek-coder", name: "DeepSeek Coder (OpenRouter)", badge: "Koding" },
   { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
   { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
+  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Direct / LiteLLM)", badge: "Populer" },
+  { id: "claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Dot Notation)", badge: "Populer" },
+  { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku (OpenRouter)", badge: "Hemat" },
+  { id: "claude-3-5-haiku", name: "Claude 3.5 Haiku (Direct / LiteLLM)", badge: "Hemat" },
   { id: "openai/gpt-4o", name: "GPT-4o (Omni Flagship)", badge: "Flagship" },
   { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cepat & Ringkas)", badge: "Cepat" },
   { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (Super Cepat)", badge: "Kilat" },
@@ -126,12 +133,16 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
     candidateEndpoints.push(`${rootUrl}/models`);
     candidateEndpoints.push(`${rootUrl}/model_list`);
     candidateEndpoints.push(`${cleanUrl}/model_list`);
+    candidateEndpoints.push(`${cleanUrl}/model/info`);
+    candidateEndpoints.push(`${rootUrl}/model/info`);
     candidateEndpoints.push(`${rootUrl}/api/tags`); // Format Ollama
   } else {
     candidateEndpoints.push(`${cleanUrl}/models`);
     candidateEndpoints.push(`${cleanUrl}/v1/models`);
     candidateEndpoints.push(`${cleanUrl}/model_list`);
     candidateEndpoints.push(`${cleanUrl}/v1/model_list`);
+    candidateEndpoints.push(`${cleanUrl}/model/info`);
+    candidateEndpoints.push(`${cleanUrl}/v1/model/info`);
     candidateEndpoints.push(`${cleanUrl}/api/tags`);
   }
 
@@ -157,6 +168,14 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
         list = data.data.models;
       } else if (Array.isArray(data)) {
         list = data;
+      } else if (data?.data && typeof data.data === "object" && !Array.isArray(data.data)) {
+        // Format dictionary LiteLLM /model/info: { data: { "claude-3-5-sonnet": { ... } } }
+        list = Object.entries(data.data).map(([key, val]) => {
+          if (typeof val === "object" && val !== null) {
+            return { id: val.model_name || val.id || val.model || key, ...val };
+          }
+          return { id: key, name: String(val) };
+        });
       } else if (data?.id || data?.name || data?.model || data?.model_name) {
         list = [data];
       }

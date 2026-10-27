@@ -2017,7 +2017,7 @@ export function registerBasicCommands(bot) {
 
     const currentModel = await getUserUniversalModel(userId);
     const keyboard = new InlineKeyboard();
-    for (const m of models.slice(0, 15)) {
+    for (const m of models.slice(0, 30)) {
       const isCurrent = m.id === currentModel;
       keyboard.text(`${isCurrent ? "🔘 " : "⚪ "}${m.name || m.id}`, `set_model:${m.id}`).row();
     }
@@ -2070,13 +2070,13 @@ export function registerBasicCommands(bot) {
     }
 
     const modelListStr = res.allModels
-      .slice(0, 10)
+      .slice(0, 30)
       .map((m) => `• \`${m.id}\`${m.id === res.activeModel ? " *(Sedang Dipakai ✅)*" : ""}`)
       .join("\n");
 
     const moreStr =
-      res.allModels.length > 10
-        ? `\n_...dan ${res.allModels.length - 10} model lainnya._`
+      res.allModels.length > 30
+        ? `\n_...dan ${res.allModels.length - 30} model lainnya._`
         : "";
 
     await ctx.api

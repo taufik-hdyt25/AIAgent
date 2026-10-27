@@ -88,7 +88,7 @@ export function registerModelHandlers(bot) {
       keyboard.text(`${isAuto ? "🔘 " : "⚪ "}⚡ Auto-Detect (Dynamic dari Server)`, "set_model:auto").row();
     }
 
-    const displayModels = modelList.slice(0, 15);
+    const displayModels = modelList.slice(0, 30);
     for (const model of displayModels) {
       const isCurrent = model.id === currentModel;
       const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}${model.badge ? ` [${model.badge}]` : ""}`;
@@ -107,8 +107,8 @@ export function registerModelHandlers(bot) {
         : "";
 
     const moreHint =
-      modelList.length > 15
-        ? `\n_Menampilkan 15 dari ${modelList.length} model. Ketik /model <id> untuk memilih model lainnya._\n`
+      modelList.length > 30
+        ? `\n_Menampilkan 30 dari ${modelList.length} model. Ketik /model <id> untuk memilih model lainnya._\n`
         : "";
 
     await ctx.reply(
@@ -155,7 +155,7 @@ export function registerModelHandlers(bot) {
 
         const keyboard = new InlineKeyboard();
         keyboard.text("🔘 ⚡ Auto-Detect (Dynamic dari Server)", "set_model:auto").row();
-        for (const model of modelList.slice(0, 15)) {
+        for (const model of modelList.slice(0, 30)) {
           keyboard.text(`⚪ ${model.name}`, `set_model:${model.id}`).row();
         }
 
@@ -196,7 +196,7 @@ export function registerModelHandlers(bot) {
     if (isUniversal) {
       keyboard.text("⚪ ⚡ Auto-Detect (Dynamic dari Server)", "set_model:auto").row();
     }
-    for (const model of modelList.slice(0, 15)) {
+    for (const model of modelList.slice(0, 30)) {
       const isCurrent = model.id === chosenId;
       const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;
       keyboard.text(label, `set_model:${model.id}`).row();
