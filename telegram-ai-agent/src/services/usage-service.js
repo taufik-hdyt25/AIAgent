@@ -33,14 +33,125 @@ export function getTodayKey() {
 }
 
 /**
+ * Scan seluruh transcript historical dari Antigravity CLI (.gemini/antigravity-cli/brain)
+ * dan masukkan ke usage-stats.json agar pemakaian akumulasi token langsung terdata akurat.
+ */
+export async function backfillUsageFromBrainTranscripts(existingStats = null) {
+  const brainDir = path.join(os.homedir(), ".gemini", "antigravity-cli", "brain");
+  const stats = existingStats || {
+    daily: {},
+    totals: { totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, requests: 0 },
+    sessions: {},
+    recentHistory: [],
+    backfilled: false,
+  };
+
+  if (!stats.sessions) stats.sessions = {};
+  if (!stats.daily) stats.daily = {};
+  if (!stats.totals) {
+    stats.totals = { totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, requests: 0 };
+  }
+
+  if (!fs.existsSync(brainDir)) {
+    stats.backfilled = true;
+    return stats;
+  }
+
+  try {
+    const entries = await fs.promises.readdir(brainDir, { withFileTypes: true });
+
+    for (const ent of entries) {
+      if (!ent.isDirectory()) continue;
+      const convId = ent.name;
+      const tf = path.join(brainDir, convId, ".system_generated", "logs", "transcript.jsonl");
+      if (!fs.existsSync(tf)) continue;
+
+      let sessionInput = 0;
+      let sessionOutput = 0;
+
+      try {
+        const stream = fs.createReadStream(tf, { encoding: "utf8" });
+        const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+
+        for await (const line of rl) {
+          if (!line.trim()) continue;
+          try {
+            const item = JSON.parse(line);
+            if (typeof item.input_tokens === "number" || typeof item.output_tokens === "number") {
+              const inp = item.input_tokens || 0;
+              const out = item.output_tokens || 0;
+              const tot = inp + out;
+              if (tot <= 0) continue;
+
+              sessionInput += inp;
+              sessionOutput += out;
+
+              const dateStr = item.created_at
+                ? new Date(item.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" })
+                : getTodayKey();
+
+              if (!stats.daily[dateStr]) {
+                stats.daily[dateStr] = {
+                  totalInputTokens: 0,
+                  totalOutputTokens: 0,
+                  totalTokens: 0,
+                  requests: 0,
+                  byEngine: {},
+                  byModel: {},
+                };
+              }
+
+              const d = stats.daily[dateStr];
+              d.totalInputTokens += inp;
+              d.totalOutputTokens += out;
+              d.totalTokens += tot;
+              d.requests = (d.requests || 0) + 1;
+
+              if (!d.byEngine["agy"]) {
+                d.byEngine["agy"] = { inputTokens: 0, outputTokens: 0, totalTokens: 0, requests: 0 };
+              }
+              d.byEngine["agy"].inputTokens += inp;
+              d.byEngine["agy"].outputTokens += out;
+              d.byEngine["agy"].totalTokens += tot;
+              d.byEngine["agy"].requests += 1;
+
+              stats.totals.totalInputTokens += inp;
+              stats.totals.totalOutputTokens += out;
+              stats.totals.totalTokens += tot;
+              stats.totals.requests += 1;
+            }
+          } catch {}
+        }
+      } catch (err) {
+        console.warn(`[Usage Service] Gagal scan transcript ${convId}:`, err.message);
+      }
+
+      stats.sessions[convId] = {
+        inputTokens: sessionInput,
+        outputTokens: sessionOutput,
+        totalTokens: sessionInput + sessionOutput,
+      };
+    }
+
+    stats.backfilled = true;
+    await saveUsageStats(stats);
+  } catch (err) {
+    console.warn("[Usage Service] Gagal backfill brain transcripts:", err.message);
+  }
+
+  return stats;
+}
+
+/**
  * Muat data statistik penggunaan token
  */
 export async function loadUsageStats() {
+  let stats;
   try {
     const raw = await readFile(USAGE_FILE, "utf8");
-    return JSON.parse(raw);
+    stats = JSON.parse(raw);
   } catch {
-    return {
+    stats = {
       daily: {},
       totals: {
         totalInputTokens: 0,
@@ -48,9 +159,24 @@ export async function loadUsageStats() {
         totalTokens: 0,
         requests: 0,
       },
+      sessions: {},
       recentHistory: [],
+      backfilled: false,
     };
   }
+
+  if (!stats.sessions) stats.sessions = {};
+  if (!stats.daily) stats.daily = {};
+  if (!stats.totals) {
+    stats.totals = { totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, requests: 0 };
+  }
+
+  // Auto-backfill jika belum pernah dilakukan atau data kosong
+  if (!stats.backfilled || stats.totals.totalTokens === 0) {
+    stats = await backfillUsageFromBrainTranscripts(stats);
+  }
+
+  return stats;
 }
 
 /**
@@ -113,6 +239,44 @@ export async function getAgySessionTokens(convId) {
   } catch (err) {
     console.warn(`[Usage Service] Gagal parse transcript ${convId}:`, err.message);
     return null;
+  }
+}
+
+/**
+ * Catat pemakaian token sesi agy secara cerdas (hanya menghitung delta agar tidak dobel hitung)
+ */
+export async function recordAgySessionUsage({ convId, userId = null, model = "gemini-3.8-flash-high" }) {
+  if (!convId) return null;
+  const currentSessionTokens = await getAgySessionTokens(convId);
+  if (!currentSessionTokens || currentSessionTokens.totalTokens <= 0) return null;
+
+  const stats = await loadUsageStats();
+  if (!stats.sessions) stats.sessions = {};
+
+  const prev = stats.sessions[convId] || { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  const deltaInput = Math.max(0, currentSessionTokens.inputTokens - (prev.inputTokens || 0));
+  const deltaOutput = Math.max(0, currentSessionTokens.outputTokens - (prev.outputTokens || 0));
+  const deltaTotal = deltaInput + deltaOutput;
+
+  stats.sessions[convId] = {
+    inputTokens: currentSessionTokens.inputTokens,
+    outputTokens: currentSessionTokens.outputTokens,
+    totalTokens: currentSessionTokens.totalTokens,
+  };
+
+  if (deltaTotal > 0) {
+    return await recordUsage({
+      userId,
+      engine: "agy",
+      model,
+      inputTokens: deltaInput,
+      outputTokens: deltaOutput,
+      totalTokens: deltaTotal,
+      convId,
+    });
+  } else {
+    await saveUsageStats(stats);
+    return { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
   }
 }
 
@@ -221,19 +385,21 @@ export async function getUsageReport({ activeEngine = "agy", activeModel = "defa
     sessionStats = await getAgySessionTokens(convId);
   }
 
-  let text = `📊 *Statistik Penggunaan Token AI*\n\n`;
+  let text = `📊 *Statistik & Kuota Penggunaan Token AI*\n\n`;
 
+  // Sesi Aktif
   if (sessionStats && sessionStats.totalTokens > 0) {
     text += `💬 *Sesi Chat Ini (${activeModel}):*\n`;
     text += `• Input Tokens: \`${formatTokenCount(sessionStats.inputTokens)}\`\n`;
     text += `• Output Tokens: \`${formatTokenCount(sessionStats.outputTokens)}\`\n`;
-    text += `• Total Sesi Ini: \`${formatTokenCount(sessionStats.totalTokens)}\`\n\n`;
+    text += `• Total Sesi Ini: *${formatTokenCount(sessionStats.totalTokens)} token*\n\n`;
   }
 
+  // Hari Ini
   text += `📅 *Pemakaian Hari Ini (${today}):*\n`;
   text += `• Input Tokens: \`${formatTokenCount(day.totalInputTokens)}\`\n`;
   text += `• Output Tokens: \`${formatTokenCount(day.totalOutputTokens)}\`\n`;
-  text += `• Total Hari Ini: *${formatTokenCount(day.totalTokens)}*\n`;
+  text += `• Total Hari Ini: *${formatTokenCount(day.totalTokens)} token*\n`;
   text += `• Total Request: \`${day.requests || 0} tugas\`\n\n`;
 
   // Engine Breakdown
@@ -251,20 +417,17 @@ export async function getUsageReport({ activeEngine = "agy", activeModel = "defa
     text += "\n";
   }
 
-  // Model Breakdown (jika ada lebih dari 1)
-  const models = Object.keys(day.byModel || {});
-  if (models.length > 1) {
-    text += `🤖 *Rincian per Model:*\n`;
-    for (const m of models) {
-      const mod = day.byModel[m];
-      text += `• \`${m}\`: \`${formatTokenCount(mod.totalTokens)}\`\n`;
-    }
-    text += "\n";
-  }
+  // Total Akumulasi
+  text += `📈 *Total Akumulasi (Semua Waktu):*\n`;
+  text += `• Total Input: \`${formatTokenCount(stats.totals?.totalInputTokens || 0)}\`\n`;
+  text += `• Total Output: \`${formatTokenCount(stats.totals?.totalOutputTokens || 0)}\`\n`;
+  text += `• *TOTAL TOKEN:* *${formatTokenCount(stats.totals?.totalTokens || 0)} token*\n`;
+  text += `• Total Tugas AI: \`${stats.totals?.requests || 0} tugas\`\n\n`;
 
-  text += `📈 *Akumulasi Semua Waktu:*\n`;
-  text += `• Total Token: \`${formatTokenCount(stats.totals?.totalTokens || 0)}\`\n`;
-  text += `• Total Request: \`${stats.totals?.requests || 0} tugas\`\n\n`;
+  // Penjelasan Kuota
+  text += `ℹ️ *Status Batas / Kuota Token:*\n`;
+  text += `• Bot tidak menerapkan batasan kuota hard cap (unmetered by bot).\n`;
+  text += `• Pemakaian berjalan mengikuti kuota & rate limit akun provider (${activeEngine === "agy" ? "Google AI Antigravity" : activeEngine}).\n\n`;
   text += `💡 _Gunakan \`/model\` untuk memilih model atau \`/engine\` untuk mengganti engine._`;
 
   return text;
