@@ -1937,15 +1937,8 @@ export function registerBasicCommands(bot) {
 
     if (detectedModels.length > 0) {
       if (parts.length < 3) {
-        // Jika user tidak menentukan model spesifik, cari yang ada 'pi' atau pakai model pertama
-        const piMatch = detectedModels.find((m) =>
-          m.id.toLowerCase().includes("pi") || m.name.toLowerCase().includes("pi")
-        );
-        if (piMatch) {
-          targetModel = piMatch.id;
-        } else {
-          targetModel = detectedModels[0].id;
-        }
+        // Ambil langsung model yang di-declare di server Pi (model pertama)
+        targetModel = detectedModels[0].id;
       }
     }
 

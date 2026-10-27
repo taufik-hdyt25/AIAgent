@@ -95,26 +95,15 @@ export async function resolveDynamicUniversalModel(baseUrl, apiKey) {
   try {
     const list = await fetchRemoteModels(targetUrl, targetKey);
     if (list && list.length > 0) {
-      // 1. Cek apakah model yang dikonfigurasi pengguna ada di server
+      // 1. Cek apakah model yang dikonfigurasi pengguna ada di daftar server Pi
       const configuredModel = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
       if (configuredModel && configuredModel !== "auto") {
         const foundConfigured = list.find((m) => m.id.toLowerCase() === configuredModel);
         if (foundConfigured) return foundConfigured.id;
       }
 
-      // 2. Prioritaskan model 'litellm' atau indikator chat/instruct/coder/pi
-      const preferred = list.find((m) => {
-        const idLower = m.id.toLowerCase();
-        return (
-          idLower === "litellm" ||
-          idLower.includes("litellm") ||
-          idLower.includes("chat") ||
-          idLower.includes("instruct") ||
-          idLower.includes("coder") ||
-          idLower.includes("pi")
-        );
-      }) || list[0];
-      return preferred.id;
+      // 2. Ambil langsung model yang di-declare di server Pi (urutan pertama)
+      return list[0].id;
     }
   } catch (_) {}
 

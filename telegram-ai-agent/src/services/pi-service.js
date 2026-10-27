@@ -23,29 +23,17 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId) {
     };
   }
 
-  // Pilih model terbaik dari server:
-  // 1. Cek apakah ada model yang sudah dikonfigurasi (misal litellm)
+  // Pilih model langsung sesuai yang di-declare di server Pi:
+  // 1. Cek apakah ada model yang sudah dikonfigurasi pengguna di UNIVERSAL_MODEL
   const configured = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
   let chosenModel = null;
   if (configured && configured !== "auto" && configured !== "deepseek-chat") {
     chosenModel = models.find((m) => m.id.toLowerCase() === configured);
   }
 
-  // 2. Jika tidak ada, prioritaskan litellm atau model khusus Pi/inflection
+  // 2. Jika tidak ada atau belum diatur khusus, gunakan langsung model pertama yang di-declare di server Pi
   if (!chosenModel) {
-    chosenModel =
-      models.find(
-        (m) =>
-          m.id.toLowerCase() === "litellm" ||
-          (m.name && m.name.toLowerCase() === "litellm")
-      ) ||
-      models.find(
-        (m) =>
-          m.id.toLowerCase().includes("inflection") ||
-          m.id.toLowerCase().split(/[-_/]/).includes("pi") ||
-          (m.name && m.name.toLowerCase().split(/[-_/]/).includes("pi"))
-      ) ||
-      models[0];
+    chosenModel = models[0];
   }
 
   const chosenId = chosenModel.id;
