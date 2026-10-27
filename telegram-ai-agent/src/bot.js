@@ -108,6 +108,21 @@ bot.api.config.use(async (prev, method, payload, signal) => {
 
 bot.use(async (ctx, next) => {
   lastPollingActivity = Date.now();
+  if (ctx.callbackQuery) {
+    const origAnswer = ctx.answerCallbackQuery.bind(ctx);
+    ctx.answerCallbackQuery = async (...args) => {
+      try {
+        return await origAnswer(...args);
+      } catch (err) {
+        const msg = err?.message || String(err);
+        // Abaikan jika query kedaluwarsa atau Telegram server sudah menutup callback
+        if (!msg.includes("query is too old") && !msg.includes("MESSAGE_ID_INVALID")) {
+          console.warn("[CallbackQuery] Warning:", msg);
+        }
+        return false;
+      }
+    };
+  }
   await next();
 });
 
@@ -124,7 +139,22 @@ registerMessageHandlers(bot);
 
 // Global Error Handler
 bot.catch((error) => {
-  console.error("Telegram bot error:", error.message || error);
+  const inner = error.error || error;
+  const msg = inner.message || String(inner);
+
+  // Filter error umum/transient Telegram API agar tidak memenuhi error.log
+  if (
+    msg.includes("query is too old") ||
+    msg.includes("message is not modified") ||
+    msg.includes("bot was blocked by the user") ||
+    msg.includes("user is deactivated") ||
+    msg.includes("message to edit not found")
+  ) {
+    console.warn(`[Telegram API Notice] ${msg}`);
+    return;
+  }
+
+  console.error("Telegram bot error:", msg);
   if (error.stack) {
     console.error(error.stack);
   }
