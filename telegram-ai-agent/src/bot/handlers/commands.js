@@ -113,6 +113,7 @@ import {
   getNotionConfig,
   saveNotionConfig,
 } from "../../services/notion-service.js";
+import { getUsageReport } from "../../services/usage-service.js";
 import { checkNotionTasks } from "../../services/notion-watcher.js";
 
 export function registerBasicCommands(bot) {
@@ -266,6 +267,26 @@ export function registerBasicCommands(bot) {
       `💡 _Kirim /cancel untuk membatalkan atau /queue untuk melihat daftar antrean._`,
       { parse_mode: "Markdown" }
     );
+  });
+
+  // /usage, /token, /tokens, /kuota
+  bot.command(["usage", "token", "tokens", "kuota"], async (ctx) => {
+    const userId = ctx.from?.id;
+    const currentEngine = (userId ? await getUserEngine(userId) : null) || process.env.CLI_ENGINE || "agy";
+    let activeModel = "default";
+    let convId = null;
+
+    if (currentEngine === "agy") {
+      activeModel = (userId ? await getUserAgyModel(userId) : null) || "gemini-3.8-flash-high";
+      convId = userId ? await getUserAgyConversationId(userId) : null;
+    } else if (currentEngine === "claude") {
+      activeModel = (userId ? await getUserClaudeModel(userId) : null) || "claude-sonnet";
+    } else {
+      activeModel = (userId ? await getUserUniversalModel(userId) : null) || "default";
+    }
+
+    const report = await getUsageReport({ activeEngine: currentEngine, activeModel, convId });
+    await ctx.reply(report, { parse_mode: "Markdown" }).catch(() => ctx.reply(report));
   });
 
   // /queue, /antrean, /q

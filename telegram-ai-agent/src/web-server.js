@@ -52,6 +52,7 @@ import {
   clearQueue,
   isQueuePaused,
 } from "./services/queue-service.js";
+import { loadUsageStats } from "./services/usage-service.js";
 import {
   getVoiceConfig,
   saveVoiceConfig,
@@ -183,6 +184,16 @@ export function createWebServer() {
             hostname: os.hostname(),
           },
         });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    // API: Ambil statistik penggunaan token AI
+    if (pathname === "/api/usage" && req.method === "GET") {
+      try {
+        const stats = await loadUsageStats();
+        return sendJson(200, { ok: true, stats });
       } catch (err) {
         return sendError(500, err.message);
       }

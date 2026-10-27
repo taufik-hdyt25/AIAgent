@@ -197,6 +197,7 @@ if (
         { command: "queue", description: "Cek antrean instruksi AI" },
         { command: "clearqueue", description: "Kosongkan seluruh antrean tugas" },
         { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
+        { command: "usage", description: "Cek statistik & jumlah token AI yang terpakai" },
         { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
         { command: "compact", description: "Padatkan riwayat sesi agar token hemat" },
         { command: "update", description: "Perbarui TH Agent langsung dari GitHub" },

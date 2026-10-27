@@ -63,6 +63,7 @@ import {
   resumeQueue,
 } from "../services/queue-service.js";
 import { ensureProjectsIndexed } from "../services/project-indexer.js";
+import { recordUsage, getAgySessionTokens } from "../services/usage-service.js";
 import {
   searchMemories,
   formatMemoriesForPrompt,
@@ -550,6 +551,16 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
               sendTyping();
             },
             onInvokeSubagent,
+            onUsage: (u) => {
+              recordUsage({
+                userId,
+                engine: "universal",
+                model: universalModel,
+                inputTokens: u.inputTokens,
+                outputTokens: u.outputTokens,
+                convId,
+              }).catch(() => {});
+            },
           });
 
           const { cleanedText } = await processAutonomousOutput(replyText);
@@ -715,6 +726,19 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
               } else {
                 console.log(`[Dispatcher] Model berubah saat task berjalan (${taskStartModel} → ${currentModel}). Conversation ID lama TIDAK disimpan untuk mencegah rate-limit leak.`);
               }
+              // Catat pemakaian token sesi ke usage stats
+              getAgySessionTokens(parsed.conversation_id).then((stats) => {
+                if (stats && stats.totalTokens > 0) {
+                  recordUsage({
+                    userId,
+                    engine: "agy",
+                    model: currentModel || agyModel,
+                    inputTokens: stats.inputTokens,
+                    outputTokens: stats.outputTokens,
+                    convId: parsed.conversation_id,
+                  }).catch(() => {});
+                }
+              }).catch(() => {});
             }
             if (parsed.status === "SUCCESS") {
               responseText = parsed.response || "";

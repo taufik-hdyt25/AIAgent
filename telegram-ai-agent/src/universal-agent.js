@@ -269,6 +269,7 @@ export async function runUniversalAgent({
   abortSignal = null,
   onToolStart,
   onInvokeSubagent,
+  onUsage,
 }) {
   let effectiveApiKey = apiKey;
   const isCustomOrLocal =
@@ -334,6 +335,8 @@ export async function runUniversalAgent({
 
   const MAX_TURNS = 10;
   let currentTurn = 0;
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
   const initialMessageCount = messages.length - 1; // Posisi sebelum prompt user baru
 
   try {
@@ -470,6 +473,10 @@ export async function runUniversalAgent({
       }
 
       const data = await res.json();
+      if (data.usage) {
+        totalInputTokens += data.usage.prompt_tokens || 0;
+        totalOutputTokens += data.usage.completion_tokens || 0;
+      }
       const choice = data.choices?.[0];
       if (!choice || !choice.message) {
         throw new Error("Respon dari penyedia AI kosong atau tidak valid.");
@@ -502,6 +509,13 @@ export async function runUniversalAgent({
       }
 
       // Jika model sudah selesai dan mengembalikan teks jawaban
+      if (typeof onUsage === "function") {
+        onUsage({
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          totalTokens: totalInputTokens + totalOutputTokens,
+        });
+      }
       return assistantMsg.content || "[Pesan kosong]";
     }
 
