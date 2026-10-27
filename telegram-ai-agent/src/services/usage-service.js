@@ -33,6 +33,59 @@ export function getTodayKey() {
 }
 
 /**
+ * Dapatkan informasi kapasitas context window (total token yang tersedia dari model)
+ */
+export function getModelCapacity(modelId = "") {
+  const m = String(modelId || "").toLowerCase();
+  if (m.includes("flash")) {
+    return {
+      contextWindow: 1_048_576,
+      contextDisplay: "1.05M (1.048.576 token)",
+      maxOutput: "65.5k token",
+      type: "Ultra Large Context Window",
+    };
+  }
+  if (m.includes("pro")) {
+    return {
+      contextWindow: 2_097_152,
+      contextDisplay: "2.10M (2.097.152 token)",
+      maxOutput: "65.5k token",
+      type: "Extreme Large Context Window",
+    };
+  }
+  if (m.includes("claude-3-7") || m.includes("claude-3.7")) {
+    return {
+      contextWindow: 200_000,
+      contextDisplay: "200k (200.000 token)",
+      maxOutput: "64k token",
+      type: "Hybrid Reasoning Context Window",
+    };
+  }
+  if (m.includes("claude") || m.includes("sonnet") || m.includes("opus") || m.includes("haiku")) {
+    return {
+      contextWindow: 200_000,
+      contextDisplay: "200k (200.000 token)",
+      maxOutput: "8.19k token",
+      type: "Standard Long Context Window",
+    };
+  }
+  if (m.includes("gpt-oss") || m.includes("qwen") || m.includes("deepseek")) {
+    return {
+      contextWindow: 131_072,
+      contextDisplay: "131k (131.072 token)",
+      maxOutput: "8.19k token",
+      type: "Open Model Context Window",
+    };
+  }
+  return {
+    contextWindow: 1_048_576,
+    contextDisplay: "1.05M (1.048.576 token)",
+    maxOutput: "65.5k token",
+    type: "Default Context Window",
+  };
+}
+
+/**
  * Scan seluruh transcript historical dari Antigravity CLI (.gemini/antigravity-cli/brain)
  * dan masukkan ke usage-stats.json agar pemakaian akumulasi token langsung terdata akurat.
  */
@@ -385,7 +438,14 @@ export async function getUsageReport({ activeEngine = "agy", activeModel = "defa
     sessionStats = await getAgySessionTokens(convId);
   }
 
-  let text = `📊 *Statistik & Kuota Penggunaan Token AI*\n\n`;
+  let text = `📊 *Statistik & Kapasitas Token Model AI*\n\n`;
+
+  // Info Total Kapasitas Token yang Tersedia dari Model Aktif
+  const capacity = getModelCapacity(activeModel);
+  text += `🧠 *Total Kapasitas Model Tersedia (${activeModel}):*\n`;
+  text += `• Batas Context Window: *${capacity.contextDisplay}*\n`;
+  text += `• Batas Output per Turn: \`${capacity.maxOutput}\`\n`;
+  text += `• Karakteristik: _${capacity.type}_\n\n`;
 
   // Sesi Aktif
   if (sessionStats && sessionStats.totalTokens > 0) {
