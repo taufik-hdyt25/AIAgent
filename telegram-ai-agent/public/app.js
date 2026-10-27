@@ -284,8 +284,9 @@ async function loadSettings() {
       universalModelSelect.appendChild(autoOpt);
 
       const exists = models.some((m) => m.id === currentUniModel);
+      const isAllowedConfigured = currentCustomModels && Array.isArray(currentCustomModels.universalModels);
 
-      if (!exists && currentUniModel && currentUniModel !== "auto") {
+      if (!exists && currentUniModel && currentUniModel !== "auto" && !isAllowedConfigured) {
         const customOpt = document.createElement("option");
         customOpt.value = currentUniModel;
         customOpt.textContent = `${currentUniModel} [Custom]`;
@@ -615,26 +616,35 @@ function renderAllowedModelsChips() {
   const { engine, key, label } = getActiveEngineKey();
   if (allowedEngineLabel) allowedEngineLabel.textContent = label;
 
-  const currentModels = (availableOptions && availableOptions[key]) || (currentCustomModels && currentCustomModels[key]) || [];
+  const customList = currentCustomModels && Array.isArray(currentCustomModels[key]) ? currentCustomModels[key] : null;
+  const optList = availableOptions && Array.isArray(availableOptions[key]) ? availableOptions[key] : [];
+  const currentModels = customList !== null ? customList : optList;
   allowedModelsChips.innerHTML = "";
 
   if (currentModels.length === 0) {
-    allowedModelsChips.innerHTML = `<span style="font-size: 0.8rem; color: #64748b; font-style: italic;">Belum ada pembatasan model khusus. Semua model default/server dapat muncul.</span>`;
+    allowedModelsChips.innerHTML = `<span style="font-size: 0.8rem; color: #64748b; font-style: italic;">Belum ada model yang diizinkan untuk engine ini. Silakan tambahkan model baru di bawah.</span>`;
     return;
   }
 
   for (const m of currentModels) {
     const chip = document.createElement("span");
     chip.style.cssText = "display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.25); border-radius: 6px; font-size: 0.8rem; color: #93c5fd; font-family: monospace;";
-    chip.textContent = m.id || m.name;
+
+    const modelId = typeof m === "object" ? (m.id || m.name || "") : String(m);
+    const modelName = typeof m === "object" ? (m.name || m.id || "") : String(m);
+
+    const textSpan = document.createElement("span");
+    textSpan.textContent = modelName || modelId;
+    chip.appendChild(textSpan);
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.innerHTML = "&times;";
-    delBtn.title = `Hapus model ${m.id} dari daftar yang diizinkan`;
-    delBtn.style.cssText = "background: none; border: none; color: #f87171; font-size: 1rem; cursor: pointer; padding: 0 2px; line-height: 1; font-weight: bold;";
-    delBtn.addEventListener("click", async () => {
-      await removeAllowedModel(engine, m.id);
+    delBtn.title = `Hapus model ${modelId} dari daftar yang diizinkan`;
+    delBtn.style.cssText = "background: none; border: none; color: #f87171; font-size: 1.1rem; cursor: pointer; padding: 0 2px; line-height: 1; font-weight: bold;";
+    delBtn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await removeAllowedModel(engine, modelId);
     });
 
     chip.appendChild(delBtn);
@@ -682,6 +692,18 @@ async function removeAllowedModel(engine, modelId) {
       if (!availableOptions) availableOptions = {};
       availableOptions[key] = data.options;
     }
+
+    if (engine === "universal" && universalModelSelect && universalModelSelect.value === modelId) {
+      universalModelSelect.value = "";
+      if (badgeModel) badgeModel.textContent = "Auto-detect";
+    } else if (engine === "claude" && claudeModelSelect && claudeModelSelect.value === modelId) {
+      claudeModelSelect.selectedIndex = 0;
+      if (badgeModel) badgeModel.textContent = claudeModelSelect.value;
+    } else if (engine === "agy" && agyModelSelect && agyModelSelect.value === modelId) {
+      agyModelSelect.selectedIndex = 0;
+      if (badgeModel) badgeModel.textContent = agyModelSelect.value;
+    }
+
     renderAllowedModelsChips();
     await loadSettings();
     showToast(data.message || "Model berhasil dihapus!", "info");
@@ -700,6 +722,11 @@ async function resetAllowedModels(engine) {
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "Gagal mereset model");
     currentCustomModels = data.customModels || {};
+    const { key } = getActiveEngineKey();
+    if (data.options) {
+      if (!availableOptions) availableOptions = {};
+      availableOptions[key] = data.options;
+    }
     renderAllowedModelsChips();
     await loadSettings();
     showToast("Daftar model dikembalikan ke default!", "success");

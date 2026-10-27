@@ -91,7 +91,7 @@ export async function getModelList(engine) {
       ? "universalModels"
       : "agyModels";
 
-  if (Array.isArray(custom?.[engineKey]) && custom[engineKey].length > 0) {
+  if (custom && Array.isArray(custom[engineKey])) {
     return custom[engineKey];
   }
 

@@ -252,10 +252,13 @@ export function createWebServer() {
         }
 
         if (payload.action === "add" && payload.modelId) {
-          if (!Array.isArray(existing[engineKey])) existing[engineKey] = [];
+          if (!Array.isArray(existing[engineKey])) {
+            const currentList = await getModelList(payload.engine || "universal");
+            existing[engineKey] = [...currentList];
+          }
           const id = payload.modelId.trim();
           const name = payload.name ? payload.name.trim() : id;
-          if (!existing[engineKey].some((m) => m.id.toLowerCase() === id.toLowerCase())) {
+          if (!existing[engineKey].some((m) => ((m.id || m) + "").trim().toLowerCase() === id.toLowerCase())) {
             existing[engineKey].push({ id, name, badge: "Custom" });
           }
           await saveCustomModels(existing);
@@ -268,12 +271,47 @@ export function createWebServer() {
         }
 
         if (payload.action === "remove" && payload.modelId) {
-          if (Array.isArray(existing[engineKey])) {
-            existing[engineKey] = existing[engineKey].filter(
-              (m) => m.id.toLowerCase() !== payload.modelId.trim().toLowerCase()
-            );
+          if (!Array.isArray(existing[engineKey])) {
+            const currentList = await getModelList(payload.engine || "universal");
+            existing[engineKey] = [...currentList];
           }
+          const targetId = payload.modelId.trim().toLowerCase();
+          existing[engineKey] = existing[engineKey].filter(
+            (m) => ((m.id || m) + "").trim().toLowerCase() !== targetId
+          );
           await saveCustomModels(existing);
+
+          // Jika model yang dihapus sedang aktif di env, reset ke auto / model pertama yang valid
+          let envUpdated = false;
+          const updates = {};
+          if (payload.engine === "universal" || !payload.engine) {
+            const current = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
+            if (current === targetId) {
+              updates.UNIVERSAL_MODEL = "";
+              process.env.UNIVERSAL_MODEL = "";
+              envUpdated = true;
+            }
+          } else if (payload.engine === "claude") {
+            const current = (process.env.CLAUDE_MODEL || "").trim().toLowerCase();
+            if (current === targetId) {
+              const nextModel = existing.claudeModels?.[0]?.id || "sonnet";
+              updates.CLAUDE_MODEL = nextModel;
+              process.env.CLAUDE_MODEL = nextModel;
+              envUpdated = true;
+            }
+          } else if (payload.engine === "agy") {
+            const current = (process.env.AGY_MODEL || "").trim().toLowerCase();
+            if (current === targetId) {
+              const nextModel = existing.agyModels?.[0]?.id || "gemini-3.8-flash-medium";
+              updates.AGY_MODEL = nextModel;
+              process.env.AGY_MODEL = nextModel;
+              envUpdated = true;
+            }
+          }
+          if (envUpdated) {
+            await updateEnvFile(updates);
+          }
+
           return sendJson(200, {
             ok: true,
             message: `Model '${payload.modelId}' berhasil dihapus dari daftar.`,

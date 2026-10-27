@@ -5,6 +5,7 @@ import {
   AVAILABLE_UNIVERSAL_MODELS,
   fetchRemoteModels,
   getModelList,
+  loadCustomModels,
 } from "../../config/models.js";
 import {
   getUserEngine,
@@ -40,11 +41,19 @@ export function registerModelHandlers(bot) {
     if (isUniversal) {
       const uniUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
       const uniKey = process.env.UNIVERSAL_API_KEY || "";
-      const remote = await fetchRemoteModels(uniUrl, uniKey);
-      if (remote.length > 0) {
-        detectedCount = remote.length;
-        // Gunakan 100% murni model yang di-get dari URL tersebut
-        modelList = remote;
+      const custom = await loadCustomModels();
+      const isCustomConfigured = custom && Array.isArray(custom.universalModels);
+      if (!isCustomConfigured) {
+        const remote = await fetchRemoteModels(uniUrl, uniKey);
+        if (remote.length > 0) {
+          detectedCount = remote.length;
+          modelList = remote;
+        }
+      } else {
+        try {
+          const remote = await fetchRemoteModels(uniUrl, uniKey);
+          detectedCount = remote.length;
+        } catch {}
       }
     }
 
