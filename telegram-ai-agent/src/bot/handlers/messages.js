@@ -47,19 +47,37 @@ export function registerMessageHandlers(bot) {
     const caption = (ctx.message.caption || "").trim();
     if (caption.startsWith("/")) return;
 
+    // Cek batas ukuran 20MB bot Telegram sebelum download (Telegram Bot API getFile maks 20MB)
+    if (doc.file_size && doc.file_size > 20 * 1024 * 1024) {
+      const sizeMB = (doc.file_size / (1024 * 1024)).toFixed(1);
+      const limitMsg = `⚠️ *File Terlalu Besar*\n\nUkuran file \`${(doc.file_name || "dokumen").replace(/[`*_\\]/g, " ")}\` (${sizeMB} MB) melebihi batas 20 MB yang diizinkan oleh Telegram Bot API.\n\n💡 *Solusi:* Salin file langsung ke folder proyek atau kirim via Git.`;
+      try {
+        await ctx.reply(limitMsg, { parse_mode: "Markdown" });
+      } catch (_) {
+        await ctx.reply(`⚠️ File terlalu besar (${sizeMB} MB). Batas bot Telegram adalah 20 MB.`);
+      }
+      return;
+    }
+
     let statusMsg = null;
+    const cleanFileName = (doc.file_name || "dokumen").replace(/[`*_\\[\\]()]/g, " ");
     try {
-      statusMsg = await ctx.reply(
-        `📥 *Mengunduh file: \`${doc.file_name || "dokumen"}\`*...`,
-        { parse_mode: "Markdown" }
-      );
+      try {
+        statusMsg = await ctx.reply(
+          `📥 *Mengunduh file: \`${cleanFileName}\`*...`,
+          { parse_mode: "Markdown" }
+        );
+      } catch (_) {
+        statusMsg = await ctx.reply(`📥 Mengunduh file: ${cleanFileName}...`).catch(() => null);
+      }
 
       const fileInfo = await downloadTelegramFile(
         ctx,
         doc.file_id,
         doc.file_name,
         false,
-        doc.mime_type
+        doc.mime_type,
+        doc.file_size
       );
 
       try {
@@ -80,8 +98,10 @@ export function registerMessageHandlers(bot) {
 
       await sendToAgent(promptMessage, ctx, fileInfo);
     } catch (err) {
-      console.error("Gagal memproses dokumen:", err);
-      await ctx.reply(`❌ Gagal memproses file: ${err.message}`);
+      console.error("Gagal memproses dokumen:", err.message || err);
+      try {
+        await ctx.reply(`❌ Gagal memproses file: ${err.message}`);
+      } catch (_) {}
     }
   });
 
@@ -127,7 +147,7 @@ export function registerMessageHandlers(bot) {
 
       await sendToAgent(promptMessage, ctx, fileInfo);
     } catch (err) {
-      console.error("Gagal memproses gambar:", err);
+      console.error("Gagal memproses gambar:", err.message || err);
       await ctx.reply(`❌ Gagal memproses gambar: ${err.message}`);
     }
   });
@@ -220,7 +240,7 @@ export function registerMessageHandlers(bot) {
       // Kirim teks hasil transkripsi ke agent
       await sendToAgent(voiceText, ctx, fileInfo);
     } catch (err) {
-      console.error("[Voice Handler] Gagal memproses pesan suara:", err);
+      console.error("[Voice Handler] Gagal memproses pesan suara:", err.message || err);
       if (statusMsg) {
         try {
           await ctx.api.editMessageText(

@@ -110,14 +110,33 @@ export async function downloadTelegramFile(
   fileId,
   originalName,
   isPhoto = false,
-  mimeType = null
+  mimeType = null,
+  fileSize = null
 ) {
-  const file = await ctx.api.getFile(fileId);
+  // Cek batas ukuran 20MB bot Telegram sebelum memanggil getFile
+  if (fileSize && fileSize > 20 * 1024 * 1024) {
+    throw new Error(
+      `Ukuran file (${formatBytes(fileSize)}) melebihi batas maksimum 20MB Telegram Bot API.`
+    );
+  }
+
+  let file;
+  try {
+    file = await ctx.api.getFile(fileId);
+  } catch (err) {
+    if (String(err?.message || err).includes("file is too big")) {
+      throw new Error(
+        `Ukuran file melebihi batas maksimum 20MB yang diizinkan Telegram Bot API.`
+      );
+    }
+    throw err;
+  }
+
   if (!file.file_path) {
     throw new Error("Telegram tidak mengembalikan file_path.");
   }
 
-  // Cek batas ukuran 20MB bot Telegram
+  // Cek batas ukuran 20MB bot Telegram dari respon file
   if (file.file_size && file.file_size > 20 * 1024 * 1024) {
     throw new Error(
       `Ukuran file (${formatBytes(file.file_size)}) melebihi batas maksimum 20MB Telegram Bot API.`

@@ -12,6 +12,7 @@ const SENTRY_CONFIG_FILE = path.join(DATA_DIR, "sentry_config.json");
 
 let sentryInterval = null;
 let sentryConfigCache = null;
+let dockerWarned = false;
 const alertCooldowns = new Map(); // containerName -> timestamp
 
 // Daftar container default awal jika ada di server VPS
@@ -162,6 +163,7 @@ export async function checkServerHealth(bot = null, isManual = false) {
     const { stdout } = await execAsync(
       "docker ps -a --format '{{.Names}}|{{.Status}}|{{.State}}' 2>&1"
     );
+    dockerWarned = false; // Reset jika Docker aktif kembali
     const lines = stdout.trim().split("\n").filter(Boolean);
     const containerMap = new Map();
 
@@ -236,7 +238,10 @@ export async function checkServerHealth(bot = null, isManual = false) {
   } catch (err) {
     dockerAvailable = false;
     dockerError = err.message;
-    console.warn("[Server Sentry] Docker tidak terdeteksi (Mode Lokal):", err.message);
+    if (!dockerWarned) {
+      console.log("[Server Sentry] Docker tidak terdeteksi (Mode Lokal): Container monitoring dinonaktifkan.");
+      dockerWarned = true;
+    }
   }
 
   // 2. Audit kapasitas disk

@@ -84,8 +84,28 @@ const bot = new Bot(BOT_TOKEN || "PLACEHOLDER_TOKEN_FOR_CHECK", {
   },
 });
 
-// Lacak waktu aktivitas polling terakhir untuk auto-heal
+// Lacak waktu aktivitas polling & interaksi Telegram secara realtime
 let lastPollingActivity = Date.now();
+
+// Intercept semua API request ke Telegram:
+// Setiap respon getUpdates yang sukses (meskipun [] kosong saat idle)
+// menandakan koneksi polling fisik ke server Telegram masih sehat & aktif!
+bot.api.config.use(async (prev, method, payload, signal) => {
+  try {
+    const res = await prev(method, payload, signal);
+    if (method === "getUpdates") {
+      lastPollingActivity = Date.now();
+    }
+    return res;
+  } catch (err) {
+    if (method === "getUpdates" && (err?.error_code || err?.response?.ok !== undefined)) {
+      // Telegram server memberikan respon (misal error HTTP / rate limit), socket fisik masih aktif
+      lastPollingActivity = Date.now();
+    }
+    throw err;
+  }
+});
+
 bot.use(async (ctx, next) => {
   lastPollingActivity = Date.now();
   await next();
@@ -166,6 +186,18 @@ if (
   let shouldRun = true;
   let isPollingActive = false;
 
+  // Helper untuk menghentikan loop polling grammY dengan bersih dan aman dari dead lock
+  const stopPollingSafely = async (timeoutMs = 2500) => {
+    try {
+      bot.pollingRunning = false;
+      bot.pollingAbortController?.abort();
+      await Promise.race([
+        bot.stop().catch(() => {}),
+        new Promise((r) => setTimeout(r, timeoutMs)),
+      ]);
+    } catch (_) {}
+  };
+
   // Auto-Recovery Polling Loop (kebal sleep/wake, network drop, dan reboot)
   const startBotLoop = async () => {
     let retryAttempt = 0;
@@ -174,9 +206,7 @@ if (
       try {
         // Bersihkan state polling lama jika ada
         if (bot.pollingRunning) {
-          try {
-            bot.pollingAbortController?.abort();
-          } catch (_) {}
+          await stopPollingSafely();
           bot.pollingRunning = false;
           bot.pollingAbortController = undefined;
         }
@@ -283,10 +313,8 @@ if (
         }
       }
 
-      // Abort socket lama yang menggantung saat sleep
-      try {
-        bot.pollingAbortController?.abort();
-      } catch (_) {}
+      // Abort & stop socket lama yang menggantung saat sleep
+      await stopPollingSafely();
 
       // Tunggu Wi-Fi aktif kembali
       console.log(`📶 [PowerManagement] Menunggu sinyal Wi-Fi aktif kembali...`);
@@ -314,7 +342,7 @@ if (
     }
 
     // 2. Deteksi Stale Socket / Dead Connection Tanpa Polling Response (> 75 detik)
-    // Long-polling normal dari Telegram merespon setiap 30 detik.
+    // Long-polling normal dari Telegram merespon setiap 30 detik (atau array [] kosong jika idle).
     // Jika lebih dari 75 detik tidak ada sinyal apapun dari Telegram padahal internet aktif,
     // maka TCP socket kemungkinan besar mengalami TCP half-open dead lock.
     if (isPollingActive && (now - lastPollingActivity > 75000)) {
@@ -324,9 +352,7 @@ if (
       if (hasNet) {
         console.warn("⚠️ [Watchdog] Internet aktif tetapi socket Telegram menggantung (dead socket). Mereset socket polling secara aman...");
         lastPollingActivity = Date.now(); // reset timer agar tidak spam abort
-        try {
-          bot.pollingAbortController?.abort();
-        } catch (_) {}
+        await stopPollingSafely();
       } else {
         console.warn("📶 [Watchdog] Menunggu koneksi internet pulih kembali...");
       }
