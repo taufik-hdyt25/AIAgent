@@ -673,13 +673,18 @@ if (btnDetectRemoteModels) {
         universalModelSelect.appendChild(opt);
       }
 
-      // Jika sebelumnya memilih custom model (misal litellm) tapi tidak ada di list server, pertahankan opsinya
-      if (!matchedSelection && currentSelected && currentSelected !== "auto") {
-        const customOpt = document.createElement("option");
-        customOpt.value = currentSelected;
-        customOpt.textContent = `${currentSelected} [Custom]`;
-        customOpt.selected = true;
-        universalModelSelect.appendChild(customOpt);
+      // Jika sebelumnya memilih custom model tapi tidak ada di list server, pertahankan opsinya.
+      // Jika belum ada pilihan, otomatis pilih model pertama dari server Pi (sama seperti /getpi)
+      if (!matchedSelection) {
+        if (currentSelected && currentSelected !== "auto") {
+          const customOpt = document.createElement("option");
+          customOpt.value = currentSelected;
+          customOpt.textContent = `${currentSelected} [Custom]`;
+          customOpt.selected = true;
+          universalModelSelect.appendChild(customOpt);
+        } else if (models.length > 0) {
+          universalModelSelect.value = models[0].id;
+        }
       }
 
       badgeModel.textContent = universalModelSelect.value || "Auto-detect";
