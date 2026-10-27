@@ -164,19 +164,41 @@ export async function setUserClaudeModel(userId, modelId) {
 }
 
 export async function getUserUniversalModel(userId) {
-  const envModel = process.env.UNIVERSAL_MODEL;
+  const envModel = (process.env.UNIVERSAL_MODEL || "").trim();
   if (!userId) return envModel || DEFAULT_UNIVERSAL_MODEL;
   const context = await loadContext();
   const userSpecific = context.universalModels?.[String(userId)];
 
-  // Jika model pengguna belum pernah diatur secara spesifik atau masih default, prioritaskan envModel jika ada
-  if (userSpecific && userSpecific !== "deepseek-chat" && userSpecific !== "auto") {
+  if (userSpecific && userSpecific !== "auto") {
     return userSpecific;
   }
-  if (envModel) {
+  if (envModel && envModel !== "auto") {
     return envModel;
   }
-  return userSpecific || DEFAULT_UNIVERSAL_MODEL;
+  return userSpecific || envModel || DEFAULT_UNIVERSAL_MODEL;
+}
+
+export async function setGlobalUniversalModel(modelId) {
+  if (!modelId) return;
+  const context = await loadContext();
+  if (!context.universalModels) context.universalModels = {};
+
+  const allUserIds = new Set([
+    ...Object.keys(context.universalModels || {}),
+    ...Object.keys(context.engines || {}),
+    ...Object.keys(context.conversations || {}),
+    ...Object.keys(context.models || {}),
+  ]);
+
+  for (const uId of allUserIds) {
+    const prev = context.universalModels[uId];
+    context.universalModels[uId] = modelId;
+    if (prev && prev !== modelId && context.conversations?.[uId]) {
+      resetSessionHistory(context.conversations[uId]);
+    }
+  }
+
+  await saveContext(context);
 }
 
 export async function setUserUniversalModel(userId, modelId) {

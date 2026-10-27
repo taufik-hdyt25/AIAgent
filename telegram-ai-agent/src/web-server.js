@@ -35,7 +35,10 @@ import {
   fetchRemoteModels,
   loadCustomModels,
   saveCustomModels,
+  normalizePiUrl,
 } from "./config/models.js";
+import { syncPiModelDirectly } from "./services/pi-service.js";
+import { setGlobalUniversalModel } from "./services/context-store.js";
 import { loadWatchConfig, saveWatchConfig } from "./services/github-service.js";
 import {
   getDeployConfig,
@@ -201,6 +204,39 @@ export function createWebServer() {
 
         const models = await fetchRemoteModels(baseUrl, apiKey);
         return sendJson(200, { ok: true, models, count: models.length });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    // API: Sinkronisasi dan Ambil Model langsung dari Link Pi
+    if (pathname === "/api/models/sync-pi" && req.method === "POST") {
+      try {
+        let body = "";
+        for await (const chunk of req) body += chunk;
+        const payload = JSON.parse(body || "{}");
+        const { parsed } = await readEnvFile();
+        const baseUrl = payload.baseUrl || parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "";
+        const apiKey = payload.apiKey !== undefined ? payload.apiKey : (parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "");
+        const selectModel = payload.selectModel || null;
+
+        if (!baseUrl) {
+          return sendJson(400, { ok: false, error: "Link / URL server Pi belum diisi." });
+        }
+
+        const res = await syncPiModelDirectly(baseUrl, apiKey, null, selectModel);
+        if (!res.ok) {
+          return sendJson(400, { ok: false, error: res.error, allModels: [] });
+        }
+
+        return sendJson(200, {
+          ok: true,
+          models: res.allModels,
+          activeModel: res.activeModel,
+          activeName: res.activeName,
+          baseUrl: res.serverUrl,
+          message: `Berhasil mengambil ${res.allModels.length} model dari Pi! Model aktif: ${res.activeModel}`,
+        });
       } catch (err) {
         return sendError(500, err.message);
       }
@@ -538,12 +574,15 @@ export function createWebServer() {
           }
           if (payload.UNIVERSAL_MODEL !== undefined) {
             updates.UNIVERSAL_MODEL = String(payload.UNIVERSAL_MODEL).trim();
+            if (updates.UNIVERSAL_MODEL) {
+              await setGlobalUniversalModel(updates.UNIVERSAL_MODEL);
+            }
           }
           if (payload.UNIVERSAL_API_KEY !== undefined) {
             updates.UNIVERSAL_API_KEY = String(payload.UNIVERSAL_API_KEY).trim();
           }
           if (payload.UNIVERSAL_BASE_URL !== undefined) {
-            updates.UNIVERSAL_BASE_URL = String(payload.UNIVERSAL_BASE_URL).trim();
+            updates.UNIVERSAL_BASE_URL = normalizePiUrl(String(payload.UNIVERSAL_BASE_URL).trim());
           }
           if (payload.GITHUB_TOKEN !== undefined) {
             updates.GITHUB_TOKEN = String(payload.GITHUB_TOKEN).trim();

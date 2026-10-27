@@ -386,36 +386,43 @@ ${userMessage}
 `.trim();
     }
 
-    // Engine 3: Universal API Agent (Zero-CLI / Built-in Tools)
+    // Engine 3: Universal / Pi Agent (Zero-CLI / Built-in Tools)
     if (engine === "universal") {
       try {
-        const universalApiKey =
-          process.env.UNIVERSAL_API_KEY ||
-          process.env.OPENROUTER_API_KEY ||
-          process.env.OPENAI_API_KEY ||
-          process.env.DEEPSEEK_API_KEY;
-
-        if (!universalApiKey) {
-          clearInterval(typingInterval);
-          clearActiveTask(taskId);
-          await ctx.reply(
-            "⚠️ *API Key Universal belum diisi!*\n\nUntuk menggunakan engine Universal API (Zero-CLI), gunakan perintah:\n👉 `/setkey <api_key>`\n_Atau buka Web Control Panel di http://localhost:3030 (jika server custom/lokal tidak butuh auth, isi dummy seperti `sk-local`)._",
-            { parse_mode: "Markdown" }
-          );
-          processNextQueue().catch(() => {});
-          return;
-        }
-
         const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-        let universalModel = (engine === "universal" && userModel) ? userModel : await getUserUniversalModel(userId);
-
-        // Auto-get model langsung dari server jika belum diset atau eksplisit auto
         const isCustomServer =
           universalBaseUrl.startsWith("http://") ||
           universalBaseUrl.includes(":") ||
           universalBaseUrl.includes("localhost") ||
           !universalBaseUrl.includes("deepseek.com");
 
+        let universalApiKey =
+          process.env.UNIVERSAL_API_KEY ||
+          process.env.OPENROUTER_API_KEY ||
+          process.env.OPENAI_API_KEY ||
+          process.env.DEEPSEEK_API_KEY;
+
+        if (!universalApiKey && isCustomServer) {
+          universalApiKey = "sk-no-key-required";
+        }
+
+        if (!universalApiKey) {
+          clearInterval(typingInterval);
+          clearActiveTask(taskId);
+          await ctx.reply(
+            "⚠️ *API Key Universal belum diisi!*\n\nUntuk menggunakan engine Universal / Pi Server, gunakan perintah:\n👉 `/setkey <api_key>`\n_Atau buka Web Control Panel di http://localhost:3030 (jika server Pi/lokal tidak butuh auth, isi dummy seperti `sk-local`)._",
+            { parse_mode: "Markdown" }
+          );
+          processNextQueue().catch(() => {});
+          return;
+        }
+
+        let universalModel = (engine === "universal" && userModel) ? userModel : await getUserUniversalModel(userId);
+        if (!universalModel || universalModel === "auto") {
+          universalModel = (process.env.UNIVERSAL_MODEL || "").trim();
+        }
+
+        // Auto-get model langsung dari server jika belum diset atau eksplisit auto
         if (isCustomServer && (!universalModel || universalModel === "auto")) {
           try {
             const dynamicModel = await resolveDynamicUniversalModel(universalBaseUrl, universalApiKey);

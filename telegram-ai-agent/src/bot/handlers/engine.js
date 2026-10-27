@@ -52,7 +52,7 @@ export function registerEngineHandlers(bot) {
       )
       .row()
       .text(
-        `${currentEngine === "universal" ? "🔘 " : "⚪ "}Universal API (Zero-CLI / OpenRouter)`,
+        `${currentEngine === "universal" ? "🔘 " : "⚪ "}Universal / Pi Server (Zero-CLI)`,
         "set_engine:universal"
       );
 
@@ -60,7 +60,7 @@ export function registerEngineHandlers(bot) {
       currentEngine === "claude"
         ? "Claude Code CLI (claude)"
         : currentEngine === "universal"
-        ? "Universal API (Zero-CLI)"
+        ? "Universal / Pi Server (Zero-CLI)"
         : "Antigravity CLI (agy)";
 
     await ctx.reply(
@@ -86,7 +86,7 @@ export function registerEngineHandlers(bot) {
       engineId === "claude"
         ? "Claude Code CLI (claude)"
         : engineId === "universal"
-        ? "Universal API (Zero-CLI)"
+        ? "Universal / Pi Server (Zero-CLI)"
         : "Antigravity CLI (agy)";
 
     await ctx.answerCallbackQuery({
@@ -105,7 +105,7 @@ export function registerEngineHandlers(bot) {
       )
       .row()
       .text(
-        `${engineId === "universal" ? "🔘 " : "⚪ "}Universal API (Zero-CLI / OpenRouter)`,
+        `${engineId === "universal" ? "🔘 " : "⚪ "}Universal / Pi Server (Zero-CLI)`,
         "set_engine:universal"
       );
 

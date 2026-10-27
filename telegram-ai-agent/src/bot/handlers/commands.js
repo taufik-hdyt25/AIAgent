@@ -8,6 +8,7 @@ import {
   AVAILABLE_CLAUDE_MODELS,
   AVAILABLE_UNIVERSAL_MODELS,
   fetchRemoteModels,
+  normalizePiUrl,
 } from "../../config/models.js";
 import {
   getUserEngine,
@@ -1905,6 +1906,49 @@ export function registerBasicCommands(bot) {
     }
 
     const parts = rawArgs.split(/\s+/);
+
+    // Cek jika pengguna memasukkan link dari Pi langsung: /pi <LINK_PI>
+    const isUrlArg =
+      parts[0].startsWith("http://") ||
+      parts[0].startsWith("https://") ||
+      parts[0].includes("://") ||
+      parts[0].includes(":") ||
+      parts[0].includes("/") ||
+      /^(\d{1,3}\.){3}\d{1,3}/.test(parts[0]) ||
+      parts[0].includes("localhost");
+
+    if (parts.length === 1 && isUrlArg) {
+      const targetUrl = normalizePiUrl(parts[0]);
+      const res = await syncPiModelDirectly(targetUrl, process.env.UNIVERSAL_API_KEY || "", userId);
+      if (!res.ok) {
+        await ctx.reply(
+          `❌ *Gagal mengambil model dari server Pi:*\n${res.error}\n\n` +
+          `Server: \`${targetUrl}\`\n` +
+          `💡 _Pastikan server Pi aktif dan port/path API sudah benar._`,
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+
+      const modelListStr = res.allModels
+        .slice(0, 15)
+        .map((m) => `• \`${m.id}\`${m.id === res.activeModel ? " *(Sedang Dipakai ✅)*" : ""}`)
+        .join("\n");
+
+      await ctx.reply(
+        `🎉 *Setup Server Pi Berhasil!*\n` +
+        `━━━━━━━━━━━━━━━━━━━━\n` +
+        `✅ *Engine Aktif:* \`Universal / Pi Server\`\n` +
+        `✅ *Link Server Pi:* \`${res.serverUrl}\`\n` +
+        `✅ *Model Terpilih:* \`${res.activeModel}\`\n\n` +
+        `📋 *Daftar Model Ditemukan (${res.allModels.length}):*\n` +
+        modelListStr +
+        `\n\n_Model otomatis tersimpan di Pengaturan Web & aktif digunakan bot! 🚀_`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
     let targetUrl = "https://openrouter.ai/api/v1";
     let targetKey = "";
     let targetModel = "inflection/inflection-3-pi";
@@ -1920,12 +1964,7 @@ export function registerBasicCommands(bot) {
       targetModel = parts[2];
     }
 
-    if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
-      targetUrl = (targetUrl.includes(":") || targetUrl.includes("localhost") || targetUrl.startsWith("192.") || targetUrl.startsWith("10.") || targetUrl.startsWith("172."))
-        ? "http://" + targetUrl
-        : "https://" + targetUrl;
-    }
-    targetUrl = targetUrl.replace(/\/+$/, "");
+    targetUrl = normalizePiUrl(targetUrl);
 
     // Coba deteksi model secara otomatis dari endpoint /models
     let detectedModels = [];
@@ -2039,10 +2078,11 @@ export function registerBasicCommands(bot) {
       .catch(() => {});
   });
 
-  // /getpi, /syncpi, /tarikpi - Langsung tarik dan aktifkan model dari server Pi
-  bot.command(["getpi", "syncpi", "tarikpi"], async (ctx) => {
+  // /getpi, /syncpi, /tarikpi, /getmodel, /getmodels - Langsung tarik dan aktifkan model dari server Pi
+  bot.command(["getpi", "syncpi", "tarikpi", "getmodel", "getmodels"], async (ctx) => {
+    const rawArg = ctx.match?.trim();
     const userId = ctx.from?.id;
-    const url = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+    const url = normalizePiUrl(rawArg || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1");
     const key = process.env.UNIVERSAL_API_KEY || "";
 
     const loadingMsg = await ctx.reply(
@@ -2061,8 +2101,9 @@ export function registerBasicCommands(bot) {
           `Server: \`${url}\`\n\n` +
           `💡 *Solusi:*\n` +
           `• Pastikan server Pi sedang aktif dan dapat diakses.\n` +
+          `• Kirim link langsung: \`/getmodel <LINK_PI>\` (contoh: \`/getmodel http://192.168.1.50:8000/v1\`).\n` +
           `• Coba periksa URL dengan \`/seturl <URL>\`.\n` +
-          `• Atau ketik manual model kamu: \`/model <NAMA_MODEL>\` (misal \`/model pi\`).`,
+          `• Atau atur di Web Control Panel http://localhost:${process.env.WEB_PORT || 3030}.`,
           { parse_mode: "Markdown" }
         )
         .catch(() => {});
@@ -2087,11 +2128,11 @@ export function registerBasicCommands(bot) {
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `✅ *Model Terpilih:* \`${res.activeModel}\`\n` +
         `🌐 *Server Pi:* \`${res.serverUrl}\`\n` +
-        `⚙️ *Engine:* \`Universal API (Zero-CLI)\`\n\n` +
+        `⚙️ *Engine:* \`Universal / Pi Server\`\n\n` +
         `📋 *Daftar Model yang Ditemukan di Pi:*\n` +
         modelListStr +
         moreStr +
-        `\n\n_Default koding sekarang langsung mengarah ke model asli dari Pi kamu bro! 🚀_`,
+        `\n\n_Model ini otomatis tersinkronisasi di Pengaturan Web & Telegram! Ketik /model untuk mengganti pilihan model kapan saja._ 🚀`,
         { parse_mode: "Markdown" }
       )
       .catch(() => {});
@@ -2104,40 +2145,38 @@ export function registerBasicCommands(bot) {
     if (!url) {
       const current = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
       await ctx.reply(
-        `🔗 *Pengaturan Base URL API*\n\n` +
-        `Base URL saat ini:\n\`${current}\`\n\n` +
-        `Untuk mengubah, gunakan:\n` +
-        `👉 \`/seturl <URL>\`\n\n` +
+        `🔗 *Pengaturan Base URL Server Pi*\n\n` +
+        `Link server Pi saat ini:\n\`${current}\`\n\n` +
+        `Untuk mengubah atau mengambil model dari Pi, gunakan:\n` +
+        `👉 \`/getmodel <LINK_PI>\`\n` +
+        `👉 \`/seturl <LINK_PI>\`\n\n` +
         `Contoh:\n` +
-        `• Custom Server: \`/seturl http://192.168.1.50:8000/v1\`\n` +
-        `• OpenRouter: \`/seturl https://openrouter.ai/api/v1\`\n` +
-        `• DeepSeek: \`/seturl https://api.deepseek.com/v1\`\n` +
-        `• OpenAI: \`/seturl https://api.openai.com/v1\``,
+        `• Server Pi: \`/getmodel http://192.168.1.50:8000/v1\`\n` +
+        `• LiteLLM: \`/getmodel http://localhost:4000/v1\`\n` +
+        `• Ollama: \`/getmodel http://localhost:11434/v1\`\n` +
+        `• OpenRouter: \`/seturl https://openrouter.ai/api/v1\``,
         { parse_mode: "Markdown" }
       );
       return;
     }
 
-    let finalUrl = url;
-    if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
-      finalUrl = (finalUrl.includes(":") || finalUrl.includes("localhost") || finalUrl.startsWith("192.") || finalUrl.startsWith("10.") || finalUrl.startsWith("172."))
-        ? "http://" + finalUrl
-        : "https://" + finalUrl;
-    }
-    finalUrl = finalUrl.replace(/\/+$/, "");
+    const finalUrl = normalizePiUrl(url);
 
-    await updateEnvFile({ UNIVERSAL_BASE_URL: finalUrl });
+    await updateEnvFile({ UNIVERSAL_BASE_URL: finalUrl, CLI_ENGINE: "universal" });
+    process.env.UNIVERSAL_BASE_URL = finalUrl;
+    process.env.CLI_ENGINE = "universal";
+    await setUserEngine(userId, "universal");
 
     // Coba langsung tarik model dari server baru
     let syncInfo = "";
     try {
       const syncRes = await syncPiModelDirectly(finalUrl, process.env.UNIVERSAL_API_KEY || "", userId);
       if (syncRes.ok) {
-        syncInfo = `\n🎯 *Model Auto-Sync:* Langsung terhubung ke model \`${syncRes.activeModel}\` dari server!`;
+        syncInfo = `\n🎯 *Model Auto-Sync:* Langsung terhubung ke model \`${syncRes.activeModel}\` dari server Pi!`;
       }
     } catch {}
 
-    await ctx.reply(`✅ *Base URL API berhasil diubah ke:*\n\`${finalUrl}\`${syncInfo}`, {
+    await ctx.reply(`✅ *Link Server Pi berhasil diubah ke:*\n\`${finalUrl}\`${syncInfo}\n\n_Engine otomatis diaktifkan ke Universal / Pi Server._`, {
       parse_mode: "Markdown",
     });
   });

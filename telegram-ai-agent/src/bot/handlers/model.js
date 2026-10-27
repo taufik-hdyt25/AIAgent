@@ -15,6 +15,7 @@ import {
   setUserClaudeModel,
   getUserUniversalModel,
   setUserUniversalModel,
+  setGlobalUniversalModel,
 } from "../../services/context-store.js";
 import { updateEnvFile } from "../../services/env-service.js";
 
@@ -34,27 +35,20 @@ export function registerModelHandlers(bot) {
     const engineLabel = isClaude
       ? "Claude Code CLI"
       : isUniversal
-      ? "Universal API (Zero-CLI)"
+      ? "Universal / Pi Server"
       : "Antigravity CLI";
 
     let detectedCount = 0;
     if (isUniversal) {
       const uniUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
       const uniKey = process.env.UNIVERSAL_API_KEY || "";
-      const custom = await loadCustomModels();
-      const isCustomConfigured = custom && Array.isArray(custom.universalModels);
-      if (!isCustomConfigured) {
+      try {
         const remote = await fetchRemoteModels(uniUrl, uniKey);
         if (remote.length > 0) {
           detectedCount = remote.length;
           modelList = remote;
         }
-      } else {
-        try {
-          const remote = await fetchRemoteModels(uniUrl, uniKey);
-          detectedCount = remote.length;
-        } catch {}
-      }
+      } catch {}
     }
 
     if (arg) {
@@ -78,7 +72,9 @@ export function registerModelHandlers(bot) {
         await setUserClaudeModel(userId, chosenId);
       } else if (isUniversal) {
         await setUserUniversalModel(userId, chosenId);
+        await setGlobalUniversalModel(chosenId);
         await updateEnvFile({ UNIVERSAL_MODEL: chosenId });
+        process.env.UNIVERSAL_MODEL = chosenId;
       } else {
         await setUserAgyModel(userId, chosenId);
       }
@@ -144,7 +140,7 @@ export function registerModelHandlers(bot) {
     const engineLabel = isClaude
       ? "Claude Code CLI"
       : isUniversal
-      ? "Universal API (Zero-CLI)"
+      ? "Universal / Pi Server"
       : "Antigravity CLI";
 
     if (isUniversal) {
@@ -157,7 +153,9 @@ export function registerModelHandlers(bot) {
 
       if (modelId === "auto") {
         await setUserUniversalModel(userId, "");
+        await setGlobalUniversalModel("");
         await updateEnvFile({ UNIVERSAL_MODEL: "" });
+        process.env.UNIVERSAL_MODEL = "";
         await ctx.answerCallbackQuery({
           text: "Model diatur ke Auto-Detect (Dynamic)",
         });
@@ -192,7 +190,9 @@ export function registerModelHandlers(bot) {
       await setUserClaudeModel(userId, chosenId);
     } else if (isUniversal) {
       await setUserUniversalModel(userId, chosenId);
+      await setGlobalUniversalModel(chosenId);
       await updateEnvFile({ UNIVERSAL_MODEL: chosenId });
+      process.env.UNIVERSAL_MODEL = chosenId;
     } else {
       await setUserAgyModel(userId, chosenId);
     }

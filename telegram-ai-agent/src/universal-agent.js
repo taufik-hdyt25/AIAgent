@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 const execAsync = promisify(exec);
 
 import { ROOT_DIR, PROJECTS_DIR, UPLOADS_DIR } from "./config/env.js";
-import { resolveDynamicUniversalModel } from "./config/models.js";
+import { resolveDynamicUniversalModel, normalizePiUrl } from "./config/models.js";
 
 // Definisi Tools untuk OpenAI-compatible Tool Calling
 export const AGENT_TOOLS = [
@@ -194,17 +194,31 @@ export async function runUniversalAgent({
   sandboxed = false,
   onToolStart,
 }) {
-  if (!apiKey) {
+  let effectiveApiKey = apiKey;
+  const isCustomOrLocal =
+    baseUrl.startsWith("http://") ||
+    baseUrl.includes(":") ||
+    baseUrl.includes("localhost") ||
+    !baseUrl.includes("deepseek.com");
+
+  if (!effectiveApiKey && isCustomOrLocal) {
+    effectiveApiKey = "sk-no-key-required";
+  }
+
+  if (!effectiveApiKey) {
     throw new Error(
       "UNIVERSAL_API_KEY (atau OPENROUTER_API_KEY) belum diisi di .env atau Web Settings."
     );
   }
 
-  // Jika model belum diisi, auto-detect dinamis dari server
+  // Jika model belum diisi, prioritaskan model yang dipilih di Web Settings (UNIVERSAL_MODEL)
   let activeModel = model;
   if (!activeModel || activeModel === "auto") {
+    activeModel = (process.env.UNIVERSAL_MODEL || "").trim();
+  }
+  if (!activeModel || activeModel === "auto") {
     try {
-      const dynamic = await resolveDynamicUniversalModel(baseUrl, apiKey);
+      const dynamic = await resolveDynamicUniversalModel(baseUrl, effectiveApiKey);
       if (dynamic) activeModel = dynamic;
     } catch (_) {}
   }
@@ -212,8 +226,10 @@ export async function runUniversalAgent({
     activeModel = baseUrl.includes("deepseek.com") ? "deepseek-chat" : "default";
   }
 
-  const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
-  const endpoint = `${cleanBaseUrl}/chat/completions`;
+  const cleanBaseUrl = normalizePiUrl(baseUrl);
+  const endpoint = cleanBaseUrl.endsWith("/v1")
+    ? `${cleanBaseUrl}/chat/completions`
+    : `${cleanBaseUrl}/v1/chat/completions`;
 
   const messages = getSessionMessages(convId);
 
@@ -257,7 +273,7 @@ export async function runUniversalAgent({
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${effectiveApiKey}`,
         "HTTP-Referer": "https://github.com/taufik-hdyt25/AIAgent",
         "X-Title": "TH Agent Telegram",
       },
@@ -288,7 +304,7 @@ export async function runUniversalAgent({
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${apiKey}`,
+              Authorization: `Bearer ${effectiveApiKey}`,
               "HTTP-Referer": "https://github.com/taufik-hdyt25/AIAgent",
               "X-Title": "TH Agent Telegram",
             },

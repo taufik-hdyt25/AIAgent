@@ -232,10 +232,10 @@
                   <input type="radio" name="CLI_ENGINE" value="universal">
                   <div class="engine-card">
                     <div class="engine-header">
-                      <span class="engine-name">Universal API (Zero-CLI)</span>
-                      <span class="badge badge-emerald">OpenRouter / Direct</span>
+                      <span class="engine-name">Universal / Pi Server</span>
+                      <span class="badge badge-emerald">Pi AI / Direct</span>
                     </div>
-                    <p class="engine-desc">Tanpa CLI eksternal. Mendukung OpenRouter, DeepSeek, OpenAI, Qwen, dll via API Key.</p>
+                    <p class="engine-desc">Gunakan model dari Server Pi atau endpoint OpenAI-compatible (LiteLLM, Ollama, OpenRouter).</p>
                   </div>
                 </label>
               </div>
@@ -262,18 +262,45 @@
               </div>
             </div>
 
-            <!-- Model Default untuk Universal API -->
+            <!-- Model Default untuk Universal / Pi Server -->
             <div class="form-group" id="groupUniversalModel">
-              <div class="label-row">
-                <label for="universalModel" class="form-label">DEFAULT MODEL (UNIVERSAL API)</label>
-                <div style="display: flex; gap: 6px;">
-                  <button type="button" id="btnCustomModelPrompt" style="font-size: 0.75rem; color: #10b981; background: none; border: 1px solid rgba(16,185,129,0.3); border-radius: 4px; padding: 2px 8px; cursor: pointer;">
-                    ➕ Input Manual
-                  </button>
-                  <button type="button" id="btnDetectRemoteModels" style="font-size: 0.75rem; color: #3b82f6; background: none; border: 1px solid rgba(59,130,246,0.3); border-radius: 4px; padding: 2px 8px; cursor: pointer;">
-                    🔄 Deteksi dari Server
+              <!-- Link Server Pi & Get Model Box -->
+              <div style="background: rgba(16, 185, 129, 0.07); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+                <div class="label-row" style="margin-bottom: 6px;">
+                  <label for="piQuickUrl" class="form-label" style="color: #34d399; font-weight: 600; font-size: 0.82rem; margin-bottom: 0;">
+                    🔗 LINK / URL SERVER PI
+                  </label>
+                  <span class="label-hint" style="color: #10b981;">Endpoint Pi / LiteLLM / Ollama</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <input 
+                    type="text" 
+                    id="piQuickUrl" 
+                    class="form-input font-mono" 
+                    placeholder="Contoh: http://192.168.1.50:8000/v1 atau link Pi kamu"
+                    style="flex: 1; font-size: 0.85rem; padding: 7px 10px;"
+                  >
+                  <button 
+                    type="button" 
+                    id="btnGetPiModels" 
+                    style="font-size: 0.82rem; padding: 7px 14px; white-space: nowrap; background: #059669; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);"
+                  >
+                    <span>📥 Get Model</span>
                   </button>
                 </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                  <span style="font-size: 0.74rem; color: #94a3b8;">
+                    💡 Masukkan link dari Pi lalu klik <strong>Get Model</strong> untuk mengambil daftar model aktif.
+                  </span>
+                  <button type="button" id="btnCustomModelPrompt" style="font-size: 0.72rem; color: #10b981; background: none; border: 1px solid rgba(16,185,129,0.3); border-radius: 4px; padding: 2px 8px; cursor: pointer;">
+                    ➕ Input Manual
+                  </button>
+                </div>
+              </div>
+
+              <div class="label-row">
+                <label for="universalModel" class="form-label">MODEL TERPILIH (UNIVERSAL / PI)</label>
+                <span class="label-hint">Model aktif yang digunakan bot</span>
               </div>
               <div class="select-wrapper">
                 <select id="universalModel" name="UNIVERSAL_MODEL" class="form-select font-mono"></select>
@@ -441,31 +468,31 @@
 
             <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 24px 0;">
 
-            <!-- Autentikasi Universal API (Zero-CLI) -->
+            <!-- Autentikasi Universal / Pi Server (Zero-CLI) -->
             <div class="form-group">
               <div class="label-row">
-                <label class="form-label">KONFIGURASI UNIVERSAL API (ZERO-CLI)</label>
+                <label class="form-label">KONFIGURASI UNIVERSAL / PI SERVER</label>
                 <span class="badge" id="badgeUniversalKey">Memeriksa...</span>
               </div>
               <p class="form-help" style="margin-bottom: 14px;">
-                Digunakan saat engine <strong>Universal API</strong> aktif. Mendukung OpenRouter, DeepSeek API, OpenAI API, atau provider OpenAI-compatible lainnya tanpa instalasi CLI eksternal.
+                Digunakan saat engine <strong>Universal / Pi Server</strong> aktif. Masukkan link server Pi Anda (misal <code>http://192.168.1.50:8000/v1</code>, LiteLLM, Ollama, OpenRouter, atau provider OpenAI-compatible). Server lokal di Pi tidak mewajibkan API Key.
               </p>
 
               <div class="label-row">
-                <label for="universalBaseUrl" class="form-label">BASE URL API</label>
-                <span class="label-hint">OpenAI-compatible URL</span>
+                <label for="universalBaseUrl" class="form-label">BASE URL / LINK SERVER PI</label>
+                <span class="label-hint">Endpoint Server Pi</span>
               </div>
               <input 
                 type="text" 
                 id="universalBaseUrl" 
                 name="UNIVERSAL_BASE_URL" 
                 class="form-input font-mono" 
-                placeholder="https://api.deepseek.com/v1"
+                placeholder="http://192.168.1.50:8000/v1 atau https://api.deepseek.com/v1"
                 autocomplete="off"
                 spellcheck="false"
               >
               <div class="form-help" style="margin-bottom: 14px;">
-                Default DeepSeek Official: <code>https://api.deepseek.com/v1</code>. Untuk OpenRouter: <code>https://openrouter.ai/api/v1</code>.
+                Contoh link Pi: <code>http://192.168.1.50:8000/v1</code> atau <code>http://localhost:11434/v1</code>. Untuk DeepSeek: <code>https://api.deepseek.com/v1</code>.
               </div>
 
               <!-- Input UNIVERSAL_API_KEY -->

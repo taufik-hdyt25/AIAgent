@@ -3,9 +3,35 @@ import os from "node:os";
 import fs from "node:fs";
 import { mkdir } from "node:fs/promises";
 
-export const ROOT_DIR = process.cwd();
-export const DATA_DIR = path.resolve(ROOT_DIR, "data");
-export const LOG_DIR = path.resolve(ROOT_DIR, "logs");
+export const ROOT_DIR = (() => {
+  if (fs.existsSync(path.resolve(process.cwd(), "src/bot.js"))) {
+    return process.cwd();
+  }
+  if (fs.existsSync(path.resolve(process.cwd(), "telegram-ai-agent/src/bot.js"))) {
+    return path.resolve(process.cwd(), "telegram-ai-agent");
+  }
+  return process.cwd();
+})();
+
+export const DATA_DIR = (() => {
+  const candidate = fs.existsSync(path.resolve(ROOT_DIR, "data"))
+    ? path.resolve(ROOT_DIR, "data")
+    : (fs.existsSync(path.resolve(process.cwd(), "telegram-ai-agent/data"))
+        ? path.resolve(process.cwd(), "telegram-ai-agent/data")
+        : path.resolve(ROOT_DIR, "data"));
+  try {
+    fs.mkdirSync(candidate, { recursive: true });
+  } catch {}
+  return candidate;
+})();
+
+export const LOG_DIR = (() => {
+  const candidate = path.resolve(ROOT_DIR, "logs");
+  try {
+    fs.mkdirSync(candidate, { recursive: true });
+  } catch {}
+  return candidate;
+})();
 export const PROJECTS_DIR = process.env.PROJECTS_DIR
   ? path.resolve(process.env.PROJECTS_DIR)
   : (fs.existsSync(path.resolve(ROOT_DIR, "../projects"))

@@ -91,7 +91,7 @@ export async function getModelList(engine) {
       ? "universalModels"
       : "agyModels";
 
-  if (custom && Array.isArray(custom[engineKey])) {
+  if (custom && Array.isArray(custom[engineKey]) && custom[engineKey].length > 0) {
     return custom[engineKey];
   }
 
@@ -117,17 +117,57 @@ export async function getModelList(engine) {
 }
 
 /**
+ * Normalisasi URL server Pi / OpenAI-compatible endpoint
+ */
+export function normalizePiUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return "";
+  let url = rawUrl.trim();
+  if (!url) return "";
+
+  // Auto-tambahkan http:// jika belum ada skema
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    url = (url.includes(":") || url.includes("localhost") || /^(\d{1,3}\.){3}\d{1,3}/.test(url))
+      ? "http://" + url
+      : "https://" + url;
+  }
+
+  // Bersihkan trailing slash
+  url = url.replace(/\/+$/, "");
+
+  // Bersihkan path endpoint spesifik jika pengguna memasukkan link lengkap
+  const suffixesToStrip = [
+    "/chat/completions",
+    "/v1/chat/completions",
+    "/models",
+    "/v1/models",
+    "/model_list",
+    "/v1/model_list",
+    "/model/info",
+    "/v1/model/info",
+    "/api/tags",
+  ];
+  for (const suffix of suffixesToStrip) {
+    if (url.endsWith(suffix)) {
+      url = url.slice(0, -suffix.length).replace(/\/+$/, "");
+      break;
+    }
+  }
+
+  return url;
+}
+
+/**
  * Mengambil model pertama yang aktif dari remote server (dynamic fallback)
  */
 export async function resolveDynamicUniversalModel(baseUrl, apiKey) {
-  const targetUrl = baseUrl || process.env.UNIVERSAL_BASE_URL || "";
+  const targetUrl = normalizePiUrl(baseUrl || process.env.UNIVERSAL_BASE_URL || "");
   const targetKey = apiKey !== undefined ? apiKey : (process.env.UNIVERSAL_API_KEY || "");
   if (!targetUrl) return "";
 
   try {
     const list = await fetchRemoteModels(targetUrl, targetKey);
     if (list && list.length > 0) {
-      // 1. Cek apakah model yang dikonfigurasi pengguna ada di daftar server Pi
+      // 1. Cek apakah model yang dikonfigurasi pengguna di Web Settings / .env ada di daftar server Pi
       const configuredModel = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
       if (configuredModel && configuredModel !== "auto") {
         const foundConfigured = list.find((m) => m.id.toLowerCase() === configuredModel);
@@ -142,10 +182,12 @@ export async function resolveDynamicUniversalModel(baseUrl, apiKey) {
   return "";
 }
 
-// Fetch model real-time dari provider OpenAI-compatible (misal LiteLLM / OpenRouter / Ollama / custom server)
+// Fetch model real-time dari provider OpenAI-compatible (misal Pi Server / LiteLLM / OpenRouter / Ollama)
 export async function fetchRemoteModels(baseUrl, apiKey) {
   if (!baseUrl) return [];
-  const cleanUrl = baseUrl.replace(/\/+$/, "");
+  const cleanUrl = normalizePiUrl(baseUrl);
+  if (!cleanUrl) return [];
+
   const headers = {
     Accept: "application/json",
   };
@@ -153,25 +195,32 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  // Coba beberapa variasi endpoint yang umum pada OpenAI-compatible & local LLM server
+  // Coba beberapa variasi endpoint yang umum pada OpenAI-compatible & local LLM server di Pi
   const candidateEndpoints = [];
   if (cleanUrl.endsWith("/v1")) {
     const rootUrl = cleanUrl.slice(0, -3);
     candidateEndpoints.push(`${cleanUrl}/models`);
     candidateEndpoints.push(`${rootUrl}/models`);
-    candidateEndpoints.push(`${rootUrl}/model_list`);
     candidateEndpoints.push(`${cleanUrl}/model_list`);
+    candidateEndpoints.push(`${rootUrl}/model_list`);
     candidateEndpoints.push(`${cleanUrl}/model/info`);
     candidateEndpoints.push(`${rootUrl}/model/info`);
     candidateEndpoints.push(`${rootUrl}/api/tags`); // Format Ollama
-  } else {
-    candidateEndpoints.push(`${cleanUrl}/models`);
-    candidateEndpoints.push(`${cleanUrl}/v1/models`);
-    candidateEndpoints.push(`${cleanUrl}/model_list`);
-    candidateEndpoints.push(`${cleanUrl}/v1/model_list`);
-    candidateEndpoints.push(`${cleanUrl}/model/info`);
-    candidateEndpoints.push(`${cleanUrl}/v1/model/info`);
     candidateEndpoints.push(`${cleanUrl}/api/tags`);
+  } else {
+    candidateEndpoints.push(`${cleanUrl}/v1/models`);
+    candidateEndpoints.push(`${cleanUrl}/models`);
+    candidateEndpoints.push(`${cleanUrl}/v1/model_list`);
+    candidateEndpoints.push(`${cleanUrl}/model_list`);
+    candidateEndpoints.push(`${cleanUrl}/v1/model/info`);
+    candidateEndpoints.push(`${cleanUrl}/model/info`);
+    candidateEndpoints.push(`${cleanUrl}/api/tags`);
+  }
+
+  // Tambahkan juga link mentah jika pengguna memasukkan endpoint langsung
+  const rawClean = baseUrl.trim().replace(/\/+$/, "");
+  if (rawClean && !candidateEndpoints.includes(rawClean)) {
+    candidateEndpoints.push(rawClean);
   }
 
   for (const endpoint of candidateEndpoints) {
@@ -222,7 +271,7 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
             return {
               id,
               name,
-              badge: "Server",
+              badge: "Pi",
               description: (typeof item === "object" && item.description) || "",
             };
           })
