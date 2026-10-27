@@ -905,7 +905,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=$global_dir/th-agent-bin
+ExecStart=/usr/bin/env node $global_dir/th-agent-bin
 WorkingDirectory=$global_dir
 Restart=always
 RestartSec=5

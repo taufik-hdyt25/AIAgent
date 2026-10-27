@@ -77,8 +77,19 @@ if (!BOT_TOKEN || ALLOWED_IDS.size === 0) {
   );
 }
 
-// Inisialisasi bot grammY
-const bot = new Bot(BOT_TOKEN || "PLACEHOLDER_TOKEN_FOR_CHECK");
+// Inisialisasi bot grammY dengan client timeout (45s) agar kebal stale socket / network freeze
+const bot = new Bot(BOT_TOKEN || "PLACEHOLDER_TOKEN_FOR_CHECK", {
+  client: {
+    timeoutSeconds: 45, // Hard timeout untuk setiap pemanggilan API Telegram
+  },
+});
+
+// Lacak waktu aktivitas polling terakhir untuk auto-heal
+let lastPollingActivity = Date.now();
+bot.use(async (ctx, next) => {
+  lastPollingActivity = Date.now();
+  await next();
+});
 
 // 1. Registrasi Middleware (Otorisasi & Logging)
 registerMiddleware(bot);
@@ -93,7 +104,10 @@ registerMessageHandlers(bot);
 
 // Global Error Handler
 bot.catch((error) => {
-  console.error("Telegram bot error:", error.message);
+  console.error("Telegram bot error:", error.message || error);
+  if (error.stack) {
+    console.error(error.stack);
+  }
 });
 
 // Jalankan Bot Telegram jika token sudah tersedia
@@ -158,11 +172,27 @@ if (
 
     while (shouldRun) {
       try {
+        // Bersihkan state polling lama jika ada
+        if (bot.pollingRunning) {
+          try {
+            bot.pollingAbortController?.abort();
+          } catch (_) {}
+          bot.pollingRunning = false;
+          bot.pollingAbortController = undefined;
+        }
+
         isPollingActive = true;
+        lastPollingActivity = Date.now();
+
         await bot.start({
-          drop_pending_updates: false, // Pertahankan pesan yang masuk saat laptop sleep/offline
+          drop_pending_updates: false, // Pertahankan pesan yang masuk saat offline
+          allowed_updates: ["message", "edited_message", "callback_query"],
+          getUpdates: {
+            timeout: 30, // 30 detik long-polling di server Telegram
+          },
           onStart: (botInfo) => {
             retryAttempt = 0;
+            lastPollingActivity = Date.now();
             console.log(`🤖 Bot @${botInfo.username} berhasil terhubung dan siap menerima pesan di Telegram!`);
             syncCommands();
 
@@ -188,9 +218,9 @@ if (
 
         if (err.error_code === 409 || err.description?.includes("Conflict") || String(err).includes("409")) {
           console.warn("\n⚠️  [409 CONFLICT DETECTED]");
-          console.warn("   Token bot ini sedang aktif dijalankan di tempat lain (misal: di VPS atau terminal lain).");
-          console.warn("   Menunggu 30 detik sebelum mencoba reconnect kembali...\n");
-          await new Promise((r) => setTimeout(r, 30000));
+          console.warn("   Token bot ini sedang aktif dijalankan di tempat lain atau socket sebelumnya sedang ditutup oleh Telegram.");
+          console.warn("   Menunggu 15 detik sebelum mencoba reconnect kembali...\n");
+          await new Promise((r) => setTimeout(r, 15000));
           continue;
         }
       } finally {
@@ -201,9 +231,9 @@ if (
 
       retryAttempt++;
       // Pastikan koneksi internet (DNS Telegram) sudah siap sebelum mencoba start polling ulang
-      await waitForInternet(10000).catch(() => {});
+      await waitForInternet(15000).catch(() => {});
 
-      const delayMs = Math.min(25000, 2000 * Math.min(retryAttempt, 5));
+      const delayMs = Math.min(20000, 2000 * Math.min(retryAttempt, 5));
       console.log(`[Bot Gateway] Menghubungkan ulang ke Telegram dalam ${Math.round(delayMs / 1000)} detik (percobaan #${retryAttempt})...`);
       await new Promise((r) => setTimeout(r, delayMs));
     }
@@ -211,23 +241,21 @@ if (
 
   startBotLoop().catch((err) => console.error("[Bot Gateway] Loop error fatal:", err));
 
-  // Deteksi Sleep / Wake-up Mac Kilat & Heartbeat Watchdog (Interval 2 detik)
+  // Watchdog Koneksi & Anti-Hang (Interval 5 detik)
   let lastHeartbeatTime = Date.now();
-  let consecutivePingFails = 0;
-  let pingTickCounter = 0;
 
   const watchdogInterval = setInterval(async () => {
     const now = Date.now();
     const elapsed = now - lastHeartbeatTime;
     lastHeartbeatTime = now;
 
-    // Jika selisih waktu > 5 detik (interval normal 2s), berarti Mac baru saja dibuka dari mode Sleep!
-    if (elapsed > 5000) {
+    // 1. Khusus macOS: Deteksi Sleep / Wake-up nyata (jika gap waktu > 15 detik)
+    if (process.platform === "darwin" && elapsed > 15000) {
       const sleepSeconds = Math.round(elapsed / 1000);
       console.log(`\n💤 [PowerManagement] Terdeteksi Mac baru saja dibuka dari Sleep mode (${sleepSeconds} detik).`);
       console.log(`⚡ [PowerManagement] Memulihkan koneksi bot secara kilat...`);
 
-      // 1. Cek status tugas aktif (jangan langsung kill jika proses masih berjalan sehat)
+      // Cek status tugas aktif (jangan langsung kill jika proses masih berjalan sehat)
       const activeTask = getActiveTask();
       let taskStillRunning = false;
 
@@ -243,9 +271,9 @@ if (
 
         // Jika proses child masih hidup dan interupsi wajar (< 10 menit), biarkan lanjut sampai tuntas!
         if (taskStillRunning && sleepSeconds < 600) {
-          console.log(`⚡ [PowerManagement] Tugas #${activeTask.id} masih aktif di background. Melanjutkan eksekusi tanpa dihentikan...`);
+          console.log(`⚡ [PowerManagement] Tugas #${activeTask.id} masih aktif di background. Melanjutkan eksekusi...`);
         } else {
-          console.log(`[PowerManagement] Menghentikan tugas #${activeTask.id} yang terinterupsi/terputus (${sleepSeconds}s)...`);
+          console.log(`[PowerManagement] Menghentikan tugas #${activeTask.id} yang terinterupsi (${sleepSeconds}s)...`);
           activeTask.cancelled = true;
           if (activeTask.process) {
             killProcessTree(activeTask.process, "SIGKILL");
@@ -255,18 +283,16 @@ if (
         }
       }
 
-      // 2. Putuskan koneksi polling lama yang menggantung (timeout cepat 1.5 detik)
+      // Abort socket lama yang menggantung saat sleep
       try {
-        await Promise.race([
-          bot.stop(),
-          new Promise((r) => setTimeout(r, 1500)),
-        ]).catch(() => {});
+        bot.pollingAbortController?.abort();
       } catch (_) {}
 
-      // 3. Tunggu Wi-Fi aktif kembali (biasanya 1-3 detik setelah Mac dibuka)
+      // Tunggu Wi-Fi aktif kembali
       console.log(`📶 [PowerManagement] Menunggu sinyal Wi-Fi aktif kembali...`);
-      const isOnline = await waitForInternet(12000);
+      const isOnline = await waitForInternet(15000);
       if (isOnline) {
+        lastPollingActivity = Date.now();
         console.log(`✅ [PowerManagement] Wi-Fi & Internet aktif! TH Agent langsung terhubung kembali.`);
         if (activeTask?.chatId) {
           if (taskStillRunning) {
@@ -287,32 +313,25 @@ if (
       return;
     }
 
-    // Ping healthcheck setiap 5 tick (10 detik sekali)
-    pingTickCounter = (pingTickCounter + 1) % 5;
-    if (pingTickCounter !== 0) return;
-    if (!isPollingActive) return;
-
-    try {
-      await Promise.race([
-        bot.api.getMe(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Ping Timeout")), 6000)),
-      ]);
-      consecutivePingFails = 0;
-    } catch (pingErr) {
-      consecutivePingFails++;
-      console.warn(`[Watchdog] Healthcheck Telegram gagal (${consecutivePingFails}/3): ${pingErr.message}`);
-      if (consecutivePingFails >= 3) {
-        console.warn("[Watchdog] Koneksi Telegram terputus (stale socket). Merefresh polling bot...");
-        consecutivePingFails = 0;
+    // 2. Deteksi Stale Socket / Dead Connection Tanpa Polling Response (> 75 detik)
+    // Long-polling normal dari Telegram merespon setiap 30 detik.
+    // Jika lebih dari 75 detik tidak ada sinyal apapun dari Telegram padahal internet aktif,
+    // maka TCP socket kemungkinan besar mengalami TCP half-open dead lock.
+    if (isPollingActive && (now - lastPollingActivity > 75000)) {
+      console.warn(`[Watchdog] Tidak ada respon polling dari Telegram selama ${Math.round((now - lastPollingActivity) / 1000)}s.`);
+      
+      const hasNet = await waitForInternet(4000).catch(() => false);
+      if (hasNet) {
+        console.warn("⚠️ [Watchdog] Internet aktif tetapi socket Telegram menggantung (dead socket). Mereset socket polling secara aman...");
+        lastPollingActivity = Date.now(); // reset timer agar tidak spam abort
         try {
-          await Promise.race([
-            bot.stop(),
-            new Promise((r) => setTimeout(r, 2000)),
-          ]).catch(() => {});
+          bot.pollingAbortController?.abort();
         } catch (_) {}
+      } else {
+        console.warn("📶 [Watchdog] Menunggu koneksi internet pulih kembali...");
       }
     }
-  }, 2000);
+  }, 5000);
 
   // Graceful shutdown
   const handleExit = async () => {
