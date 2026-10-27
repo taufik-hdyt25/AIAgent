@@ -33,6 +33,8 @@ import {
   AVAILABLE_UNIVERSAL_MODELS,
   getModelList,
   fetchRemoteModels,
+  loadCustomModels,
+  saveCustomModels,
 } from "./config/models.js";
 import { loadWatchConfig, saveWatchConfig } from "./services/github-service.js";
 import {
@@ -165,6 +167,7 @@ export function createWebServer() {
           voiceConfig,
           sentryConfig,
           dockerStatus,
+          customModels: (await loadCustomModels()) || {},
           options: {
             agyModels: await getModelList("agy"),
             claudeModels: await getModelList("claude"),
@@ -198,6 +201,97 @@ export function createWebServer() {
 
         const models = await fetchRemoteModels(baseUrl, apiKey);
         return sendJson(200, { ok: true, models, count: models.length });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    // API: Kelola Daftar Model yang Diizinkan Muncul (Allowed / Custom Models)
+    if (pathname === "/api/custom-models" && req.method === "GET") {
+      try {
+        const custom = (await loadCustomModels()) || {};
+        return sendJson(200, {
+          ok: true,
+          customModels: {
+            agyModels: custom.agyModels || [],
+            claudeModels: custom.claudeModels || [],
+            universalModels: custom.universalModels || [],
+          },
+        });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    if (pathname === "/api/custom-models" && req.method === "POST") {
+      try {
+        let body = "";
+        for await (const chunk of req) body += chunk;
+        const payload = JSON.parse(body || "{}");
+        const existing = (await loadCustomModels()) || {
+          agyModels: [],
+          claudeModels: [],
+          universalModels: [],
+        };
+        const engineKey =
+          payload.engine === "claude"
+            ? "claudeModels"
+            : payload.engine === "agy"
+            ? "agyModels"
+            : "universalModels";
+
+        if (payload.action === "reset") {
+          delete existing[engineKey];
+          await saveCustomModels(existing);
+          return sendJson(200, {
+            ok: true,
+            message: "Daftar model berhasil direset ke default.",
+            customModels: existing,
+            options: await getModelList(payload.engine || "universal"),
+          });
+        }
+
+        if (payload.action === "add" && payload.modelId) {
+          if (!Array.isArray(existing[engineKey])) existing[engineKey] = [];
+          const id = payload.modelId.trim();
+          const name = payload.name ? payload.name.trim() : id;
+          if (!existing[engineKey].some((m) => m.id.toLowerCase() === id.toLowerCase())) {
+            existing[engineKey].push({ id, name, badge: "Custom" });
+          }
+          await saveCustomModels(existing);
+          return sendJson(200, {
+            ok: true,
+            message: `Model '${id}' berhasil ditambahkan ke daftar yang diizinkan.`,
+            customModels: existing,
+            options: await getModelList(payload.engine || "universal"),
+          });
+        }
+
+        if (payload.action === "remove" && payload.modelId) {
+          if (Array.isArray(existing[engineKey])) {
+            existing[engineKey] = existing[engineKey].filter(
+              (m) => m.id.toLowerCase() !== payload.modelId.trim().toLowerCase()
+            );
+          }
+          await saveCustomModels(existing);
+          return sendJson(200, {
+            ok: true,
+            message: `Model '${payload.modelId}' berhasil dihapus dari daftar.`,
+            customModels: existing,
+            options: await getModelList(payload.engine || "universal"),
+          });
+        }
+
+        if (payload.customModels) {
+          await saveCustomModels(payload.customModels);
+          return sendJson(200, {
+            ok: true,
+            message: "Daftar model kustom berhasil disimpan.",
+            customModels: payload.customModels,
+          });
+        }
+
+        return sendError(400, "Payload aksi tidak valid");
       } catch (err) {
         return sendError(500, err.message);
       }

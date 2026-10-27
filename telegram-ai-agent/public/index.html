@@ -279,6 +279,34 @@
                 <select id="universalModel" name="UNIVERSAL_MODEL" class="form-select font-mono"></select>
               </div>
             </div>
+
+            <!-- Allowed Models Manager (Kelola Model yang Boleh Muncul) -->
+            <div class="form-group" style="margin-top: 1.25rem; padding: 1rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+              <div class="label-row" style="margin-bottom: 0.5rem;">
+                <label class="form-label" style="font-weight: 600; color: #60a5fa; display: flex; align-items: center; gap: 6px;">
+                  📋 MODEL YANG DIIZINKAN MUNCUL (<span id="allowedEngineLabel">UNIVERSAL API</span>)
+                </label>
+                <button type="button" id="btnResetDefaultModels" style="font-size: 0.72rem; color: #94a3b8; background: none; border: 1px solid rgba(148,163,184,0.3); border-radius: 4px; padding: 2px 8px; cursor: pointer;">
+                  ↺ Reset ke Default
+                </button>
+              </div>
+              <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.75rem;">
+                Hanya model di daftar ini yang akan muncul di dropdown Web &amp; Telegram (<code style="color: #38bdf8;">/model</code>). Hapus model yang tidak diinginkan atau tambahkan model baru.
+              </p>
+              
+              <!-- Chips Container -->
+              <div id="allowedModelsChips" style="display: flex; flex-wrap: wrap; gap: 6px; min-height: 38px; margin-bottom: 0.75rem;">
+                <!-- Chips dynamically rendered here -->
+              </div>
+
+              <!-- Quick Add Row -->
+              <div style="display: flex; gap: 6px;">
+                <input type="text" id="inputNewModelId" class="form-input font-mono" placeholder="Ketik ID model (contoh: claude-3-5-sonnet, litellm)" style="flex: 1; font-size: 0.85rem; padding: 6px 10px;">
+                <button type="button" id="btnAddAllowedModel" style="font-size: 0.8rem; padding: 6px 14px; white-space: nowrap; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">
+                  ➕ Tambahkan Model
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

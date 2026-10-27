@@ -1,6 +1,7 @@
 // State aplikasi
 let currentSettings = {};
 let availableOptions = { agyModels: [], claudeModels: [] };
+let currentCustomModels = {};
 
 // DOM Elements
 const form = document.getElementById("settingsForm");
@@ -234,6 +235,7 @@ async function loadSettings() {
 
     currentSettings = data.settings;
     availableOptions = data.options || {};
+    currentCustomModels = data.customModels || {};
 
     // Populate inputs
     botTokenInput.value = currentSettings.BOT_TOKEN || "";
@@ -246,6 +248,7 @@ async function loadSettings() {
       r.checked = r.value === activeEngine;
     }
     syncEngineView(activeEngine);
+    renderAllowedModelsChips();
 
     // Populate AGY Models Select
     agyModelSelect.innerHTML = "";
@@ -579,6 +582,7 @@ document.querySelectorAll(".btn-preset").forEach((btn) => {
 engineRadios.forEach((r) => {
   r.addEventListener("change", () => {
     syncEngineView(r.value);
+    renderAllowedModelsChips();
     if (r.value === "claude") {
       badgeEngine.textContent = "Claude Code";
       badgeModel.textContent = claudeModelSelect.value;
@@ -591,6 +595,147 @@ engineRadios.forEach((r) => {
     }
   });
 });
+
+// Allowed Models Manager Elements
+const allowedEngineLabel = document.getElementById("allowedEngineLabel");
+const btnResetDefaultModels = document.getElementById("btnResetDefaultModels");
+const allowedModelsChips = document.getElementById("allowedModelsChips");
+const inputNewModelId = document.getElementById("inputNewModelId");
+const btnAddAllowedModel = document.getElementById("btnAddAllowedModel");
+
+function getActiveEngineKey() {
+  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "universal";
+  if (selectedEngine === "claude") return { engine: "claude", key: "claudeModels", label: "CLAUDE CODE", select: claudeModelSelect };
+  if (selectedEngine === "agy") return { engine: "agy", key: "agyModels", label: "ANTIGRAVITY / AGY", select: agyModelSelect };
+  return { engine: "universal", key: "universalModels", label: "UNIVERSAL API", select: universalModelSelect };
+}
+
+function renderAllowedModelsChips() {
+  if (!allowedModelsChips) return;
+  const { engine, key, label } = getActiveEngineKey();
+  if (allowedEngineLabel) allowedEngineLabel.textContent = label;
+
+  const currentModels = (availableOptions && availableOptions[key]) || (currentCustomModels && currentCustomModels[key]) || [];
+  allowedModelsChips.innerHTML = "";
+
+  if (currentModels.length === 0) {
+    allowedModelsChips.innerHTML = `<span style="font-size: 0.8rem; color: #64748b; font-style: italic;">Belum ada pembatasan model khusus. Semua model default/server dapat muncul.</span>`;
+    return;
+  }
+
+  for (const m of currentModels) {
+    const chip = document.createElement("span");
+    chip.style.cssText = "display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.25); border-radius: 6px; font-size: 0.8rem; color: #93c5fd; font-family: monospace;";
+    chip.textContent = m.id || m.name;
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.innerHTML = "&times;";
+    delBtn.title = `Hapus model ${m.id} dari daftar yang diizinkan`;
+    delBtn.style.cssText = "background: none; border: none; color: #f87171; font-size: 1rem; cursor: pointer; padding: 0 2px; line-height: 1; font-weight: bold;";
+    delBtn.addEventListener("click", async () => {
+      await removeAllowedModel(engine, m.id);
+    });
+
+    chip.appendChild(delBtn);
+    allowedModelsChips.appendChild(chip);
+  }
+}
+
+async function addAllowedModel(engine, modelId, name) {
+  if (!modelId) return;
+  try {
+    const res = await fetch("/api/custom-models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "add", engine, modelId, name }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal menambah model");
+    currentCustomModels = data.customModels || {};
+    const { key } = getActiveEngineKey();
+    if (data.options) {
+      if (!availableOptions) availableOptions = {};
+      availableOptions[key] = data.options;
+    }
+    renderAllowedModelsChips();
+    await loadSettings();
+    showToast(data.message || "Model berhasil ditambahkan!", "success");
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`, "error");
+  }
+}
+
+async function removeAllowedModel(engine, modelId) {
+  if (!modelId) return;
+  try {
+    const res = await fetch("/api/custom-models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "remove", engine, modelId }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal menghapus model");
+    currentCustomModels = data.customModels || {};
+    const { key } = getActiveEngineKey();
+    if (data.options) {
+      if (!availableOptions) availableOptions = {};
+      availableOptions[key] = data.options;
+    }
+    renderAllowedModelsChips();
+    await loadSettings();
+    showToast(data.message || "Model berhasil dihapus!", "info");
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`, "error");
+  }
+}
+
+async function resetAllowedModels(engine) {
+  try {
+    const res = await fetch("/api/custom-models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset", engine }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal mereset model");
+    currentCustomModels = data.customModels || {};
+    renderAllowedModelsChips();
+    await loadSettings();
+    showToast("Daftar model dikembalikan ke default!", "success");
+  } catch (err) {
+    showToast(`Gagal reset: ${err.message}`, "error");
+  }
+}
+
+if (btnAddAllowedModel && inputNewModelId) {
+  btnAddAllowedModel.addEventListener("click", async () => {
+    const val = inputNewModelId.value.trim();
+    if (!val) {
+      showToast("Ketik ID model terlebih dahulu!", "warning");
+      return;
+    }
+    const { engine } = getActiveEngineKey();
+    await addAllowedModel(engine, val);
+    inputNewModelId.value = "";
+  });
+
+  inputNewModelId.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      btnAddAllowedModel.click();
+    }
+  });
+}
+
+if (btnResetDefaultModels) {
+  btnResetDefaultModels.addEventListener("click", async () => {
+    const { engine, label } = getActiveEngineKey();
+    if (confirm(`Kembalikan daftar model untuk ${label} ke default bawaan?`)) {
+      await resetAllowedModels(engine);
+    }
+  });
+}
 
 agyModelSelect.addEventListener("change", () => {
   const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;

@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { DATA_DIR } from "./env.js";
 
 const MODELS_FILE = path.join(DATA_DIR, "models.json");
@@ -63,11 +64,39 @@ export async function loadCustomModels() {
   }
 }
 
+// Helper menyimpan model kustom ke data/models.json
+export async function saveCustomModels(customData) {
+  try {
+    await writeFile(MODELS_FILE, JSON.stringify(customData, null, 2) + "\n", "utf8");
+    const altPath = path.join(os.homedir(), ".th-agent", "data", "models.json");
+    if (altPath !== MODELS_FILE) {
+      await writeFile(altPath, JSON.stringify(customData, null, 2) + "\n", "utf8").catch(() => {});
+    }
+    return true;
+  } catch (err) {
+    console.error("[Models] Gagal menyimpan custom models:", err.message);
+    return false;
+  }
+}
+
 // Helper mendapatkan daftar model berdasarkan engine aktif
+// Jika pengguna mengonfigurasi daftar model kustom untuk engine ini,
+// HANYA MODEL YANG DITAMBAHKAN YANG BOLEH MUNCUL!
 export async function getModelList(engine) {
   const custom = await loadCustomModels();
+  const engineKey =
+    engine === "claude"
+      ? "claudeModels"
+      : engine === "universal"
+      ? "universalModels"
+      : "agyModels";
+
+  if (Array.isArray(custom?.[engineKey]) && custom[engineKey].length > 0) {
+    return custom[engineKey];
+  }
+
   if (engine === "claude") {
-    return custom?.claudeModels || AVAILABLE_CLAUDE_MODELS;
+    return AVAILABLE_CLAUDE_MODELS;
   }
   if (engine === "universal") {
     const uniUrl = process.env.UNIVERSAL_BASE_URL;
@@ -76,16 +105,15 @@ export async function getModelList(engine) {
       try {
         const remote = await fetchRemoteModels(uniUrl, uniKey);
         if (remote.length > 0) {
-          // Selalu gunakan 100% murni daftar model dari URL server jika berhasil ditarik
           return remote;
         }
       } catch {
         // Fallback ke default jika endpoint server gagal
       }
     }
-    return custom?.universalModels || AVAILABLE_UNIVERSAL_MODELS;
+    return AVAILABLE_UNIVERSAL_MODELS;
   }
-  return custom?.agyModels || AVAILABLE_AGY_MODELS;
+  return AVAILABLE_AGY_MODELS;
 }
 
 /**
