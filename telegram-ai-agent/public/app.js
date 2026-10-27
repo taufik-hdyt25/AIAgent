@@ -954,6 +954,21 @@ if (btnDetectRemoteModels) {
       }
 
       badgeModel.textContent = universalModelSelect.value || "Auto-detect";
+
+      // Sinkronkan model yang terdeteksi ke Allowed Models
+      try {
+        await fetch("/api/custom-models", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "sync_remote", engine: "universal", models }),
+        });
+        if (!currentCustomModels) currentCustomModels = {};
+        currentCustomModels.universalModels = models;
+        if (!availableOptions) availableOptions = {};
+        availableOptions.universalModels = models;
+        renderAllowedModelsChips();
+      } catch (_) {}
+
       showToast(`🎯 Berhasil mendeteksi ${models.length} model dari server!`, "success");
     } catch (err) {
       showToast(`Gagal deteksi model: ${err.message}`, "error");

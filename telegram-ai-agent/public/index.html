@@ -471,11 +471,11 @@
             <!-- Autentikasi Universal / Pi Server (Zero-CLI) -->
             <div class="form-group">
               <div class="label-row">
-                <label class="form-label">KONFIGURASI UNIVERSAL / PI SERVER</label>
+                <label class="form-label">KONFIGURASI SERVER PI (UNIVERSAL)</label>
                 <span class="badge" id="badgeUniversalKey">Memeriksa...</span>
               </div>
               <p class="form-help" style="margin-bottom: 14px;">
-                Digunakan saat engine <strong>Universal / Pi Server</strong> aktif. Masukkan link server Pi Anda (misal <code>http://192.168.1.50:8000/v1</code>, LiteLLM, Ollama, OpenRouter, atau provider OpenAI-compatible). Server lokal di Pi tidak mewajibkan API Key.
+                Digunakan saat engine <strong>Server Pi (Universal)</strong> aktif. Masukkan link server Pi Anda (misal <code>http://127.0.0.1:46315/v1</code>, <code>http://192.168.1.50:8000/v1</code>, atau LiteLLM / Ollama di Pi). Server lokal di Pi tidak mewajibkan API Key.
               </p>
 
               <div class="label-row">
@@ -487,19 +487,19 @@
                 id="universalBaseUrl" 
                 name="UNIVERSAL_BASE_URL" 
                 class="form-input font-mono" 
-                placeholder="http://192.168.1.50:8000/v1 atau https://api.deepseek.com/v1"
+                placeholder="http://127.0.0.1:46315/v1 atau http://192.168.1.50:8000/v1"
                 autocomplete="off"
                 spellcheck="false"
               >
               <div class="form-help" style="margin-bottom: 14px;">
-                Contoh link Pi: <code>http://192.168.1.50:8000/v1</code> atau <code>http://localhost:11434/v1</code>. Untuk DeepSeek: <code>https://api.deepseek.com/v1</code>.
+                Contoh link Pi: <code>http://127.0.0.1:46315/v1</code> atau <code>http://192.168.1.50:8000/v1</code>.
               </div>
 
               <!-- Input UNIVERSAL_API_KEY -->
               <div class="api-key-box" id="boxUniversalApiKey">
                 <div class="label-row">
-                  <label for="universalApiKey" class="form-label">UNIVERSAL API KEY</label>
-                  <span class="label-hint">sk-...</span>
+                  <label for="universalApiKey" class="form-label">API KEY (OPSIONAL UNTUK PI)</label>
+                  <span class="label-hint">Opsional</span>
                 </div>
                 <div class="input-action-wrapper">
                   <input 
@@ -507,7 +507,7 @@
                     id="universalApiKey" 
                     name="UNIVERSAL_API_KEY" 
                     class="form-input font-mono" 
-                    placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx"
+                    placeholder="Kosongkan jika server Pi tidak memerlukan autentikasi"
                     autocomplete="off"
                     spellcheck="false"
                   >
@@ -519,7 +519,7 @@
                   </button>
                 </div>
                 <div class="form-help">
-                  Dapatkan API Key dari <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener">DeepSeek Platform</a> atau <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a>.
+                  Isi API Key hanya jika server Pi Anda diproteksi oleh bearer token atau autentikasi custom.
                 </div>
               </div>
             </div>

@@ -29,24 +29,10 @@ export const DEFAULT_CLAUDE_MODELS = [
 ];
 
 export const DEFAULT_UNIVERSAL_MODELS = [
-  { id: "deepseek-chat", name: "DeepSeek Chat (V3 / V4 - Cepat & Cerdas)", badge: "Official" },
-  { id: "deepseek-reasoner", name: "DeepSeek Reasoner (R1 - Penalaran Mendalam)", badge: "Official" },
-  { id: "deepseek/deepseek-v4", name: "DeepSeek V4 (OpenRouter)", badge: "Terbaru" },
-  { id: "deepseek/deepseek-chat", name: "DeepSeek V3 (OpenRouter)", badge: "Rekomendasi" },
-  { id: "deepseek/deepseek-r1", name: "DeepSeek R1 (OpenRouter)", badge: "Thinking" },
-  { id: "deepseek/deepseek-coder", name: "DeepSeek Coder (OpenRouter)", badge: "Koding" },
-  { id: "anthropic/claude-3.7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
-  { id: "anthropic/claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
-  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Direct / LiteLLM)", badge: "Populer" },
-  { id: "claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Dot Notation)", badge: "Populer" },
-  { id: "anthropic/claude-3.5-haiku", name: "Claude 3.5 Haiku (OpenRouter)", badge: "Hemat" },
-  { id: "claude-3-5-haiku", name: "Claude 3.5 Haiku (Direct / LiteLLM)", badge: "Hemat" },
-  { id: "openai/gpt-4o", name: "GPT-4o (Omni Flagship)", badge: "Flagship" },
-  { id: "openai/gpt-4o-mini", name: "GPT-4o Mini (Cepat & Ringkas)", badge: "Cepat" },
-  { id: "google/gemini-2.0-flash-001", name: "Gemini 2.0 Flash (Super Cepat)", badge: "Kilat" },
-  { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B (Spesialis Koding)", badge: "Open" },
-  { id: "inflection/inflection-3-pi", name: "Inflection 3 Pi (Conversational Assistant)", badge: "Pi AI" },
-  { id: "inflection/inflection-3-productivity", name: "Inflection 3 Productivity (Pi Code & Task)", badge: "Pi AI" },
+  { id: "pi-qwen2.5-coder-32b", name: "Qwen 2.5 Coder 32B (Pi Server)", badge: "Pi" },
+  { id: "pi-deepseek-r1-7b", name: "DeepSeek R1 7B (Pi Server)", badge: "Pi" },
+  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Pi / LiteLLM)", badge: "Pi" },
+  { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Pi / LiteLLM)", badge: "Pi" },
 ];
 
 export const AVAILABLE_AGY_MODELS = DEFAULT_AGY_MODELS;
@@ -223,6 +209,8 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
     candidateEndpoints.push(rawClean);
   }
 
+  const allFoundModels = new Map();
+
   for (const endpoint of candidateEndpoints) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -241,8 +229,18 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
         list = data.data;
       } else if (Array.isArray(data?.models)) {
         list = data.models;
+      } else if (Array.isArray(data?.model_list)) {
+        list = data.model_list;
       } else if (Array.isArray(data?.data?.models)) {
         list = data.data.models;
+      } else if (Array.isArray(data?.data?.model_list)) {
+        list = data.data.model_list;
+      } else if (Array.isArray(data?.result)) {
+        list = data.result;
+      } else if (Array.isArray(data?.items)) {
+        list = data.items;
+      } else if (Array.isArray(data?.data?.items)) {
+        list = data.data.items;
       } else if (Array.isArray(data)) {
         list = data;
       } else if (data?.data && typeof data.data === "object" && !Array.isArray(data.data)) {
@@ -258,27 +256,29 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
       }
 
       if (list.length > 0) {
-        const mapped = list
-          .map((item) => {
-            const id =
-              typeof item === "string"
-                ? item
-                : (item.id || item.model_name || item.model || item.name || "unknown");
-            const name =
-              typeof item === "object"
-                ? (item.name || item.model_name || item.model || item.id || "Unknown")
-                : String(item);
-            return {
-              id,
-              name,
-              badge: "Pi",
-              description: (typeof item === "object" && item.description) || "",
-            };
-          })
-          .filter((m) => m.id && m.id !== "unknown");
+        for (const item of list) {
+          const id = (
+            typeof item === "string"
+              ? item
+              : (item?.id || item?.model_name || item?.model || item?.name || "")
+          ).trim();
+          const name = (
+            typeof item === "object"
+              ? (item?.name || item?.model_name || item?.model || item?.id || id)
+              : String(item)
+          ).trim();
 
-        if (mapped.length > 0) {
-          return mapped;
+          if (id && id !== "unknown") {
+            const key = id.toLowerCase();
+            if (!allFoundModels.has(key)) {
+              allFoundModels.set(key, {
+                id,
+                name: name || id,
+                badge: "Pi",
+                description: (typeof item === "object" && item?.description) || "",
+              });
+            }
+          }
         }
       }
     } catch {
@@ -286,5 +286,5 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
     }
   }
 
-  return [];
+  return Array.from(allFoundModels.values());
 }

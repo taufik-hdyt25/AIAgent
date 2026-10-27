@@ -148,7 +148,7 @@ export function createWebServer() {
             GEMINI_API_KEY: parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY || "",
             CLAUDE_AUTH_TYPE: parsed.CLAUDE_AUTH_TYPE || (parsed.ANTHROPIC_API_KEY ? "api_key" : "oauth"),
             AGY_AUTH_TYPE: parsed.AGY_AUTH_TYPE || (parsed.GEMINI_API_KEY ? "api_key" : "oauth"),
-            UNIVERSAL_BASE_URL: parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1",
+            UNIVERSAL_BASE_URL: parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "http://127.0.0.1:46315/v1",
             UNIVERSAL_API_KEY: parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "",
             UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL ?? process.env.UNIVERSAL_MODEL ?? "",
             GITHUB_TOKEN: parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
@@ -196,7 +196,7 @@ export function createWebServer() {
           url.searchParams.get("baseUrl") ||
           parsed.UNIVERSAL_BASE_URL ||
           process.env.UNIVERSAL_BASE_URL ||
-          "https://api.deepseek.com/v1";
+          "http://127.0.0.1:46315/v1";
         const apiKey =
           url.searchParams.get("apiKey") !== null
             ? url.searchParams.get("apiKey")
@@ -284,6 +284,17 @@ export function createWebServer() {
             message: "Daftar model berhasil direset ke default.",
             customModels: existing,
             options: await getModelList(payload.engine || "universal"),
+          });
+        }
+
+        if (payload.action === "sync_remote" && Array.isArray(payload.models)) {
+          existing[engineKey] = payload.models;
+          await saveCustomModels(existing);
+          return sendJson(200, {
+            ok: true,
+            message: `Berhasil menyinkronkan ${payload.models.length} model dari server Pi.`,
+            customModels: existing,
+            options: existing[engineKey],
           });
         }
 

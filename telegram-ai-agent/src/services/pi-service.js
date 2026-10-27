@@ -12,7 +12,7 @@ import {
  * dan langsung mengaktifkannya sebagai model default
  */
 export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel = null) {
-  const targetUrl = normalizePiUrl(baseUrl || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1");
+  const targetUrl = normalizePiUrl(baseUrl || process.env.UNIVERSAL_BASE_URL || "http://127.0.0.1:46315/v1");
   const targetKey = apiKey !== undefined ? apiKey : (process.env.UNIVERSAL_API_KEY || "");
 
   const models = await fetchRemoteModels(targetUrl, targetKey);
@@ -43,7 +43,7 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel =
   // 2. Cek apakah ada model yang sudah dikonfigurasi pengguna di UNIVERSAL_MODEL
   if (!chosenModel) {
     const configured = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
-    if (configured && configured !== "auto" && configured !== "deepseek-chat") {
+    if (configured && configured !== "auto") {
       chosenModel = models.find((m) => m.id.toLowerCase() === configured);
     }
   }

@@ -1017,17 +1017,24 @@ export async function runAgentAutonomous({
 
   // 1. Engine: Universal API (Zero-CLI)
   if (engine === "universal") {
-    const universalApiKey =
+    const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "http://127.0.0.1:46315/v1";
+    const isCustomServer =
+      universalBaseUrl.startsWith("http://") ||
+      universalBaseUrl.includes(":") ||
+      universalBaseUrl.includes("localhost") ||
+      !universalBaseUrl.includes("deepseek.com");
+
+    const rawApiKey =
       process.env.UNIVERSAL_API_KEY ||
       process.env.OPENROUTER_API_KEY ||
       process.env.OPENAI_API_KEY ||
       process.env.DEEPSEEK_API_KEY;
 
-    if (!universalApiKey) {
+    if (!rawApiKey && !isCustomServer) {
       throw new Error("UNIVERSAL_API_KEY belum dikonfigurasi di file .env atau Web Control Panel.");
     }
+    const universalApiKey = rawApiKey || "sk-pi";
 
-    const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
     let universalModel = userId ? await getUserUniversalModel(userId) : (process.env.UNIVERSAL_MODEL || "");
 
     // Jika model belum diset (kosong atau 'auto'), ambil secara dinamis langsung dari server
@@ -1041,26 +1048,6 @@ export async function runAgentAutonomous({
       } catch (e) {
         console.warn("[Universal Agent] Gagal auto-detect model dinamis:", e.message);
       }
-    }
-
-    const isCustomServer =
-      universalBaseUrl.startsWith("http://") ||
-      universalBaseUrl.includes(":") ||
-      universalBaseUrl.includes("localhost") ||
-      !universalBaseUrl.includes("deepseek.com");
-
-    if (isCustomServer && (!universalModel || universalModel === "auto")) {
-      try {
-        const dynamicModel = await resolveDynamicUniversalModel(universalBaseUrl, universalApiKey);
-        if (dynamicModel) {
-          universalModel = dynamicModel;
-        }
-      } catch {}
-    }
-
-    // Fallback default jika endpoint adalah deepseek resmi
-    if (!universalModel && universalBaseUrl.includes("deepseek.com")) {
-      universalModel = "deepseek-chat";
     }
 
     if (!universalModel) {
