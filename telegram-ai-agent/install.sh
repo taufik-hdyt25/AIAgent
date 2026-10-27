@@ -806,17 +806,40 @@ case "$1" in
   run)
     exec "$GLOBAL_DIR/th-agent-bin"
     ;;
+  uninstall)
+    echo "🛑 Menghentikan service TH Agent..."
+    if [ "$(uname -s)" = "Darwin" ]; then
+      launchctl unload "$HOME/Library/LaunchAgents/com.taufik.th-agent.plist" 2>/dev/null || true
+      rm -f "$HOME/Library/LaunchAgents/com.taufik.th-agent.plist" 2>/dev/null || true
+      echo "✓ Service LaunchAgent berhasil dihentikan & dihapus."
+      echo "🔄 Mereset pengaturan daya macOS ke default awal pabrik (sudo pmset restoredefaults)..."
+      if sudo pmset restoredefaults 2>/dev/null; then
+        echo "✓ Pengaturan power/sleep macOS berhasil dikembalikan ke default."
+      else
+        echo "ℹ️  Jalankan 'sudo pmset restoredefaults' jika ingin mereset pengaturan daya Mac secara manual."
+      fi
+    else
+      systemctl --user stop th-agent 2>/dev/null || pkill -f "th-agent-bin" 2>/dev/null || true
+      systemctl --user disable th-agent 2>/dev/null || true
+      rm -f "$HOME/.config/systemd/user/th-agent.service" 2>/dev/null || true
+      systemctl --user daemon-reload 2>/dev/null || true
+      echo "✓ Service systemd berhasil dihentikan & dihapus."
+    fi
+    rm -f "$HOME/.local/bin/th-agent" 2>/dev/null || true
+    echo "✓ TH Agent berhasil di-uninstall."
+    ;;
   help|--help|-h)
     echo "⚡ TH Agent CLI Binary Runner"
     echo "Penggunaan: th-agent [perintah]"
     echo ""
     echo "Perintah:"
-    echo "  th-agent          Jalankan bot (default)"
-    echo "  th-agent logs     Pantau log aktivitas bot secara real-time"
-    echo "  th-agent status   Cek status service background 24/7"
-    echo "  th-agent restart  Mulai ulang bot"
-    echo "  th-agent stop     Hentikan service bot"
-    echo "  th-agent start    Jalankan service bot di background"
+    echo "  th-agent            Jalankan bot (default)"
+    echo "  th-agent logs       Pantau log aktivitas bot secara real-time"
+    echo "  th-agent status     Cek status service background 24/7"
+    echo "  th-agent restart    Mulai ulang bot"
+    echo "  th-agent stop       Hentikan service bot"
+    echo "  th-agent start      Jalankan service bot di background"
+    echo "  th-agent uninstall  Hentikan service & reset daya Mac ke default pabrik"
     ;;
   *)
     exec "$GLOBAL_DIR/th-agent-bin" "$@"
@@ -892,6 +915,30 @@ EOF
         launchctl unload "$plist_path" 2>/dev/null || true
         launchctl load "$plist_path"
         echo -e "${GREEN}✓ macOS LaunchAgent aktif 24/7 (Anti-Sleep Caffeinate)${NC}"
+
+        # Pemberitahuan & Konfigurasi Anti-Sleep macOS (Layar Terbuka / Mode Baterai)
+        echo -e "\n${BLUE}======================================================${NC}"
+        echo -e "${YELLOW}🔋 PENTING: Mode Anti-Sleep macOS (Layar Terbuka / Baterai)${NC}"
+        echo -e "${BLUE}======================================================${NC}"
+        echo -e "Secara default, macOS akan otomatis sleep/standby jika laptop didiamkan"
+        echo -e "tanpa charger, yang menyebabkan koneksi bot Telegram terputus."
+        echo ""
+        echo -e "Agar TH Agent tetap ${GREEN}aktif 24/7 selama layar laptop terbuka${NC} meski tanpa charger:"
+        echo -e "Perintah: ${CYAN}sudo pmset -b sleep 0 displaysleep 0${NC}"
+        echo -e "${CYAN}Catatan:${NC} Pengaturan ini aman dan akan otomatis dikembalikan ke default saat uninstall."
+        echo ""
+        prompt_user "Aktifkan mode jangan mati (anti-sleep baterai) sekarang? (y/n, default: y): " do_anti_sleep
+        do_anti_sleep="${do_anti_sleep:-y}"
+        if [ "$do_anti_sleep" = "y" ] || [ "$do_anti_sleep" = "Y" ]; then
+            if sudo pmset -b sleep 0 displaysleep 0 2>/dev/null; then
+                echo -e "${GREEN}✓ Mode Anti-Sleep macOS aktif! Laptop tidak akan tidur selama layar terbuka.${NC}"
+            else
+                echo -e "${YELLOW}ℹ️  Membutuhkan akses sudo. Silakan jalankan manual di Terminal:${NC}"
+                echo -e "   ${CYAN}sudo pmset -b sleep 0 displaysleep 0${NC}"
+            fi
+        else
+            echo -e "ℹ️  Dilewati. TH Agent tetap diproteksi Caffeinate (-dimsu) saat ada aktivitas."
+        fi
 
     elif [ "$OS" = "Linux" ]; then
         # Linux: systemd user service
@@ -973,6 +1020,58 @@ perform_fast_update() {
     exit 0
 }
 
+# ==============================================================================
+# UNINSTALL TH AGENT & RESET DAYA MACOS KE DEFAULT
+# ==============================================================================
+perform_uninstall() {
+    echo -e "\n${RED}======================================================${NC}"
+    echo -e "${RED}🗑️  Uninstall TH Agent                                ${NC}"
+    echo -e "${RED}======================================================${NC}"
+    echo -e "Tindakan ini akan menghentikan service, menghapus runner binary, dan"
+    echo -e "mengembalikan seluruh pengaturan daya/sleep ke konfigurasi awal pabrik."
+    echo ""
+    prompt_user "Lanjutkan uninstall TH Agent? (y/n, default: n): " confirm_uninstall
+    if [ "$confirm_uninstall" != "y" ] && [ "$confirm_uninstall" != "Y" ]; then
+        echo -e "Batal uninstall."
+        exit 0
+    fi
+
+    echo -e "\n${CYAN}1. Menghentikan service TH Agent...${NC}"
+    if [ "$OS" = "Darwin" ]; then
+        local plist_path="$HOME/Library/LaunchAgents/com.taufik.th-agent.plist"
+        launchctl unload "$plist_path" 2>/dev/null || true
+        rm -f "$plist_path" 2>/dev/null || true
+        echo -e "${GREEN}✓ LaunchAgent service berhasil dihentikan & dihapus.${NC}"
+
+        echo -e "\n${CYAN}2. Mereset pengaturan daya/sleep macOS ke default pabrik...${NC}"
+        echo -e "   Menjalankan: ${CYAN}sudo pmset restoredefaults${NC}"
+        if sudo pmset restoredefaults 2>/dev/null; then
+            echo -e "${GREEN}✓ Pengaturan sleep/daya macOS berhasil di-reset ke default awal pabrik!${NC}"
+        else
+            echo -e "${YELLOW}ℹ️  Membutuhkan password sudo untuk reset pmset. Silakan jalankan:${NC}"
+            echo -e "   ${CYAN}sudo pmset restoredefaults${NC}"
+        fi
+    else
+        systemctl --user stop th-agent 2>/dev/null || true
+        systemctl --user disable th-agent 2>/dev/null || true
+        rm -f "$HOME/.config/systemd/user/th-agent.service" 2>/dev/null || true
+        systemctl --user daemon-reload 2>/dev/null || true
+        pkill -f "th-agent-bin" 2>/dev/null || true
+        echo -e "${GREEN}✓ systemd service berhasil dihentikan & dihapus.${NC}"
+    fi
+
+    echo -e "\n${CYAN}3. Menghapus CLI wrapper (th-agent)...${NC}"
+    rm -f "$HOME/.local/bin/th-agent" 2>/dev/null || true
+    rm -f "/usr/local/bin/th-agent" 2>/dev/null || true
+    echo -e "${GREEN}✓ CLI binary 'th-agent' berhasil dibersihkan.${NC}"
+
+    echo -e "\n${GREEN}======================================================${NC}"
+    echo -e "${GREEN}✓ TH Agent berhasil di-uninstall secara bersih!       ${NC}"
+    echo -e "${GREEN}======================================================${NC}"
+    echo -e "Catatan: Folder proyek koding ('projects/') dan file .env tetap aman tersimpan."
+    exit 0
+}
+
 # Cek apakah ini instalasi yang sudah ada sebelumnya
 IS_EXISTING_INSTALL=false
 if [ -d ".git" ]; then
@@ -981,9 +1080,11 @@ if [ -d ".git" ]; then
     fi
 fi
 
-# Cek argumen CLI (misal: curl ... | bash -s -- --update)
+# Cek argumen CLI (misal: curl ... | bash -s -- --update / --uninstall)
 if [ "$1" = "--update" ] || [ "$1" = "-u" ] || [ "$1" = "update" ]; then
     perform_fast_update
+elif [ "$1" = "--uninstall" ] || [ "$1" = "uninstall" ]; then
+    perform_uninstall
 fi
 
 if [ "$IS_EXISTING_INSTALL" = true ]; then

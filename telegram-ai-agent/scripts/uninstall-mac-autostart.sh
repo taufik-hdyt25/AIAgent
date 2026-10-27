@@ -10,6 +10,8 @@ if [ -f "$PLIST_PATH" ]; then
   launchctl unload "$PLIST_PATH" 2>/dev/null || true
   rm -f "$PLIST_PATH"
   echo "✅ TH Agent LaunchAgent berhasil dihapus dari sistem macOS."
+  echo "🔄 Mereset pengaturan daya macOS ke default awal pabrik..."
+  sudo pmset restoredefaults 2>/dev/null || true
 else
   echo "ℹ️  Tidak ditemukan file LaunchAgent di $PLIST_PATH"
 fi

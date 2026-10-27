@@ -16,5 +16,17 @@ fi
 
 # Kill sisa proses jika masih ada
 pkill -f "bot.bundle.js" 2>/dev/null || true
+pkill -f "th-agent-bin" 2>/dev/null || true
 
-echo "✅ Selesai! Background service TH Agent di Mac sudah dinonaktifkan."
+# Reset pengaturan power management / sleep macOS ke default awal pabrik
+echo "🔄 Mereset pengaturan daya/sleep macOS ke default pabrik (sudo pmset restoredefaults)..."
+if sudo pmset restoredefaults 2>/dev/null; then
+  echo "✓ Pengaturan sleep/daya macOS berhasil dikembalikan ke default pabrik."
+else
+  echo "ℹ️  Jalankan 'sudo pmset restoredefaults' jika ingin mereset pengaturan daya Mac secara manual."
+fi
+
+# Hapus symlink CLI
+rm -f "$HOME/.local/bin/th-agent" 2>/dev/null || true
+
+echo "✅ Selesai! Background service TH Agent di Mac sudah dinonaktifkan dan daya Mac di-reset ke default."
