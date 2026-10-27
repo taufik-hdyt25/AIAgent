@@ -137,7 +137,7 @@ cat << EOF > "$PLIST_PATH"
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/caffeinate</string>
-        <string>-dimsu</string>
+        <string>-ims</string>
         <string>$NODE_BIN</string>
         <string>$GLOBAL_AGENT_DIR/bot.bundle.js</string>
     </array>
@@ -183,13 +183,13 @@ echo -e ""
 echo -e "✨ ${CYAN}Status Background Agent:${NC}"
 echo -e "   • Engine bot: Terisolasi di ${YELLOW}~/.th-agent/${NC} (Zero node_modules di workspace!)"
 echo -e "   • LaunchAgent: ${GREEN}Aktif & Auto-Start on Boot${NC}"
-echo -e "   • Anti-Sleep: ${GREEN}Tahan tidur (caffeinate -dimsu)${NC}"
+echo -e "   • Anti-Sleep: ${GREEN}Tahan tidur (caffeinate -ims, layar padam 5 menit)${NC}"
 echo -e "   • Web Dashboard: ${CYAN}http://localhost:3030${NC}"
 echo -e "   • Log Output: ${YELLOW}tail -f ~/.th-agent/logs/mac-bot.log${NC}"
 echo -e ""
-echo -e "${YELLOW}🔋 PENTING (Mode Baterai / Layar Terbuka):${NC}"
-echo -e "   Agar Mac tidak sleep saat layar terbuka tanpa charger, jalankan:"
-echo -e "   ${CYAN}sudo pmset -b sleep 0 displaysleep 0${NC}"
+echo -e "${YELLOW}🔋 PENTING: Mode Hemat Baterai (Layar Padam 5 Menit, Bot Tetap Hidup):${NC}"
+echo -e "   Agar Mac padamkan layar setelah 5 menit tapi bot tetap hidup tanpa charger:"
+echo -e "   ${CYAN}sudo pmset -b sleep 0 displaysleep 5${NC}"
 echo -e "   (Pengaturan ini akan otomatis di-reset saat menjalankan ./uninstall-mac.sh)"
 echo ""
 echo -e "💡 ${CYAN}Untuk menghapus background service & reset daya kapan saja:${NC} ./uninstall-mac.sh"

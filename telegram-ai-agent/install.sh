@@ -876,7 +876,7 @@ EOF
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/caffeinate</string>
-        <string>-dimsu</string>
+        <string>-ims</string>
         <string>$node_bin</string>
         <string>$global_dir/th-agent-bin</string>
     </array>
@@ -918,26 +918,28 @@ EOF
 
         # Pemberitahuan & Konfigurasi Anti-Sleep macOS (Layar Terbuka / Mode Baterai)
         echo -e "\n${BLUE}======================================================${NC}"
-        echo -e "${YELLOW}🔋 PENTING: Mode Anti-Sleep macOS (Layar Terbuka / Baterai)${NC}"
+        echo -e "${YELLOW}🔋 PENTING: Mode Hemat Baterai macOS (Layar Padam 5 Menit, Bot Tetap Hidup)${NC}"
         echo -e "${BLUE}======================================================${NC}"
         echo -e "Secara default, macOS akan otomatis sleep/standby jika laptop didiamkan"
         echo -e "tanpa charger, yang menyebabkan koneksi bot Telegram terputus."
         echo ""
-        echo -e "Agar TH Agent tetap ${GREEN}aktif 24/7 selama layar laptop terbuka${NC} meski tanpa charger:"
-        echo -e "Perintah: ${CYAN}sudo pmset -b sleep 0 displaysleep 0${NC}"
+        echo -e "Pengaturan hemat baterai optimal:"
+        echo -e "• ${GREEN}Layar otomatis padam setelah 5 menit${NC} (sangat irit baterai)"
+        echo -e "• ${GREEN}Sistem, Wi-Fi & Bot tetap aktif 100%${NC} selama laptop terbuka"
+        echo -e "Perintah: ${CYAN}sudo pmset -b sleep 0 displaysleep 5${NC}"
         echo -e "${CYAN}Catatan:${NC} Pengaturan ini aman dan akan otomatis dikembalikan ke default saat uninstall."
         echo ""
-        prompt_user "Aktifkan mode jangan mati (anti-sleep baterai) sekarang? (y/n, default: y): " do_anti_sleep
+        prompt_user "Aktifkan mode hemat baterai (layar mati 5 menit, bot tetap hidup)? (y/n, default: y): " do_anti_sleep
         do_anti_sleep="${do_anti_sleep:-y}"
         if [ "$do_anti_sleep" = "y" ] || [ "$do_anti_sleep" = "Y" ]; then
-            if sudo pmset -b sleep 0 displaysleep 0 2>/dev/null; then
-                echo -e "${GREEN}✓ Mode Anti-Sleep macOS aktif! Laptop tidak akan tidur selama layar terbuka.${NC}"
+            if sudo pmset -b sleep 0 displaysleep 5 2>/dev/null; then
+                echo -e "${GREEN}✓ Mode hemat baterai aktif! Layar padam setelah 5 menit tapi bot tetap hidup 24/7.${NC}"
             else
                 echo -e "${YELLOW}ℹ️  Membutuhkan akses sudo. Silakan jalankan manual di Terminal:${NC}"
-                echo -e "   ${CYAN}sudo pmset -b sleep 0 displaysleep 0${NC}"
+                echo -e "   ${CYAN}sudo pmset -b sleep 0 displaysleep 5${NC}"
             fi
         else
-            echo -e "ℹ️  Dilewati. TH Agent tetap diproteksi Caffeinate (-dimsu) saat ada aktivitas."
+            echo -e "ℹ️  Dilewati. TH Agent tetap diproteksi Caffeinate (-ims) saat ada aktivitas."
         fi
 
     elif [ "$OS" = "Linux" ]; then

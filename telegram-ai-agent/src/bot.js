@@ -35,15 +35,15 @@ process.on("uncaughtException", (error) => {
 });
 
 // Otomatis aktifkan caffeinate jika berjalan di macOS lokal:
-// Gunakan flag '-dimsu' (anti-sleep total: display, idle, system, disk, user) agar Mac tidak mati/sleep saat idle!
+// Gunakan flag '-ims' agar layar Mac boleh padam setelah 5 menit (hemat baterai), tetapi sistem & Wi-Fi tetap berjalan 24/7!
 if (process.platform === "darwin") {
   try {
-    const caffeinate = spawn("caffeinate", ["-dimsu", "-w", String(process.pid)], {
+    const caffeinate = spawn("caffeinate", ["-ims", "-w", String(process.pid)], {
       detached: true,
       stdio: "ignore",
     });
     caffeinate.unref();
-    console.log("☕ [macOS PowerManagement] Caffeinate aktif (-dimsu): Anti-sleep total aktif (display, idle, system, disk).");
+    console.log("☕ [macOS PowerManagement] Caffeinate aktif (-ims): Layar boleh padam (hemat baterai), sistem & Wi-Fi tetap jalan 24/7.");
   } catch (err) {
     console.warn("⚠️ [macOS PowerManagement] Gagal mengaktifkan caffeinate:", err.message);
   }
