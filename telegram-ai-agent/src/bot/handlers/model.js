@@ -43,9 +43,8 @@ export function registerModelHandlers(bot) {
       const remote = await fetchRemoteModels(uniUrl, uniKey);
       if (remote.length > 0) {
         detectedCount = remote.length;
-        const remoteIds = new Set(remote.map((r) => r.id));
-        const filteredDefault = modelList.filter((d) => !remoteIds.has(d.id));
-        modelList = [...remote, ...filteredDefault];
+        // Gunakan 100% murni model yang di-get dari URL tersebut
+        modelList = remote;
       }
     }
 
@@ -144,9 +143,7 @@ export function registerModelHandlers(bot) {
       const uniKey = process.env.UNIVERSAL_API_KEY || "";
       const remote = await fetchRemoteModels(uniUrl, uniKey);
       if (remote.length > 0) {
-        const remoteIds = new Set(remote.map((r) => r.id));
-        const filteredDefault = modelList.filter((d) => !remoteIds.has(d.id));
-        modelList = [...remote, ...filteredDefault];
+        modelList = remote;
       }
 
       if (modelId === "auto") {

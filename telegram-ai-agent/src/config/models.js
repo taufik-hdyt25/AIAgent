@@ -69,23 +69,11 @@ export async function getModelList(engine) {
       try {
         const remote = await fetchRemoteModels(uniUrl, uniKey);
         if (remote.length > 0) {
-          const isCustomServer =
-            uniUrl.startsWith("http://") ||
-            uniUrl.includes(":") ||
-            uniUrl.includes("localhost") ||
-            !uniUrl.includes("deepseek.com");
-          // Jika server custom / Pi lokal, tampilkan murni model yang di-declare server Pi
-          if (isCustomServer) {
-            return remote;
-          }
-          const remoteIds = new Set(remote.map((r) => r.id));
-          const filtered = (custom?.universalModels || AVAILABLE_UNIVERSAL_MODELS).filter(
-            (d) => !remoteIds.has(d.id)
-          );
-          return [...remote, ...filtered];
+          // Selalu gunakan 100% murni daftar model dari URL server jika berhasil ditarik
+          return remote;
         }
       } catch {
-        // Fallback ke default
+        // Fallback ke default jika endpoint server gagal
       }
     }
     return custom?.universalModels || AVAILABLE_UNIVERSAL_MODELS;
