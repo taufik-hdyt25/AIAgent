@@ -23,17 +23,32 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId) {
     };
   }
 
-  // Pilih model terbaik dari server Pi:
-  // 1. Yang namanya/ID-nya mengandung kata 'pi'
-  // 2. Jika tidak ada, ambil model pertama dari server
-  const piModel =
-    models.find(
-      (m) =>
-        m.id.toLowerCase().includes("pi") ||
-        (m.name && m.name.toLowerCase().includes("pi"))
-    ) || models[0];
+  // Pilih model terbaik dari server:
+  // 1. Cek apakah ada model yang sudah dikonfigurasi (misal litellm)
+  const configured = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
+  let chosenModel = null;
+  if (configured && configured !== "auto" && configured !== "deepseek-chat") {
+    chosenModel = models.find((m) => m.id.toLowerCase() === configured);
+  }
 
-  const chosenId = piModel.id;
+  // 2. Jika tidak ada, prioritaskan litellm atau model khusus Pi/inflection
+  if (!chosenModel) {
+    chosenModel =
+      models.find(
+        (m) =>
+          m.id.toLowerCase() === "litellm" ||
+          (m.name && m.name.toLowerCase() === "litellm")
+      ) ||
+      models.find(
+        (m) =>
+          m.id.toLowerCase().includes("inflection") ||
+          m.id.toLowerCase().split(/[-_/]/).includes("pi") ||
+          (m.name && m.name.toLowerCase().split(/[-_/]/).includes("pi"))
+      ) ||
+      models[0];
+  }
+
+  const chosenId = chosenModel.id;
 
   // Simpan ke .env & update process.env
   await updateEnvFile({
@@ -49,7 +64,7 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId) {
   return {
     ok: true,
     activeModel: chosenId,
-    activeName: piModel.name || chosenId,
+    activeName: chosenModel.name || chosenId,
     allModels: models,
     serverUrl: targetUrl,
   };

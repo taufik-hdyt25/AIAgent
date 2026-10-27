@@ -615,11 +615,32 @@ if (universalModelSelect) {
   });
 }
 
+const btnCustomModelPrompt = document.getElementById("btnCustomModelPrompt");
+if (btnCustomModelPrompt && universalModelSelect) {
+  btnCustomModelPrompt.addEventListener("click", () => {
+    const custom = prompt("Masukkan nama/ID model AI (contoh: litellm):", universalModelSelect.value || "");
+    if (custom && custom.trim()) {
+      const val = custom.trim();
+      let opt = Array.from(universalModelSelect.options).find((o) => o.value === val);
+      if (!opt) {
+        opt = document.createElement("option");
+        opt.value = val;
+        opt.textContent = `${val} [Custom]`;
+        universalModelSelect.appendChild(opt);
+      }
+      universalModelSelect.value = val;
+      badgeModel.textContent = val;
+      showToast(`Model '${val}' dipilih! Silakan klik 'Simpan Pengaturan' di bawah.`, "success");
+    }
+  });
+}
+
 const btnDetectRemoteModels = document.getElementById("btnDetectRemoteModels");
 if (btnDetectRemoteModels) {
   btnDetectRemoteModels.addEventListener("click", async () => {
     const baseUrl = universalBaseUrlInput ? universalBaseUrlInput.value.trim() : "";
     const apiKey = universalApiKeyInput ? universalApiKeyInput.value.trim() : "";
+    const currentSelected = universalModelSelect ? universalModelSelect.value : "";
     btnDetectRemoteModels.disabled = true;
     btnDetectRemoteModels.textContent = "⏳ Memindai...";
     try {
@@ -633,13 +654,35 @@ if (btnDetectRemoteModels) {
         return;
       }
       universalModelSelect.innerHTML = "";
+
+      // Opsi Auto-Detect
+      const autoOpt = document.createElement("option");
+      autoOpt.value = "";
+      autoOpt.textContent = "⚡ Otomatis (Dynamic Auto-Detect dari Server)";
+      universalModelSelect.appendChild(autoOpt);
+
+      let matchedSelection = false;
       for (const m of models) {
         const opt = document.createElement("option");
         opt.value = m.id;
         opt.textContent = `${m.name} [Server]`;
+        if (m.id === currentSelected) {
+          opt.selected = true;
+          matchedSelection = true;
+        }
         universalModelSelect.appendChild(opt);
       }
-      badgeModel.textContent = universalModelSelect.value;
+
+      // Jika sebelumnya memilih custom model (misal litellm) tapi tidak ada di list server, pertahankan opsinya
+      if (!matchedSelection && currentSelected && currentSelected !== "auto") {
+        const customOpt = document.createElement("option");
+        customOpt.value = currentSelected;
+        customOpt.textContent = `${currentSelected} [Custom]`;
+        customOpt.selected = true;
+        universalModelSelect.appendChild(customOpt);
+      }
+
+      badgeModel.textContent = universalModelSelect.value || "Auto-detect";
       showToast(`🎯 Berhasil mendeteksi ${models.length} model dari server!`, "success");
     } catch (err) {
       showToast(`Gagal deteksi model: ${err.message}`, "error");

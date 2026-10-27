@@ -266,9 +266,14 @@
             <div class="form-group" id="groupUniversalModel">
               <div class="label-row">
                 <label for="universalModel" class="form-label">DEFAULT MODEL (UNIVERSAL API)</label>
-                <button type="button" id="btnDetectRemoteModels" style="font-size: 0.75rem; color: #3b82f6; background: none; border: 1px solid rgba(59,130,246,0.3); border-radius: 4px; padding: 2px 8px; cursor: pointer;">
-                  🔄 Deteksi dari Server
-                </button>
+                <div style="display: flex; gap: 6px;">
+                  <button type="button" id="btnCustomModelPrompt" style="font-size: 0.75rem; color: #10b981; background: none; border: 1px solid rgba(16,185,129,0.3); border-radius: 4px; padding: 2px 8px; cursor: pointer;">
+                    ➕ Input Manual
+                  </button>
+                  <button type="button" id="btnDetectRemoteModels" style="font-size: 0.75rem; color: #3b82f6; background: none; border: 1px solid rgba(59,130,246,0.3); border-radius: 4px; padding: 2px 8px; cursor: pointer;">
+                    🔄 Deteksi dari Server
+                  </button>
+                </div>
               </div>
               <div class="select-wrapper">
                 <select id="universalModel" name="UNIVERSAL_MODEL" class="form-select font-mono"></select>

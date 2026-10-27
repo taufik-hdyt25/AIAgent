@@ -409,23 +409,18 @@ ${userMessage}
         const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
         let universalModel = (engine === "universal" && userModel) ? userModel : await getUserUniversalModel(userId);
 
-        // Auto-get model langsung dari server Pi jika menggunakan custom URL / local endpoint
+        // Auto-get model langsung dari server jika belum diset atau eksplisit auto
         const isCustomServer =
           universalBaseUrl.startsWith("http://") ||
           universalBaseUrl.includes(":") ||
           universalBaseUrl.includes("localhost") ||
           !universalBaseUrl.includes("deepseek.com");
 
-        if (
-          isCustomServer &&
-          (universalModel === "deepseek-chat" ||
-            universalModel === "inflection/inflection-3-pi" ||
-            !universalModel)
-        ) {
+        if (isCustomServer && (!universalModel || universalModel === "auto")) {
           try {
-            const syncResult = await syncPiModelDirectly(universalBaseUrl, universalApiKey, userId);
-            if (syncResult.ok && syncResult.activeModel) {
-              universalModel = syncResult.activeModel;
+            const dynamicModel = await resolveDynamicUniversalModel(universalBaseUrl, universalApiKey);
+            if (dynamicModel) {
+              universalModel = dynamicModel;
             }
           } catch {
             // Lanjut jika gagal
@@ -1047,16 +1042,11 @@ export async function runAgentAutonomous({
       universalBaseUrl.includes("localhost") ||
       !universalBaseUrl.includes("deepseek.com");
 
-    if (
-      isCustomServer &&
-      (!universalModel ||
-        universalModel === "deepseek-chat" ||
-        universalModel === "inflection/inflection-3-pi")
-    ) {
+    if (isCustomServer && (!universalModel || universalModel === "auto")) {
       try {
-        const syncResult = await syncPiModelDirectly(universalBaseUrl, universalApiKey, userId);
-        if (syncResult.ok && syncResult.activeModel) {
-          universalModel = syncResult.activeModel;
+        const dynamicModel = await resolveDynamicUniversalModel(universalBaseUrl, universalApiKey);
+        if (dynamicModel) {
+          universalModel = dynamicModel;
         }
       } catch {}
     }

@@ -4,6 +4,7 @@ import {
   AVAILABLE_CLAUDE_MODELS,
   AVAILABLE_UNIVERSAL_MODELS,
   fetchRemoteModels,
+  getModelList,
 } from "../../config/models.js";
 import {
   getUserEngine,
@@ -14,19 +15,16 @@ import {
   getUserUniversalModel,
   setUserUniversalModel,
 } from "../../services/context-store.js";
+import { updateEnvFile } from "../../services/env-service.js";
 
 export function registerModelHandlers(bot) {
-  bot.command("model", async (ctx) => {
+  bot.command(["model", "models"], async (ctx) => {
     const arg = ctx.match?.trim();
     const userId = ctx.from?.id;
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
-    let modelList = isClaude
-      ? AVAILABLE_CLAUDE_MODELS
-      : isUniversal
-      ? AVAILABLE_UNIVERSAL_MODELS
-      : AVAILABLE_AGY_MODELS;
+    let modelList = await getModelList(currentEngine);
     const currentModel = isClaude
       ? await getUserClaudeModel(userId)
       : isUniversal
@@ -46,7 +44,7 @@ export function registerModelHandlers(bot) {
       if (remote.length > 0) {
         detectedCount = remote.length;
         const remoteIds = new Set(remote.map((r) => r.id));
-        const filteredDefault = AVAILABLE_UNIVERSAL_MODELS.filter((d) => !remoteIds.has(d.id));
+        const filteredDefault = modelList.filter((d) => !remoteIds.has(d.id));
         modelList = [...remote, ...filteredDefault];
       }
     }
@@ -54,6 +52,7 @@ export function registerModelHandlers(bot) {
     if (arg) {
       if (isUniversal && ["auto", "dynamic", "reset", "clear", "default"].includes(arg.toLowerCase())) {
         await setUserUniversalModel(userId, "");
+        await updateEnvFile({ UNIVERSAL_MODEL: "" });
         await ctx.reply(
           `✅ Model untuk *${engineLabel}* diatur ke: *⚡ Auto-Detect (Dynamic)*\nModel akan diambil secara otomatis dari endpoint server saat instruksi dijalankan.`,
           { parse_mode: "Markdown" }
@@ -64,24 +63,14 @@ export function registerModelHandlers(bot) {
       const matched = modelList.find(
         (m) => m.id.toLowerCase() === arg.toLowerCase()
       );
-      const chosenId = matched ? matched.id : (isUniversal || isClaude) ? arg : null;
-
-      if (!chosenId) {
-        const listStr = modelList
-          .slice(0, 15)
-          .map((m) => `• \`${m.id}\` (${m.name})`)
-          .join("\n");
-        await ctx.reply(
-          `❌ Model \`${arg}\` tidak dikenali untuk engine *${engineLabel}*.\n\nPilihan yang tersedia:\n${listStr}`,
-          { parse_mode: "Markdown" }
-        );
-        return;
-      }
+      // Fleksibel: Izinkan model kustom (seperti 'litellm')
+      const chosenId = matched ? matched.id : arg;
 
       if (isClaude) {
         await setUserClaudeModel(userId, chosenId);
       } else if (isUniversal) {
         await setUserUniversalModel(userId, chosenId);
+        await updateEnvFile({ UNIVERSAL_MODEL: chosenId });
       } else {
         await setUserAgyModel(userId, chosenId);
       }
@@ -143,11 +132,7 @@ export function registerModelHandlers(bot) {
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
-    let modelList = isClaude
-      ? AVAILABLE_CLAUDE_MODELS
-      : isUniversal
-      ? AVAILABLE_UNIVERSAL_MODELS
-      : AVAILABLE_AGY_MODELS;
+    let modelList = await getModelList(currentEngine);
     const engineLabel = isClaude
       ? "Claude Code CLI"
       : isUniversal
@@ -160,12 +145,13 @@ export function registerModelHandlers(bot) {
       const remote = await fetchRemoteModels(uniUrl, uniKey);
       if (remote.length > 0) {
         const remoteIds = new Set(remote.map((r) => r.id));
-        const filteredDefault = AVAILABLE_UNIVERSAL_MODELS.filter((d) => !remoteIds.has(d.id));
+        const filteredDefault = modelList.filter((d) => !remoteIds.has(d.id));
         modelList = [...remote, ...filteredDefault];
       }
 
       if (modelId === "auto") {
         await setUserUniversalModel(userId, "");
+        await updateEnvFile({ UNIVERSAL_MODEL: "" });
         await ctx.answerCallbackQuery({
           text: "Model diatur ke Auto-Detect (Dynamic)",
         });
@@ -193,14 +179,6 @@ export function registerModelHandlers(bot) {
     }
 
     const matched = modelList.find((m) => m.id === modelId);
-
-    if (!matched && !isUniversal && !isClaude) {
-      await ctx.answerCallbackQuery({
-        text: "Model tidak dikenali untuk engine ini!",
-      });
-      return;
-    }
-
     const chosenId = matched ? matched.id : modelId;
     const chosenName = matched ? matched.name : modelId;
 
@@ -208,6 +186,7 @@ export function registerModelHandlers(bot) {
       await setUserClaudeModel(userId, chosenId);
     } else if (isUniversal) {
       await setUserUniversalModel(userId, chosenId);
+      await updateEnvFile({ UNIVERSAL_MODEL: chosenId });
     } else {
       await setUserAgyModel(userId, chosenId);
     }

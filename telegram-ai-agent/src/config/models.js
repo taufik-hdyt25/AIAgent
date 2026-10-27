@@ -95,10 +95,24 @@ export async function resolveDynamicUniversalModel(baseUrl, apiKey) {
   try {
     const list = await fetchRemoteModels(targetUrl, targetKey);
     if (list && list.length > 0) {
-      // Prioritaskan model yang ada indikator 'chat', 'coder', 'default', atau ambil yang pertama
+      // 1. Cek apakah model yang dikonfigurasi pengguna ada di server
+      const configuredModel = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
+      if (configuredModel && configuredModel !== "auto") {
+        const foundConfigured = list.find((m) => m.id.toLowerCase() === configuredModel);
+        if (foundConfigured) return foundConfigured.id;
+      }
+
+      // 2. Prioritaskan model 'litellm' atau indikator chat/instruct/coder/pi
       const preferred = list.find((m) => {
         const idLower = m.id.toLowerCase();
-        return idLower.includes("chat") || idLower.includes("instruct") || idLower.includes("pi");
+        return (
+          idLower === "litellm" ||
+          idLower.includes("litellm") ||
+          idLower.includes("chat") ||
+          idLower.includes("instruct") ||
+          idLower.includes("coder") ||
+          idLower.includes("pi")
+        );
       }) || list[0];
       return preferred.id;
     }
@@ -107,24 +121,31 @@ export async function resolveDynamicUniversalModel(baseUrl, apiKey) {
   return "";
 }
 
-// Fetch model real-time dari provider OpenAI-compatible (misal OpenRouter / custom http://ip:port/v1/models / Ollama)
+// Fetch model real-time dari provider OpenAI-compatible (misal LiteLLM / OpenRouter / Ollama / custom server)
 export async function fetchRemoteModels(baseUrl, apiKey) {
   if (!baseUrl) return [];
   const cleanUrl = baseUrl.replace(/\/+$/, "");
-  const headers = {};
+  const headers = {
+    Accept: "application/json",
+  };
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
   // Coba beberapa variasi endpoint yang umum pada OpenAI-compatible & local LLM server
-  const candidateEndpoints = [`${cleanUrl}/models`];
+  const candidateEndpoints = [];
   if (cleanUrl.endsWith("/v1")) {
     const rootUrl = cleanUrl.slice(0, -3);
+    candidateEndpoints.push(`${cleanUrl}/models`);
     candidateEndpoints.push(`${rootUrl}/models`);
+    candidateEndpoints.push(`${rootUrl}/model_list`);
+    candidateEndpoints.push(`${cleanUrl}/model_list`);
     candidateEndpoints.push(`${rootUrl}/api/tags`); // Format Ollama
-    candidateEndpoints.push(`${rootUrl}/v1/models`);
   } else {
+    candidateEndpoints.push(`${cleanUrl}/models`);
     candidateEndpoints.push(`${cleanUrl}/v1/models`);
+    candidateEndpoints.push(`${cleanUrl}/model_list`);
+    candidateEndpoints.push(`${cleanUrl}/v1/model_list`);
     candidateEndpoints.push(`${cleanUrl}/api/tags`);
   }
 
@@ -146,23 +167,37 @@ export async function fetchRemoteModels(baseUrl, apiKey) {
         list = data.data;
       } else if (Array.isArray(data?.models)) {
         list = data.models;
+      } else if (Array.isArray(data?.data?.models)) {
+        list = data.data.models;
       } else if (Array.isArray(data)) {
         list = data;
-      } else if (data?.id || data?.name) {
+      } else if (data?.id || data?.name || data?.model || data?.model_name) {
         list = [data];
       }
 
       if (list.length > 0) {
-        return list.map((item) => {
-          const id = typeof item === "string" ? item : (item.id || item.name || "unknown");
-          const name = typeof item === "object" ? (item.name || item.id || "Unknown") : String(item);
-          return {
-            id,
-            name,
-            badge: "Server",
-            description: (typeof item === "object" && item.description) || "",
-          };
-        });
+        const mapped = list
+          .map((item) => {
+            const id =
+              typeof item === "string"
+                ? item
+                : (item.id || item.model_name || item.model || item.name || "unknown");
+            const name =
+              typeof item === "object"
+                ? (item.name || item.model_name || item.model || item.id || "Unknown")
+                : String(item);
+            return {
+              id,
+              name,
+              badge: "Server",
+              description: (typeof item === "object" && item.description) || "",
+            };
+          })
+          .filter((m) => m.id && m.id !== "unknown");
+
+        if (mapped.length > 0) {
+          return mapped;
+        }
       }
     } catch {
       clearTimeout(timeoutId);

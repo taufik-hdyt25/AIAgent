@@ -88,11 +88,13 @@ export async function markClaudeSessionStarted(convId, started = true) {
 }
 
 export async function getUserAgyModel(userId) {
-  if (!userId) return DEFAULT_AGY_MODEL;
+  const envModel = process.env.AGY_MODEL;
+  if (!userId) return envModel || DEFAULT_AGY_MODEL;
   const context = await loadContext();
   return (
     context.agyModels?.[String(userId)] ||
     context.models?.[String(userId)] ||
+    envModel ||
     DEFAULT_AGY_MODEL
   );
 }
@@ -129,9 +131,10 @@ export async function setUserAgyModel(userId, modelId) {
 }
 
 export async function getUserClaudeModel(userId) {
-  if (!userId) return DEFAULT_CLAUDE_MODEL;
+  const envModel = process.env.CLAUDE_MODEL;
+  if (!userId) return envModel || DEFAULT_CLAUDE_MODEL;
   const context = await loadContext();
-  return context.claudeModels?.[String(userId)] || DEFAULT_CLAUDE_MODEL;
+  return context.claudeModels?.[String(userId)] || envModel || DEFAULT_CLAUDE_MODEL;
 }
 
 export async function setUserClaudeModel(userId, modelId) {
@@ -161,9 +164,19 @@ export async function setUserClaudeModel(userId, modelId) {
 }
 
 export async function getUserUniversalModel(userId) {
-  if (!userId) return DEFAULT_UNIVERSAL_MODEL;
+  const envModel = process.env.UNIVERSAL_MODEL;
+  if (!userId) return envModel || DEFAULT_UNIVERSAL_MODEL;
   const context = await loadContext();
-  return context.universalModels?.[String(userId)] || DEFAULT_UNIVERSAL_MODEL;
+  const userSpecific = context.universalModels?.[String(userId)];
+
+  // Jika model pengguna belum pernah diatur secara spesifik atau masih default, prioritaskan envModel jika ada
+  if (userSpecific && userSpecific !== "deepseek-chat" && userSpecific !== "auto") {
+    return userSpecific;
+  }
+  if (envModel) {
+    return envModel;
+  }
+  return userSpecific || DEFAULT_UNIVERSAL_MODEL;
 }
 
 export async function setUserUniversalModel(userId, modelId) {
