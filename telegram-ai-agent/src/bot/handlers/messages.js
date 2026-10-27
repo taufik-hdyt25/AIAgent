@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { downloadTelegramFile, truncate } from "../../services/telegram-files.js";
 import { sendToAgent } from "../dispatcher.js";
 import { transcribeAudio } from "../../services/voice-service.js";
+import { sendUsageResponse } from "./commands.js";
 
 /**
  * Respon instan untuk sapaan ringan, ping/test, atau ungkapan terima kasih
@@ -262,6 +263,13 @@ export function registerMessageHandlers(bot) {
 
     if (text.length > 5000) {
       await ctx.reply("Pesan terlalu panjang (maksimal 5000 karakter).");
+      return;
+    }
+
+    // Deteksi cepat jika meminta statistik pemakaian token (contoh: "usage", "cek token", "kuota")
+    const cleanLower = text.toLowerCase().replace(/^[!?,.:;\s~]+|[!?,.:;\s~]+$/g, "").trim();
+    if (/^(usage|cek\s+usage|cek\s+token|cek\s+kuota|token\s+usage|tokens|kuota|token|info\s+token|info\s+usage)$/i.test(cleanLower)) {
+      await sendUsageResponse(ctx);
       return;
     }
 
