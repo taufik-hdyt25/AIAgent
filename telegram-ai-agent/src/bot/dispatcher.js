@@ -45,7 +45,7 @@ import {
   isProjectBusy,
 } from "../services/cli-runner.js";
 import { truncate, sendSmartReply, stripAnsi } from "../services/telegram-files.js";
-import { runUniversalAgent } from "../universal-agent.js";
+import { runUniversalAgent, hasUniversalMessages } from "../universal-agent.js";
 import {
   GITHUB_ISSUE_REGEX,
   fetchIssueDetails,
@@ -225,9 +225,11 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const engine = engineOverride || await getUserEngine(userId);
     const userModel = await getUserModel(userId, engine);
     const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
+    const hasUniversal = engine === "universal" && convId && hasUniversalMessages(convId);
     const isOngoingSession = Boolean(
       (engine === "claude" && (await isClaudeSessionStarted(convId))) ||
-      (engine === "agy" && agyConvId)
+      (engine === "agy" && agyConvId) ||
+      hasUniversal
     );
 
     const currentQueueLen = getQueueLength();
@@ -388,8 +390,7 @@ ${userMessage}
 
     // Engine 3: Universal / Pi Agent (Zero-CLI / Built-in Tools)
     if (engine === "universal") {
-      try {
-        const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+      const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
         const isCustomServer =
           universalBaseUrl.startsWith("http://") ||
           universalBaseUrl.includes(":") ||
@@ -438,43 +439,47 @@ ${userMessage}
           ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
           : PROJECTS_DIR;
 
-        const replyText = await runUniversalAgent({
-          prompt,
-          convId,
-          apiKey: universalApiKey,
-          baseUrl: universalBaseUrl,
-          model: universalModel,
-          workingDir,
-          sandboxed: isCustomRole,
-          systemPrompt: `Kamu adalah TH Agent, asisten software engineer cowok (pria) yang memiliki AKSES PENUH & 100% OTONOM di server ini melalui tools mandiri (execute_command, read_file, write_file, list_directory).
+        // Untuk Universal Engine: pisahkan user message murni dari system prompt persona
+        // agar tidak membengkakkan token context window di server Pi
+        let userTurnPrompt = userMessage;
+        if (fileInfoPrompt) userTurnPrompt += `\n\n${fileInfoPrompt}`;
+        if (issueInfoPrompt) userTurnPrompt += `\n\n${issueInfoPrompt}`;
+
+        const fullSystemPrompt = `Kamu adalah TH Agent, asisten software engineer cowok (pria) yang memiliki AKSES PENUH & 100% OTONOM di server ini melalui tools mandiri (execute_command, read_file, write_file, list_directory).
 ATURAN UTAMA:
 1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses.
 2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
 ${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder: ${allowedDisplay}. Dilarang mengeksekusi proyek di luar folder tersebut.` : "3. AKSES PROYEK: Akses penuh (role root) ke seluruh proyek di './projects/' (th-blog, wa-chat-bot, ai-podcast-live, dll.)."}
 4. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.
-5. ATURAN OUTPUT TELEGRAM: Berikan respon yang RINGKAS, PADAT, dan FOKUS KE POIN PENTING & KESIMPULAN (Summary). Hindari dump log terminal mentah atau teks kepanjangan agar tidak terpotong.`,
-          onToolStart: () => {
-            sendTyping();
-          },
-        });
+5. ATURAN OUTPUT TELEGRAM: Berikan respon yang RINGKAS, PADAT, dan FOKUS KE POIN PENTING & KESIMPULAN (Summary). Hindari dump log terminal mentah atau teks kepanjangan agar tidak terpotong.
+${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}`;
 
-        const { cleanedText } = await processAutonomousOutput(replyText);
+        try {
+          const replyText = await runUniversalAgent({
+            prompt: userTurnPrompt,
+            convId,
+            apiKey: universalApiKey,
+            baseUrl: universalBaseUrl,
+            model: universalModel,
+            workingDir,
+            sandboxed: isCustomRole,
+            systemPrompt: fullSystemPrompt,
+            onToolStart: () => {
+              sendTyping();
+            },
+          });
 
-        clearInterval(typingInterval);
-        clearActiveTask(taskId);
-
-        await sendSmartReply(ctx, cleanedText);
-
-        // Lanjutkan antrean tugas berikutnya
-        processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
+          const { cleanedText } = await processAutonomousOutput(replyText);
+          await sendSmartReply(ctx, cleanedText);
+        } catch (err) {
+          console.error(`[Universal Agent Error]:`, err.message);
+          await ctx.reply(`❌ Maaf, Universal Agent mengalami kendala:\n${err.message}`);
+        } finally {
+          clearInterval(typingInterval);
+          clearActiveTask(taskId);
+          processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
+        }
         return;
-      } catch (err) {
-        clearInterval(typingInterval);
-        clearActiveTask(taskId);
-        await ctx.reply(`❌ Maaf, Universal Agent mengalami kendala:\n${err.message}`);
-        processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
-        return;
-      }
     }
 
     const isClaude = engine === "claude";

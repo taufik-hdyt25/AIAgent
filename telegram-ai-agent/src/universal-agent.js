@@ -182,6 +182,33 @@ export function resetSessionHistory(convId) {
   sessionHistories.delete(convId);
 }
 
+export function hasUniversalMessages(convId) {
+  if (!convId) return false;
+  const msgs = sessionHistories.get(convId);
+  return Boolean(msgs && msgs.length > 1);
+}
+
+/**
+ * Pangkas riwayat percakapan dengan aman tanpa merusak struktur turn atau pasangan tool_calls
+ */
+function trimHistorySafely(messages, maxMessages = 8) {
+  if (messages.length <= maxMessages) return;
+
+  const sysMsg = messages[0];
+  let targetSlice = messages.slice(-(maxMessages - 1));
+
+  // Pastikan pesan pertama setelah system selalu dimulai dari role 'user'
+  while (targetSlice.length > 0 && targetSlice[0].role !== "user") {
+    targetSlice.shift();
+  }
+
+  messages.length = 0;
+  if (sysMsg && sysMsg.role === "system") {
+    messages.push(sysMsg);
+  }
+  messages.push(...targetSlice);
+}
+
 // Loop Utama Universal Agent
 export async function runUniversalAgent({
   prompt,
@@ -253,14 +280,8 @@ export async function runUniversalAgent({
   // Tambahkan prompt pengguna
   messages.push({ role: "user", content: prompt });
 
-  // Batasi history maksimal 8 pesan terakhir (system + 7 turn) agar hemat memori & context window server Pi
-  if (messages.length > 8) {
-    const sysMsg = messages[0];
-    messages.splice(1, messages.length - 7);
-    if (messages[0].role !== "system") {
-      messages.unshift(sysMsg);
-    }
-  }
+  // Batasi history maksimal 8 pesan terakhir agar hemat memori & context window server Pi
+  trimHistorySafely(messages, 8);
 
   const MAX_TURNS = 10;
   let currentTurn = 0;
@@ -345,6 +366,17 @@ export async function runUniversalAgent({
         ) {
           delete payload.tools;
           delete payload.tool_choice;
+          // Sanitasi: jika tools tidak didukung, hapus role 'tool' dan bersihkan tool_calls
+          payload.messages = payload.messages
+            .filter((m) => m.role !== "tool")
+            .map((m) => {
+              if (m.role === "assistant" && m.tool_calls) {
+                const { tool_calls, ...rest } = m;
+                return { ...rest, content: m.content || "Menjalankan perintah..." };
+              }
+              return m;
+            });
+
           const retryController = new AbortController();
           const retryTimeout = setTimeout(() => retryController.abort(), 90000);
           try {
