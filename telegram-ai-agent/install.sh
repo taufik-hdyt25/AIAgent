@@ -853,7 +853,7 @@ EOF
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/caffeinate</string>
-        <string>-ims</string>
+        <string>-dimsu</string>
         <string>$node_bin</string>
         <string>$global_dir/th-agent-bin</string>
     </array>
@@ -863,6 +863,8 @@ EOF
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
     <key>StandardOutPath</key>
     <string>$global_dir/logs/bot.log</string>
     <key>StandardErrorPath</key>

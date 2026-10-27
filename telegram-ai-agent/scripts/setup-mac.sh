@@ -137,7 +137,7 @@ cat << EOF > "$PLIST_PATH"
     <key>ProgramArguments</key>
     <array>
         <string>/usr/bin/caffeinate</string>
-        <string>-ims</string>
+        <string>-dimsu</string>
         <string>$NODE_BIN</string>
         <string>$GLOBAL_AGENT_DIR/bot.bundle.js</string>
     </array>
@@ -147,6 +147,8 @@ cat << EOF > "$PLIST_PATH"
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
     <key>StandardOutPath</key>
     <string>$GLOBAL_AGENT_DIR/logs/mac-bot.log</string>
     <key>StandardErrorPath</key>

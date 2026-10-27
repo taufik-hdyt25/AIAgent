@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.
 > ```
 
 The installer automatically compiles and configures a **24/7 Standalone Binary Runner** directly on your system:
-- 🍏 **On macOS (Local):** Bundles the bot to `~/.th-agent/th-agent-bin`, registers a 24/7 background LaunchAgent service (anti-sleep `caffeinate -ims`), and keeps the `th-agent/projects/` workspace **100% clean without `node_modules`**.
+- 🍏 **On macOS (Local):** Bundles the bot to `~/.th-agent/th-agent-bin`, registers a 24/7 background LaunchAgent service (anti-sleep `caffeinate -dimsu`), and keeps the `th-agent/projects/` workspace **100% clean without `node_modules`**.
 - 🐧 **On Linux VPS / Server / Raspberry Pi:** Bundles the bot to `~/.th-agent/th-agent-bin`, registers a 24/7 systemd service (auto-starts on boot), without Docker containers or PM2 overhead.
 - ⚡ **CLI Binary Command:** The `th-agent` command is automatically available in your terminal (`th-agent logs`, `th-agent status`, `th-agent restart`, `th-agent stop`).
 
