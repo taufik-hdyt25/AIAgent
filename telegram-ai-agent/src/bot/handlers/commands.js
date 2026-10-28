@@ -20,6 +20,8 @@ import {
   resetUserConversation,
   getUserAgyConversationId,
   getUserModel,
+  getUserActiveProject,
+  setUserActiveProject,
 } from "../../services/context-store.js";
 import {
   readEnvFile,
@@ -186,6 +188,8 @@ export function registerBasicCommands(bot) {
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
         "• `/swarm <t1> | <t2> | <t3>` - Eksekusi banyak tugas paralel dengan Sub-Agent Swarm\n" +
         "• `/projects` - Lihat daftar proyek coding di ./projects\n" +
+        "• `/workspace` - Kunci atau ganti workspace proyek aktif (Sandbox Opsi 1)\n" +
+        "• `/scope` - Pengaturan isolasi role sandbox (Project / Root / Custom)\n" +
         "• `/memories` - Lihat daftar fakta & preferensi jangka panjang AI\n" +
         "• `/remember <teks>` - Simpan fakta/preferensi baru ke memori permanen\n" +
         "• `/forget <id>` - Hapus memori AI berdasarkan ID\n" +
@@ -1816,6 +1820,69 @@ export function registerBasicCommands(bot) {
     await renderSettingsMenu(ctx, ctx.callbackQuery.message?.message_id);
   });
 
+  // /workspace, /project (Opsi 1 - Project-Level Jail Management)
+  bot.command(["workspace", "project"], async (ctx) => {
+    const raw = ctx.match?.trim() || "";
+    const userId = ctx.from?.id;
+
+    let availableProjects = [];
+    try {
+      const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+      availableProjects = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .map((e) => e.name);
+    } catch (_) {}
+
+    if (!raw) {
+      const cfg = await getSandboxConfig();
+      const currentActive = (userId ? await getUserActiveProject(userId) : null) || cfg.activeProject || availableProjects[0] || "th-blog";
+      const isJail = cfg.role === "project";
+
+      const listStr = availableProjects.length > 0
+        ? availableProjects.map((p) => `  • \`${p}\`${p === currentActive ? " 👈 *(Terkunci)*" : ""}`).join("\n")
+        : "  _(Belum ada subfolder proyek di ./projects)_";
+
+      await ctx.reply(
+        `🛡️ *Workspace Sandbox (Opsi 1 - Project-Level Jail)*\n\n` +
+        `• Status Mode: *${isJail ? "🔒 TERKUNCI PER PROYEK (Opsi 1)" : (cfg.role === "custom" ? "🔒 CUSTOM LIST" : "🌐 ROOT (Akses Penuh)")}*\n` +
+        `• Proyek Aktif: \`${currentActive}\`\n` +
+        `• Scope Direktori: \`projects/${currentActive}\`\n\n` +
+        `📁 *Daftar Proyek Tersedia:*\n${listStr}\n\n` +
+        `💡 *Cara Berpindah Proyek:*\n` +
+        `• \`/workspace <nama-proyek>\` (contoh: \`/workspace th-blog\`)\n` +
+        `• Atau sebut langsung nama proyeknya di chat (misal: *"kita beralih ke th-admin-app"*).`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    // Periksa apakah proyek yang dituju ada di projects/
+    const targetProject = raw.toLowerCase().replace(/^projects\//, "").replace(/^\.\//, "").trim();
+    const matchedProject = availableProjects.find((p) => p.toLowerCase() === targetProject) ||
+      availableProjects.find((p) => p.toLowerCase().includes(targetProject));
+
+    if (!matchedProject) {
+      await ctx.reply(
+        `❌ Proyek \`${raw}\` tidak ditemukan di folder \`./projects/\`.\n\n` +
+        `Daftar proyek yang ada:\n${availableProjects.map((p) => `• \`${p}\``).join("\n")}`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (userId) {
+      await setUserActiveProject(userId, matchedProject);
+    }
+    await setEngineAccessRole("project", "", matchedProject);
+
+    await ctx.reply(
+      `🔒 *Workspace Sandbox Terkunci ke Proyek:* \`${matchedProject}\`\n\n` +
+      `📁 Direktori Kerja: \`projects/${matchedProject}\`\n` +
+      `🛡️ *Pengamanan Aktif:* Agent tidak bisa menyentuh file sistem server atau proyek lain. Seluruh proses koding, git, dan terminal diisolasi murni di dalam proyek ini.`,
+      { parse_mode: "Markdown" }
+    );
+  });
+
   // /scope, /role, /sandbox
   bot.command(["scope", "role", "sandbox"], async (ctx) => {
     const raw = ctx.match?.trim() || "";
@@ -1824,15 +1891,32 @@ export function registerBasicCommands(bot) {
 
     if (!subCmd) {
       const cfg = await getSandboxConfig();
-      const isCustom = cfg.role === "custom" || cfg.piSandbox;
+      const roleDisplay = cfg.role === "project"
+        ? "🔒 PROJECT JAIL (Opsi 1 - Terkunci per Proyek)"
+        : (cfg.role === "custom" || cfg.piSandbox ? "🔒 CUSTOM (Dibatasi)" : "🌐 ROOT (Akses Penuh)");
       await ctx.reply(
         `🛡️ *Workspace Access Scope (Role Engine)*\n\n` +
-          `• Role Aktif: *${isCustom ? "🔒 CUSTOM (Dibatasi)" : "🌐 ROOT (Akses Penuh)"}*\n` +
-          `• Folder Diizinkan: \`${cfg.customFolders || "(Semua folder di ./projects)"}\`\n\n` +
+          `• Role Aktif: *${roleDisplay}*\n` +
+          `• Proyek Terkunci: \`${cfg.activeProject || "th-blog"}\`\n` +
+          `• Folder Diizinkan: \`${cfg.role === "project" ? `projects/${cfg.activeProject || "th-blog"}` : (cfg.customFolders || "(Semua folder di ./projects)")}\`\n\n` +
           `💡 *Cara Mengubah:*\n` +
+          `• \`/scope project\` - Kunci ketat ke 1 proyek aktif (Opsi 1 Rekomendasi ⭐)\n` +
+          `• \`/workspace <nama>\` - Ganti proyek aktif yang dikunci\n` +
           `• \`/scope root\` - Berikan akses penuh ke seluruh folder\n` +
-          `• \`/scope custom [folder1,folder2]\` - Batasi akses hanya ke folder tertentu\n` +
-          `• Atau atur lewat Web Settings di \`http://localhost:${process.env.WEB_PORT || 3030}\``,
+          `• \`/scope custom [folder1,folder2]\` - Batasi akses ke daftar folder kustom`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (subCmd === "project" || subCmd === "jail" || subCmd === "opsi1") {
+      const proj = parts[1]?.trim() || "";
+      await setEngineAccessRole("project", "", proj || undefined);
+      const cfg = await getSandboxConfig();
+      await ctx.reply(
+        `🔒 *Role Berhasil Diubah ke PROJECT JAIL (Opsi 1)!*\n\n` +
+        `📁 Proyek Terkunci: \`${cfg.activeProject || "th-blog"}\`\n` +
+        `Agent kini terisolasi di dalam folder proyek tersebut dan tidak bisa menyentuh sistem atau proyek lainnya.`,
         { parse_mode: "Markdown" }
       );
       return;

@@ -13,8 +13,10 @@ import {
 } from "../config/env.js";
 import {
   isPiSandboxActive,
+  isProjectJailActive,
   getSandboxConfig,
   getAllowedFolders,
+  detectProjectFromText,
 } from "../services/sandbox-service.js";
 import { syncPiModelDirectly } from "../services/pi-service.js";
 import {
@@ -30,6 +32,8 @@ import {
   isClaudeSessionStarted,
   markClaudeSessionStarted,
   getUserModel,
+  getUserActiveProject,
+  setUserActiveProject,
 } from "../services/context-store.js";
 import {
   getActiveTask,
@@ -267,25 +271,41 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
     const skillPrompt = formatSkillsForPrompt(matchingSkills);
 
-    const sandboxCfg = await getSandboxConfig();
-    const isCustomRole = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
-    const allowedList = await getAllowedFolders(userModel);
-    const allowedDisplay = allowedList.length > 0
-      ? allowedList.map((f) => `'${f}'`).join(", ")
-      : "(Belum ditentukan folder kustom - Akses dibatasi)";
-
     await ensureProjectsIndexed().catch((err) =>
       console.warn("[Project Indexer] Check error:", err.message)
     );
 
     let availableProjectsPrompt = "";
+    let availableProjectsList = [];
     try {
       const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
-      const dirs = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
-      if (dirs.length > 0) {
-        availableProjectsPrompt = `\n- Proyek aktif yang sudah ada di folder './projects': ${dirs.map((d) => `'./projects/${d}'`).join(", ")}.`;
+      availableProjectsList = entries.filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => e.name);
+      if (availableProjectsList.length > 0) {
+        availableProjectsPrompt = `\n- Proyek aktif yang sudah ada di folder './projects': ${availableProjectsList.map((d) => `'./projects/${d}'`).join(", ")}.`;
       }
     } catch (_) {}
+
+    const sandboxCfg = await getSandboxConfig();
+    const isProjectJail = sandboxCfg.role === "project";
+
+    // Auto-detect project dari pesan pengguna jika menyebutkan nama proyek
+    let userActiveProject = await getUserActiveProject(userId);
+    const detectedProject = detectProjectFromText(userMessage, availableProjectsList);
+    if (detectedProject) {
+      userActiveProject = detectedProject;
+      await setUserActiveProject(userId, detectedProject);
+    } else if (!userActiveProject || !availableProjectsList.includes(userActiveProject)) {
+      userActiveProject = sandboxCfg.activeProject || availableProjectsList[0] || "th-blog";
+      await setUserActiveProject(userId, userActiveProject);
+    }
+
+    const isCustomRole = isProjectJail || sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
+    const allowedList = await getAllowedFolders(userModel, userActiveProject);
+    const allowedDisplay = isProjectJail
+      ? `'projects/${userActiveProject}' (Workspace Sandbox Opsi 1 - Terkunci)`
+      : (allowedList.length > 0
+          ? allowedList.map((f) => `'${f}'`).join(", ")
+          : "(Belum ditentukan folder kustom - Akses dibatasi)");
 
     let projectsSummaryPrompt = "";
     try {
@@ -298,9 +318,11 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
 
     let prompt = "";
     if (isOngoingSession) {
-      const scopeOngoingRule = isCustomRole
-        ? `- Aturan Scope Engine (Role Custom Aktif): Seluruh pengerjaan dan eksekusi coding DIBATASI HANYA di dalam folder: ${allowedDisplay}. Dilarang menyentuh atau memodifikasi file di luar folder tersebut.`
-        : "- Lingkungan Server/VPS (Akses Penuh): Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di './projects/' (seperti th-blog, wa-chat-bot, dll.).";
+      const scopeOngoingRule = isProjectJail
+        ? `- ATURAN KETAT WORKSPACE SANDBOX (OPSI 1 - PROJECT JAIL AKTIF): Ruang lingkup kerja kamu TERKUNCI 100% HANYA di dalam folder proyek: 'projects/${userActiveProject}'. Dilarang keras membaca, memodifikasi, atau mengeksekusi file di luar proyek '${userActiveProject}'.`
+        : (isCustomRole
+          ? `- Aturan Scope Engine (Role Custom Aktif): Seluruh pengerjaan dan eksekusi coding DIBATASI HANYA di dalam folder: ${allowedDisplay}. Dilarang menyentuh atau memodifikasi file di luar folder tersebut.`
+          : "- Lingkungan Server/VPS (Akses Penuh): Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di './projects/' (seperti th-blog, wa-chat-bot, dll.).");
 
       // Sesi aktif berjalan: hemat token drastis tanpa mengulang puluhan baris persona boilerplate
       prompt = `
@@ -331,11 +353,15 @@ FITUR OTONOM: PERSISTENT MEMORY & AUTO-SKILL CREATION:
    :::skill:add {"id": "nama-skill-kebab-case", "name": "Judul Skill", "description": "Kegunaan skill", "triggers": ["trigger 1", "trigger 2"], "instructions": "Langkah-langkah instruksi..."}:::
    Sistem akan otomatis menyimpan dan mengindeks skill tersebut ke dalam persistent storage.`;
 
-      const scopeEnvironmentNotice = isCustomRole
-        ? `- Lingkungan Server/VPS (Scope Terbatas - Role Custom):
+      const scopeEnvironmentNotice = isProjectJail
+        ? `- Lingkungan Server/VPS (Workspace Sandbox - Opsi 1 Terkunci):
+  * ATURAN KETAT WORKSPACE SANDBOX (AKTIF): Seluruh pengerjaan tugas proyek, clone repo, modifikasi kode, dan eksekusi terminal TERKUNCI 100% HANYA di dalam folder proyek: 'projects/${userActiveProject}'.
+  * DILARANG KERAS mengeksekusi atau menyentuh file di luar folder proyek '${userActiveProject}'.`
+        : (isCustomRole
+          ? `- Lingkungan Server/VPS (Scope Terbatas - Role Custom):
   * ATURAN KETAT SCOPE ENGINE (AKTIF): Seluruh pengerjaan tugas proyek, clone repo, modifikasi kode, dan eksekusi proyek coding DIBATASI HANYA di dalam folder: ${allowedDisplay}.
   * DILARANG KERAS mengeksekusi atau memodifikasi proyek jika berada di luar folder yang diizinkan tersebut.`
-        : `- Lingkungan Server/VPS (Akses Penuh - Role Root): Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.). Aturan pembatasan HANYA berlaku jika mode Custom Scope diaktifkan di menu pengaturan.`;
+          : `- Lingkungan Server/VPS (Akses Penuh - Role Root): Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.). Aturan pembatasan HANYA berlaku jika mode Custom Scope diaktifkan di menu pengaturan.`);
 
       prompt = `
 Kamu adalah TH Agent, asisten software engineer cowok (pria) yang otonom dan berkomunikasi langsung dengan developer melalui chat Telegram ini.
@@ -432,9 +458,11 @@ ${userMessage}
           }
         }
 
-        const workingDir = isCustomRole && allowedList[0]
-          ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
-          : PROJECTS_DIR;
+        const workingDir = isProjectJail
+          ? path.resolve(PROJECTS_DIR, userActiveProject)
+          : (isCustomRole && allowedList[0]
+              ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
+              : PROJECTS_DIR);
 
         // Untuk Universal Engine: pisahkan user message murni dari system prompt persona
         // agar tidak membengkakkan token context window di server Pi
@@ -516,7 +544,7 @@ PERSONA & GAYA KOMUNIKASI:
 PRINSIP UTAMA: ZERO-CONFIRMATION & AKSES PENUH:
 1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses eksekusi.
 2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
-${isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder: ${allowedDisplay}. Dilarang mengeksekusi proyek di luar folder tersebut.` : "3. LINGKUNGAN SERVER & AKSES PROYEK: Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.)."}
+${isProjectJail ? `3. ATURAN KETAT WORKSPACE SANDBOX (OPSI 1 - PROJECT JAIL AKTIF): Ruang lingkup kerja kamu TERKUNCI 100% HANYA di dalam folder proyek: 'projects/${userActiveProject}'. Dilarang keras mengakses, membaca, membuat, memodifikasi file, atau menjalankan perintah terminal di luar direktori proyek tersebut.` : (isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder: ${allowedDisplay}. Dilarang mengeksekusi proyek di luar folder tersebut.` : "3. LINGKUNGAN SERVER & AKSES PROYEK: Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.).")}
 4. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.
 5. FITUR SUB-AGENT: Gunakan tool 'invoke_subagent' jika ada sub-tugas yang perlu didelegasikan atau dikerjakan secara terpisah.
 ${queueStatusPrompt ? `\n${queueStatusPrompt}\n` : ""}
@@ -643,8 +671,14 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
         delete sanitizedEnv.GEMINI_API_KEY;
       }
 
+      const executionCwd = isProjectJail
+        ? path.resolve(PROJECTS_DIR, userActiveProject)
+        : (isCustomRole && allowedList[0]
+            ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
+            : process.cwd());
+
       const child = spawn(binToRun, cliArgs, {
-        cwd: process.cwd(),
+        cwd: executionCwd,
         shell: false,
         detached: true,
         env: sanitizedEnv,

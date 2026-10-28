@@ -260,3 +260,17 @@ export async function setGlobalEngine(engine) {
   }
   await saveContext(context);
 }
+
+export async function getUserActiveProject(userId) {
+  if (!userId) return null;
+  const context = await loadContext();
+  return context.activeProjects?.[String(userId)] || null;
+}
+
+export async function setUserActiveProject(userId, projectName) {
+  if (!userId || !projectName) return;
+  const context = await loadContext();
+  if (!context.activeProjects) context.activeProjects = {};
+  context.activeProjects[String(userId)] = projectName;
+  await saveContext(context);
+}

@@ -123,8 +123,23 @@ async function executeToolCall(toolCall, options = {}) {
     switch (name) {
       case "execute_command": {
         const targetCwd = args.cwd ? path.resolve(baseDir, args.cwd) : baseDir;
-        if (options.sandboxed && !targetCwd.startsWith(baseDir)) {
-          return `Akses Ditolak: Direktori kerja '${args.cwd}' berada di luar scope folder yang diizinkan (${baseDir}).`;
+        if (options.sandboxed) {
+          if (!targetCwd.startsWith(baseDir)) {
+            return `Akses Ditolak (Workspace Sandbox): Direktori kerja '${args.cwd}' berada di luar scope proyek yang diizinkan (${baseDir}).`;
+          }
+          // Proteksi traversal dan file sistem sensitif saat sandbox aktif
+          const cmdLower = (args.command || "").toLowerCase();
+          const forbiddenPatterns = [
+            /(\.\.\/){2,}/, // traversal berantai ../../
+            /\b(cat|less|more|tail|head|vim?|nano)\s+(\/etc|\/var|\/root|\/home\/ubuntu\/\.env)/i,
+            /\brm\s+(-[rf]+\s+)?(\/|\/\w+|\.\.\/)/i,
+            /\b(shutdown|reboot|poweroff|init\s+0)\b/i,
+          ];
+          for (const pattern of forbiddenPatterns) {
+            if (pattern.test(cmdLower)) {
+              return `Akses Ditolak (Workspace Sandbox): Perintah '${args.command}' diblokir demi keamanan lingkungan sandbox proyek.`;
+            }
+          }
         }
         await mkdir(targetCwd, { recursive: true });
 
@@ -159,7 +174,11 @@ async function executeToolCall(toolCall, options = {}) {
           resolvedPath = path.resolve(baseDir, args.file_path);
         }
         if (options.sandboxed && !resolvedPath.startsWith(baseDir)) {
-          return `Akses Ditolak: Path file '${args.file_path}' berada di luar scope folder yang diizinkan (${baseDir}).`;
+          // Khusus uploads user tetap diizinkan untuk dibaca
+          const uploadsDir = path.resolve(ROOT_DIR, "uploads");
+          if (!resolvedPath.startsWith(uploadsDir)) {
+            return `Akses Ditolak (Workspace Sandbox): Path file '${args.file_path}' berada di luar scope proyek yang diizinkan (${baseDir}).`;
+          }
         }
         const content = await readFile(resolvedPath, "utf8");
         return content.length > 50000 ? content.slice(0, 50000) + "\n...[output dipotong]" : content;
@@ -177,7 +196,7 @@ async function executeToolCall(toolCall, options = {}) {
           resolvedPath = path.resolve(baseDir, args.file_path);
         }
         if (options.sandboxed && !resolvedPath.startsWith(baseDir)) {
-          return `Akses Ditolak: Path file '${args.file_path}' berada di luar scope folder yang diizinkan (${baseDir}).`;
+          return `Akses Ditolak (Workspace Sandbox): Menulis file '${args.file_path}' dilarang karena berada di luar scope proyek (${baseDir}).`;
         }
         await mkdir(path.dirname(resolvedPath), { recursive: true });
         await writeFile(resolvedPath, args.content, "utf8");
@@ -187,7 +206,7 @@ async function executeToolCall(toolCall, options = {}) {
       case "list_directory": {
         const resolvedPath = args.dir_path ? path.resolve(baseDir, args.dir_path) : baseDir;
         if (options.sandboxed && !resolvedPath.startsWith(baseDir)) {
-          return `Akses Ditolak: Direktori '${args.dir_path}' berada di luar scope folder yang diizinkan (${baseDir}).`;
+          return `Akses Ditolak (Workspace Sandbox): Direktori '${args.dir_path}' berada di luar scope proyek (${baseDir}).`;
         }
         await mkdir(resolvedPath, { recursive: true });
         const items = await readdir(resolvedPath, { withFileTypes: true });
