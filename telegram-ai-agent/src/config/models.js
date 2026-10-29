@@ -91,6 +91,19 @@ export async function getModelList(engine) {
   }
 
   if (engine === "pi") {
+    if (custom && Array.isArray(custom.universalModels) && custom.universalModels.length > 0) {
+      return custom.universalModels;
+    }
+    const uniUrl = process.env.UNIVERSAL_BASE_URL;
+    const uniKey = process.env.UNIVERSAL_API_KEY || "";
+    if (uniUrl) {
+      try {
+        const remote = await fetchRemoteModels(uniUrl, uniKey);
+        if (remote.length > 0) {
+          return remote;
+        }
+      } catch {}
+    }
     return AVAILABLE_PI_MODELS;
   }
   if (engine === "claude") {

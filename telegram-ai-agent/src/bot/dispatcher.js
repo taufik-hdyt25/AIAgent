@@ -641,12 +641,15 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
           "--approve",
         ];
         if (piModel) {
-          if (piModel.startsWith("pi-")) {
-            cliArgs.unshift("--provider", "local-pi", "--model", piModel);
-          } else if (piModel.includes("gpt") || piModel.includes("llama") || piModel.includes("qwen")) {
-            cliArgs.unshift("--provider", "groq", "--model", piModel);
+          const isGroqModel =
+            piModel === "openai/gpt-oss-120b" ||
+            piModel === "llama-3.1-8b-instant" ||
+            piModel.startsWith("groq/");
+
+          if (isGroqModel) {
+            cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
           } else {
-            cliArgs.unshift("--model", piModel);
+            cliArgs.unshift("--provider", "local-pi", "--model", piModel);
           }
         }
       } else if (isClaude) {
@@ -1294,12 +1297,15 @@ export async function runAgentAutonomous({
     const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
     cliArgs = ["--session-id", actualConvId, "-p", prompt, "--approve"];
     if (piModel) {
-      if (piModel.startsWith("pi-")) {
-        cliArgs.unshift("--provider", "local-pi", "--model", piModel);
-      } else if (piModel.includes("gpt") || piModel.includes("llama") || piModel.includes("qwen")) {
-        cliArgs.unshift("--provider", "groq", "--model", piModel);
+      const isGroqModel =
+        piModel === "openai/gpt-oss-120b" ||
+        piModel === "llama-3.1-8b-instant" ||
+        piModel.startsWith("groq/");
+
+      if (isGroqModel) {
+        cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
       } else {
-        cliArgs.unshift("--model", piModel);
+        cliArgs.unshift("--provider", "local-pi", "--model", piModel);
       }
     }
   } else if (isClaude) {

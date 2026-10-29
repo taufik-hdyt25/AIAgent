@@ -2244,6 +2244,12 @@ export function registerBasicCommands(bot) {
         ? `\n_...dan ${res.allModels.length - 30} model lainnya._`
         : "";
 
+    const currentEngine = await getUserEngine(userId);
+    const engineLabel =
+      currentEngine === "pi"
+        ? "Pi Coding Agent CLI (`pi`)"
+        : "Universal / Pi Server";
+
     await ctx.api
       .editMessageText(
         ctx.chat.id,
@@ -2252,11 +2258,11 @@ export function registerBasicCommands(bot) {
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `✅ *Model Terpilih:* \`${res.activeModel}\`\n` +
         `🌐 *Server Pi:* \`${res.serverUrl}\`\n` +
-        `⚙️ *Engine:* \`Universal / Pi Server\`\n\n` +
+        `⚙️ *Engine Aktif:* ${engineLabel}\n\n` +
         `📋 *Daftar Model yang Ditemukan di Pi:*\n` +
         modelListStr +
         moreStr +
-        `\n\n_Model ini otomatis tersinkronisasi di Pengaturan Web & Telegram! Ketik /model untuk mengganti pilihan model kapan saja._ 🚀`,
+        `\n\n_Model ini otomatis tersinkronisasi untuk Pi CLI dan Web Control Panel! Ketik /model untuk mengganti pilihan model kapan saja._ 🚀`,
         { parse_mode: "Markdown" }
       )
       .catch(() => {});

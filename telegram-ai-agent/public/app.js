@@ -893,10 +893,28 @@ if (btnGetPiModels) {
 
       // Update state
       availableOptions.universalModels = models;
+      availableOptions.piModels = models;
       if (!currentCustomModels) currentCustomModels = {};
       currentCustomModels.universalModels = models;
+      currentCustomModels.piModels = models;
       currentSettings.UNIVERSAL_MODEL = activeModel;
+      currentSettings.PI_MODEL = activeModel;
       currentSettings.UNIVERSAL_BASE_URL = data.baseUrl || baseUrl;
+
+      // Update Pi Model Select dropdown
+      if (piModelSelect) {
+        piModelSelect.innerHTML = "";
+        for (const m of models) {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          opt.textContent = `${m.name} [Pi Server]`;
+          if (m.id === activeModel) {
+            opt.selected = true;
+          }
+          piModelSelect.appendChild(opt);
+        }
+        piModelSelect.value = activeModel;
+      }
 
       // Update Select dropdown
       if (universalModelSelect) {
@@ -996,10 +1014,27 @@ if (btnDetectRemoteModels) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "sync_remote", engine: "universal", models }),
         });
+        await fetch("/api/custom-models", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "sync_remote", engine: "pi", models }),
+        });
         if (!currentCustomModels) currentCustomModels = {};
         currentCustomModels.universalModels = models;
+        currentCustomModels.piModels = models;
         if (!availableOptions) availableOptions = {};
         availableOptions.universalModels = models;
+        availableOptions.piModels = models;
+        if (piModelSelect) {
+          piModelSelect.innerHTML = "";
+          for (const m of models) {
+            const opt = document.createElement("option");
+            opt.value = m.id;
+            opt.textContent = `${m.name} [Pi Server]`;
+            piModelSelect.appendChild(opt);
+          }
+          if (models[0]) piModelSelect.value = models[0].id;
+        }
         renderAllowedModelsChips();
       } catch (_) {}
 
