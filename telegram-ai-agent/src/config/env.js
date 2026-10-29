@@ -2,6 +2,7 @@ import path from "node:path";
 import os from "node:os";
 import fs from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { execSync } from "node:child_process";
 
 export const ROOT_DIR = (() => {
   if (fs.existsSync(path.resolve(process.cwd(), "src/bot.js"))) {
@@ -84,7 +85,7 @@ export const IS_PI = (() => {
 
 export const IS_WINDOWS = process.platform === "win32";
 
-function findDefaultBin(binName, unixDefaultRel) {
+function findDefaultBin(binName, unixDefaultRel = "") {
   if (IS_WINDOWS) {
     const appData = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
     const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
@@ -100,22 +101,37 @@ function findDefaultBin(binName, unixDefaultRel) {
     }
     return binName;
   }
+
+  // 1. Cek langsung di PATH sistem via which
+  try {
+    const whichRes = execSync(`which ${binName} 2>/dev/null`, { encoding: "utf8" }).trim();
+    if (whichRes && fs.existsSync(whichRes)) return whichRes;
+  } catch (_) {}
+
+  // 2. Cek lokasi standar macOS dan Linux
+  const cleanRel = unixDefaultRel ? unixDefaultRel.replace(/^\/+/, "") : "";
   const unixCandidates = [
-    path.join(os.homedir(), unixDefaultRel),
-    path.join("/home/ubuntu/.local/bin", binName),
-    path.join("/usr/local/bin", binName),
-    path.join("/usr/bin", binName),
-  ];
+    cleanRel ? path.join(os.homedir(), cleanRel) : null,
+    path.join(os.homedir(), ".local", "bin", binName),
+    path.join(os.homedir(), ".npm-global", "bin", binName),
+    path.join(os.homedir(), ".bun", "bin", binName),
+    path.join("/opt/homebrew", "bin", binName),
+    path.join("/usr/local", "bin", binName),
+    path.join("/usr", "bin", binName),
+    path.join("/bin", binName),
+  ].filter(Boolean);
+
   for (const c of unixCandidates) {
     if (fs.existsSync(c)) return c;
   }
-  return path.join(os.homedir(), unixDefaultRel);
+
+  return binName;
 }
 
 export const BOT_TOKEN = process.env.BOT_TOKEN || "";
 export const AGY_BIN = process.env.AGY_BIN || findDefaultBin("agy", ".local/bin/agy");
 export const CLAUDE_BIN = process.env.CLAUDE_BIN || findDefaultBin("claude", ".local/bin/claude");
-export const PI_BIN = process.env.PI_BIN || findDefaultBin("pi", "/usr/bin/pi");
+export const PI_BIN = process.env.PI_BIN || findDefaultBin("pi", ".local/bin/pi");
 
 export const DEFAULT_ENGINE = process.env.CLI_ENGINE || "pi";
 export const DEFAULT_AGY_MODEL = process.env.AGY_MODEL || "gemini-3.8-flash-medium";

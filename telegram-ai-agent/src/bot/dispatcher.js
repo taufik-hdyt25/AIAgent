@@ -971,7 +971,12 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
           } else if (errText.includes("permission that headless mode cannot prompt for") || errText.includes("permission")) {
             errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan \`AGY_AUTO_APPROVE_PERMISSIONS=true\` diaktifkan pada .env.`;
           } else if (errText.includes("ENOENT")) {
-            errText = `❌ *Kendala Eksekusi Engine (${engineLabel})*\n\n${truncate(errText, 500)}\n\n💡 _Kemungkinan penyebab: Binary CLI atau direktori kerja proyek tidak ditemukan di server._`;
+            const installHint = isPi
+              ? "\n\n💡 *Solusi:* Install binary Pi CLI secara global:\n`npm install -g @earendil-works/pi-coding-agent`"
+              : isClaude
+              ? "\n\n💡 *Solusi:* Install binary Claude Code:\n`npm install -g @anthropic-ai/claude-code`"
+              : "";
+            errText = `❌ *Kendala Eksekusi Engine (${engineLabel})*\n\n${truncate(errText, 500)}\n\n💡 _Kemungkinan penyebab: Binary CLI atau direktori kerja proyek tidak ditemukan di server._${installHint}`;
           } else {
             errText = `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`;
           }
