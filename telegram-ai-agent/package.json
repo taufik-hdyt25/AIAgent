@@ -17,6 +17,7 @@
     "check-queue": "node scripts/check-queue.js"
   },
   "dependencies": {
+    "@earendil-works/pi-coding-agent": "^1.4.0",
     "dotenv": "^16.4.7",
     "grammy": "^1.35.0"
   },

@@ -134,7 +134,24 @@ async function syncAndRebuildBundle() {
     }
   } catch (_) {}
 
-  // 2. Re-bundle th-agent-bin jika ada
+  // 2. Pastikan binary Pi CLI terpasang jika belum ada di host
+  try {
+    let hasPi = false;
+    try {
+      const { stdout: whichOut } = await execAsync("which pi 2>/dev/null || echo ''");
+      hasPi = Boolean(whichOut.trim());
+    } catch (_) {}
+
+    if (!hasPi) {
+      console.log("[Update Service] Pi CLI belum terpasang, menginstal otomatis...");
+      await execAsync("npm install -g @earendil-works/pi-coding-agent 2>/dev/null || npm install @earendil-works/pi-coding-agent || true", {
+        cwd: agentDir,
+        timeout: 180000,
+      });
+    }
+  } catch (_) {}
+
+  // 3. Re-bundle th-agent-bin jika ada
   const binPath = path.join(ROOT_DIR, "th-agent-bin");
   if (fs.existsSync(binPath)) {
     console.log("[Update Service] Memperbarui bundle executable th-agent-bin...");

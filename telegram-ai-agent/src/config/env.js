@@ -108,7 +108,17 @@ function findDefaultBin(binName, unixDefaultRel = "") {
     if (whichRes && fs.existsSync(whichRes)) return whichRes;
   } catch (_) {}
 
-  // 2. Cek lokasi standar macOS dan Linux
+  // 2. Cek lokal node_modules/.bin (jika terpasang via npm dependency saat install/update)
+  const localNodeBins = [
+    path.join(ROOT_DIR, "node_modules", ".bin", binName),
+    path.join(process.cwd(), "node_modules", ".bin", binName),
+    path.join(path.dirname(process.execPath), binName),
+  ];
+  for (const nb of localNodeBins) {
+    if (fs.existsSync(nb)) return nb;
+  }
+
+  // 3. Cek lokasi standar macOS dan Linux
   const cleanRel = unixDefaultRel ? unixDefaultRel.replace(/^\/+/, "") : "";
   const unixCandidates = [
     cleanRel ? path.join(os.homedir(), cleanRel) : null,

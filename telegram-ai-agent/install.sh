@@ -550,6 +550,16 @@ install_claude_cli() {
     fi
 }
 
+install_pi_cli() {
+    echo -e "\n${BLUE}Memeriksa Pi Coding Agent CLI...${NC}"
+    if ! command -v pi &>/dev/null; then
+        echo -e "${YELLOW}Pi Coding Agent CLI belum terpasang. Memasang via npm...${NC}"
+        npm install -g @earendil-works/pi-coding-agent 2>/dev/null || sudo npm install -g @earendil-works/pi-coding-agent 2>/dev/null || npm install @earendil-works/pi-coding-agent || true
+    else
+        echo -e "${GREEN}✓ Pi Coding Agent CLI terdeteksi: $(command -v pi)${NC}"
+    fi
+}
+
 setup_directories() {
     echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
     mkdir -p projects
@@ -1158,6 +1168,7 @@ fi
 if [ "$SELECTED_CLAUDE" = true ]; then
     install_claude_cli
 fi
+install_pi_cli
 
 # 4. Direktori & .env
 setup_directories

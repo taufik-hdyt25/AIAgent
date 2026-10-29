@@ -631,6 +631,30 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
 
       if (isPi) {
         binToRun = PI_BIN;
+        if (!fs.existsSync(binToRun)) {
+          try {
+            const { execSync } = await import("node:child_process");
+            let w = "";
+            try {
+              w = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
+            } catch (_) {}
+            if (w && fs.existsSync(w)) {
+              binToRun = w;
+            } else {
+              console.log("[Dispatcher] Pi CLI belum terpasang, menginstal otomatis...");
+              if (ctx?.reply) {
+                ctx.reply("⏳ *Menginstal binary Pi Coding Agent CLI di sistem...*\n_Mohon tunggu sebentar (hanya sekali saat pertama kali)..._", { parse_mode: "Markdown" }).catch(() => {});
+              }
+              execSync("npm install -g @earendil-works/pi-coding-agent 2>/dev/null || sudo npm install -g @earendil-works/pi-coding-agent 2>/dev/null || npm install @earendil-works/pi-coding-agent || true", { timeout: 180000 });
+              try {
+                const wAfter = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
+                if (wAfter && fs.existsSync(wAfter)) binToRun = wAfter;
+              } catch (_) {}
+            }
+          } catch (autoErr) {
+            console.warn("[Dispatcher] Gagal auto-install Pi CLI:", autoErr.message);
+          }
+        }
         const piModel = (engine === "pi" && userModel) ? userModel : await getUserPiModel(userId);
         taskStartModel = piModel;
         cliArgs = [

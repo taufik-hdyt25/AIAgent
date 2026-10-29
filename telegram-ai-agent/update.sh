@@ -36,6 +36,11 @@ fi
 echo -e "\n${CYAN}📦 Mengunduh pembaruan (${LOCAL_COMMIT} -> ${REMOTE_COMMIT})...${NC}"
 git pull origin main
 
+if ! command -v pi &>/dev/null; then
+    echo -e "\n${CYAN}📦 Memasang Pi Coding Agent CLI (@earendil-works/pi-coding-agent)...${NC}"
+    npm install -g @earendil-works/pi-coding-agent 2>/dev/null || sudo npm install -g @earendil-works/pi-coding-agent 2>/dev/null || npm install @earendil-works/pi-coding-agent || true
+fi
+
 echo -e "\n${CYAN}🔄 Memulai ulang container telegram-coding-agent...${NC}"
 docker compose restart telegram-coding-agent
 
