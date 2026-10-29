@@ -7,6 +7,7 @@ import {
   AVAILABLE_AGY_MODELS,
   AVAILABLE_CLAUDE_MODELS,
   AVAILABLE_UNIVERSAL_MODELS,
+  AVAILABLE_PI_MODELS,
   fetchRemoteModels,
   normalizePiUrl,
 } from "../../config/models.js";
@@ -16,6 +17,7 @@ import {
   getUserAgyModel,
   getUserClaudeModel,
   getUserUniversalModel,
+  getUserPiModel,
   setUserUniversalModel,
   resetUserConversation,
   getUserAgyConversationId,
@@ -137,14 +139,21 @@ export function registerBasicCommands(bot) {
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
-    const activeEngineLabel = isClaude
+    const isPi = currentEngine === "pi";
+    const activeEngineLabel = isPi
+      ? "Pi Coding Agent CLI (`pi`)"
+      : isClaude
       ? "Claude Code CLI (`claude`)"
       : isUniversal
       ? "Universal API (`Zero-CLI`)"
       : "Antigravity CLI (`agy`)";
 
     let activeModelDisplay = "";
-    if (isClaude) {
+    if (isPi) {
+      const piModel = await getUserPiModel(userId);
+      const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
+      activeModelDisplay = `*${matched?.name || piModel}* (\`${piModel}\`)`;
+    } else if (isClaude) {
       const claudeModel = await getUserClaudeModel(userId);
       const matched = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === claudeModel);
       activeModelDisplay = `*${matched?.name || claudeModel}* (\`${claudeModel}\`)`;
@@ -222,14 +231,21 @@ export function registerBasicCommands(bot) {
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
-    const engineLabel = isClaude
+    const isPi = currentEngine === "pi";
+    const engineLabel = isPi
+      ? "Pi Coding Agent CLI (`pi`)"
+      : isClaude
       ? "Claude Code CLI (`claude`)"
       : isUniversal
       ? "Universal API (`Zero-CLI`)"
       : "Antigravity CLI (`agy`)";
 
     let activeModelDisplay = "";
-    if (isClaude) {
+    if (isPi) {
+      const piModel = await getUserPiModel(userId);
+      const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
+      activeModelDisplay = `*${matched?.name || piModel}* (\`${piModel}\`)`;
+    } else if (isClaude) {
       const claudeModel = await getUserClaudeModel(userId);
       const matched = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === claudeModel);
       activeModelDisplay = `*${matched?.name || claudeModel}* (\`${claudeModel}\`)`;
@@ -1533,7 +1549,10 @@ export function registerBasicCommands(bot) {
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
-    const engineLabel = isClaude
+    const isPi = currentEngine === "pi";
+    const engineLabel = isPi
+      ? "Pi Coding Agent CLI (`pi`)"
+      : isClaude
       ? "Claude Code CLI (`claude`)"
       : isUniversal
       ? "Universal API (`Zero-CLI`)"

@@ -35,9 +35,16 @@ export const DEFAULT_UNIVERSAL_MODELS = [
   { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Pi / LiteLLM)", badge: "Pi" },
 ];
 
+export const DEFAULT_PI_MODELS = [
+  { id: "openai/gpt-oss-120b", name: "GPT-OSS 120B (Groq - Ultra Cepat)", badge: "Rekomendasi" },
+  { id: "pi-deepseek-r1-7b", name: "DeepSeek R1 7B (Local Pi Server)", badge: "Lokal" },
+  { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B Instant (Groq)", badge: "Cepat" },
+];
+
 export const AVAILABLE_AGY_MODELS = DEFAULT_AGY_MODELS;
 export const AVAILABLE_CLAUDE_MODELS = DEFAULT_CLAUDE_MODELS;
 export const AVAILABLE_UNIVERSAL_MODELS = DEFAULT_UNIVERSAL_MODELS;
+export const AVAILABLE_PI_MODELS = DEFAULT_PI_MODELS;
 export const AVAILABLE_MODELS = AVAILABLE_AGY_MODELS;
 
 // Helper membaca model kustom jika disimpan di data/models.json
@@ -75,12 +82,17 @@ export async function getModelList(engine) {
       ? "claudeModels"
       : engine === "universal"
       ? "universalModels"
+      : engine === "pi"
+      ? "piModels"
       : "agyModels";
 
   if (custom && Array.isArray(custom[engineKey]) && custom[engineKey].length > 0) {
     return custom[engineKey];
   }
 
+  if (engine === "pi") {
+    return AVAILABLE_PI_MODELS;
+  }
   if (engine === "claude") {
     return AVAILABLE_CLAUDE_MODELS;
   }

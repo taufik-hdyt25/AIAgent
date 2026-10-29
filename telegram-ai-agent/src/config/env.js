@@ -115,10 +115,12 @@ function findDefaultBin(binName, unixDefaultRel) {
 export const BOT_TOKEN = process.env.BOT_TOKEN || "";
 export const AGY_BIN = process.env.AGY_BIN || findDefaultBin("agy", ".local/bin/agy");
 export const CLAUDE_BIN = process.env.CLAUDE_BIN || findDefaultBin("claude", ".local/bin/claude");
+export const PI_BIN = process.env.PI_BIN || findDefaultBin("pi", "/usr/bin/pi");
 
-export const DEFAULT_ENGINE = process.env.CLI_ENGINE || "agy";
+export const DEFAULT_ENGINE = process.env.CLI_ENGINE || "pi";
 export const DEFAULT_AGY_MODEL = process.env.AGY_MODEL || "gemini-3.8-flash-medium";
 export const DEFAULT_CLAUDE_MODEL = process.env.CLAUDE_MODEL || "sonnet";
+export const DEFAULT_PI_MODEL = process.env.PI_MODEL || "openai/gpt-oss-120b";
 export const DEFAULT_UNIVERSAL_MODEL = process.env.UNIVERSAL_MODEL || "";
 export const DEFAULT_UNIVERSAL_BASE_URL = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
 

@@ -3,6 +3,7 @@ import {
   AVAILABLE_AGY_MODELS,
   AVAILABLE_CLAUDE_MODELS,
   AVAILABLE_UNIVERSAL_MODELS,
+  AVAILABLE_PI_MODELS,
   fetchRemoteModels,
   getModelList,
   loadCustomModels,
@@ -15,6 +16,8 @@ import {
   setUserClaudeModel,
   getUserUniversalModel,
   setUserUniversalModel,
+  getUserPiModel,
+  setUserPiModel,
   setGlobalUniversalModel,
 } from "../../services/context-store.js";
 import { updateEnvFile } from "../../services/env-service.js";
@@ -26,13 +29,18 @@ export function registerModelHandlers(bot) {
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
+    const isPi = currentEngine === "pi";
     let modelList = await getModelList(currentEngine);
-    const currentModel = isClaude
+    const currentModel = isPi
+      ? await getUserPiModel(userId)
+      : isClaude
       ? await getUserClaudeModel(userId)
       : isUniversal
       ? await getUserUniversalModel(userId)
       : await getUserAgyModel(userId);
-    const engineLabel = isClaude
+    const engineLabel = isPi
+      ? "Pi Coding Agent CLI"
+      : isClaude
       ? "Claude Code CLI"
       : isUniversal
       ? "Universal / Pi Server"
@@ -68,7 +76,9 @@ export function registerModelHandlers(bot) {
       // Fleksibel: Izinkan model kustom (seperti 'litellm')
       const chosenId = matched ? matched.id : arg;
 
-      if (isClaude) {
+      if (isPi) {
+        await setUserPiModel(userId, chosenId);
+      } else if (isClaude) {
         await setUserClaudeModel(userId, chosenId);
       } else if (isUniversal) {
         await setUserUniversalModel(userId, chosenId);
@@ -136,8 +146,11 @@ export function registerModelHandlers(bot) {
     const currentEngine = await getUserEngine(userId);
     const isClaude = currentEngine === "claude";
     const isUniversal = currentEngine === "universal";
+    const isPi = currentEngine === "pi";
     let modelList = await getModelList(currentEngine);
-    const engineLabel = isClaude
+    const engineLabel = isPi
+      ? "Pi Coding Agent CLI"
+      : isClaude
       ? "Claude Code CLI"
       : isUniversal
       ? "Universal / Pi Server"
@@ -186,7 +199,9 @@ export function registerModelHandlers(bot) {
     const chosenId = matched ? matched.id : modelId;
     const chosenName = matched ? matched.name : modelId;
 
-    if (isClaude) {
+    if (isPi) {
+      await setUserPiModel(userId, chosenId);
+    } else if (isClaude) {
       await setUserClaudeModel(userId, chosenId);
     } else if (isUniversal) {
       await setUserUniversalModel(userId, chosenId);

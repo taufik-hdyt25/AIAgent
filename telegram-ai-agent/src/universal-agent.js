@@ -352,7 +352,7 @@ export async function runUniversalAgent({
   // Batasi history maksimal 8 pesan terakhir agar hemat memori & context window server Pi
   trimHistorySafely(messages, 8);
 
-  const MAX_TURNS = 10;
+  const MAX_TURNS = Number(process.env.AGENT_MAX_TURNS || 30);
   let currentTurn = 0;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
@@ -538,7 +538,7 @@ export async function runUniversalAgent({
       return assistantMsg.content || "[Pesan kosong]";
     }
 
-    return "⚠️ Batas maksimum pemanggilan tools tercapai (10 turn). Tugas dihentikan untuk keamanan.";
+    return `⚠️ Batas maksimum pemanggilan tools tercapai (${MAX_TURNS} turn). Tugas dihentikan untuk keamanan.`;
   } catch (err) {
     // Rollback session messages ke posisi sebelum prompt ini agar turn berikutnya tidak korup!
     while (messages.length > initialMessageCount) {

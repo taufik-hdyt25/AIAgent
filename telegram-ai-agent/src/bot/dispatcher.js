@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import {
   AGY_BIN,
   CLAUDE_BIN,
+  PI_BIN,
+  DEFAULT_PI_MODEL,
   TIMEOUT_MS,
   MAX_OUTPUT,
   AUTO_APPROVE_PERMISSIONS,
@@ -30,8 +32,12 @@ import {
   setUserAgyModel,
   getUserClaudeModel,
   getUserUniversalModel,
+  getUserPiModel,
+  setUserPiModel,
   isClaudeSessionStarted,
   markClaudeSessionStarted,
+  isPiSessionStarted,
+  markPiSessionStarted,
   getUserModel,
   getUserActiveProject,
   setUserActiveProject,
@@ -235,6 +241,7 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const isOngoingSession = Boolean(
       (engine === "claude" && (await isClaudeSessionStarted(convId))) ||
       (engine === "agy" && agyConvId) ||
+      (engine === "pi" && (await isPiSessionStarted(convId))) ||
       hasUniversal
     );
 
@@ -614,6 +621,7 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
     }
 
     const isClaude = engine === "claude";
+    const isPi = engine === "pi";
 
     const executeCli = async (sessionFlagOverride = null) => {
       let binToRun = AGY_BIN;
@@ -621,7 +629,27 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
       // Simpan model saat task dimulai untuk guard race condition saat task selesai
       let taskStartModel = null;
 
-      if (isClaude) {
+      if (isPi) {
+        binToRun = PI_BIN;
+        const piModel = (engine === "pi" && userModel) ? userModel : await getUserPiModel(userId);
+        taskStartModel = piModel;
+        cliArgs = [
+          "--session-id",
+          convId,
+          "-p",
+          prompt,
+          "--approve",
+        ];
+        if (piModel) {
+          if (piModel.startsWith("pi-")) {
+            cliArgs.unshift("--provider", "local-pi", "--model", piModel);
+          } else if (piModel.includes("gpt") || piModel.includes("llama") || piModel.includes("qwen")) {
+            cliArgs.unshift("--provider", "groq", "--model", piModel);
+          } else {
+            cliArgs.unshift("--model", piModel);
+          }
+        }
+      } else if (isClaude) {
         binToRun = CLAUDE_BIN;
         const isStarted = await isClaudeSessionStarted(convId);
         const sessionFlag = sessionFlagOverride || (isStarted ? "--resume" : "--session-id");
@@ -678,6 +706,9 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
       }
       if (process.env.AGY_AUTH_TYPE === "oauth") {
         delete sanitizedEnv.GEMINI_API_KEY;
+      }
+      if (process.env.GROQ_API_KEY) {
+        sanitizedEnv.GROQ_API_KEY = process.env.GROQ_API_KEY;
       }
 
       let executionCwd = isProjectJail
@@ -753,13 +784,17 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
           }
         }
 
+        if (isPi && code === 0) {
+          await markPiSessionStarted(convId, true);
+        }
+
         clearInterval(typingInterval);
 
-        const engineLabel = isClaude ? "Claude Code" : "Antigravity";
+        const engineLabel = isPi ? "Pi Coding Agent CLI" : (isClaude ? "Claude Code" : "Antigravity");
         let responseText = "";
         let jsonError = null;
 
-        if (!isClaude) {
+        if (!isClaude && !isPi) {
           const rawOutput = stdout.trim();
           let parsed = null;
           try {
@@ -878,15 +913,21 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
               }
             }
 
-            // 2. Chain antar-engine: agy → claude → universal → (stop)
-            const fallbackChain = { agy: "claude", claude: "universal" };
+            // 2. Chain antar-engine: pi → agy → claude → universal → (stop)
+            const fallbackChain = { pi: "agy", agy: "claude", claude: "universal" };
             const nextEngine = fallbackChain[currentEngine];
 
             if (nextEngine) {
               task._fallbackAttempted = true;
               await setUserEngine(userId, nextEngine);
               const nextLabel =
-                nextEngine === "claude" ? "Claude Code CLI" : "Universal API";
+                nextEngine === "pi"
+                  ? "Pi Coding Agent CLI"
+                  : nextEngine === "claude"
+                  ? "Claude Code CLI"
+                  : nextEngine === "agy"
+                  ? "Antigravity CLI"
+                  : "Universal API";
               const resetMatch = errText.match(/Resets in (\d+h\d+m\d+s|\d+m\d+s)/);
               const resetInfo = resetMatch ? ` *(quota reset: ${resetMatch[1]})*` : "";
 
@@ -1243,12 +1284,25 @@ export async function runAgentAutonomous({
     return { ok: true, output: replyText };
   }
 
-  // 2. Engine: CLI (agy atau claude)
+  // 2. Engine: CLI (pi, agy, atau claude)
   const isClaude = engine === "claude";
-  const binToRun = isClaude ? CLAUDE_BIN : AGY_BIN;
+  const isPi = engine === "pi";
+  const binToRun = isPi ? PI_BIN : (isClaude ? CLAUDE_BIN : AGY_BIN);
 
   let cliArgs = [];
-  if (isClaude) {
+  if (isPi) {
+    const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
+    cliArgs = ["--session-id", actualConvId, "-p", prompt, "--approve"];
+    if (piModel) {
+      if (piModel.startsWith("pi-")) {
+        cliArgs.unshift("--provider", "local-pi", "--model", piModel);
+      } else if (piModel.includes("gpt") || piModel.includes("llama") || piModel.includes("qwen")) {
+        cliArgs.unshift("--provider", "groq", "--model", piModel);
+      } else {
+        cliArgs.unshift("--model", piModel);
+      }
+    }
+  } else if (isClaude) {
     const claudeModel = userId ? await getUserClaudeModel(userId) : (process.env.CLAUDE_MODEL || "sonnet");
     cliArgs = ["--session-id", actualConvId, "--model", claudeModel, "-p", prompt, "--output-format", "text"];
     if (AUTO_APPROVE_PERMISSIONS) {
@@ -1291,6 +1345,9 @@ export async function runAgentAutonomous({
   if (process.env.AGY_AUTH_TYPE === "oauth") {
     delete sanitizedEnv.GEMINI_API_KEY;
   }
+  if (process.env.GROQ_API_KEY) {
+    sanitizedEnv.GROQ_API_KEY = process.env.GROQ_API_KEY;
+  }
 
   let safeCwd = cwd || process.cwd();
   try {
@@ -1314,7 +1371,7 @@ export async function runAgentAutonomous({
   });
 
   if (res.code === 0 && res.stdout) {
-    if (!isClaude) {
+    if (!isClaude && !isPi) {
       try {
         let parsed = null;
         try {

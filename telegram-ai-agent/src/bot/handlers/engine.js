@@ -10,6 +10,7 @@ import {
   getUserAgyModel,
   getUserClaudeModel,
   getUserUniversalModel,
+  getUserPiModel,
 } from "../../services/context-store.js";
 
 export function registerEngineHandlers(bot) {
@@ -18,6 +19,13 @@ export function registerEngineHandlers(bot) {
     const userId = ctx.from?.id;
     const currentEngine = await getUserEngine(userId);
 
+    if (arg === "pi" || arg === "picli") {
+      await setUserEngine(userId, "pi");
+      await ctx.reply("✅ Engine berhasil diubah ke: *Pi Coding Agent CLI* (`pi`)", {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
     if (arg === "agy" || arg === "antigravity") {
       await setUserEngine(userId, "agy");
       await ctx.reply("✅ Engine berhasil diubah ke: *Antigravity CLI* (`agy`)", {
@@ -42,6 +50,11 @@ export function registerEngineHandlers(bot) {
 
     const keyboard = new InlineKeyboard()
       .text(
+        `${currentEngine === "pi" ? "🔘 " : "⚪ "}Pi Coding Agent CLI (pi)`,
+        "set_engine:pi"
+      )
+      .row()
+      .text(
         `${currentEngine === "agy" ? "🔘 " : "⚪ "}Antigravity CLI (agy)`,
         "set_engine:agy"
       )
@@ -57,7 +70,9 @@ export function registerEngineHandlers(bot) {
       );
 
     const engineLabel =
-      currentEngine === "claude"
+      currentEngine === "pi"
+        ? "Pi Coding Agent CLI (pi)"
+        : currentEngine === "claude"
         ? "Claude Code CLI (claude)"
         : currentEngine === "universal"
         ? "Universal / Pi Server (Zero-CLI)"
@@ -76,14 +91,16 @@ export function registerEngineHandlers(bot) {
     const engineId = ctx.match[1];
     const userId = ctx.from?.id;
 
-    if (engineId !== "agy" && engineId !== "claude" && engineId !== "universal") {
+    if (engineId !== "pi" && engineId !== "agy" && engineId !== "claude" && engineId !== "universal") {
       await ctx.answerCallbackQuery({ text: "Engine tidak valid!" });
       return;
     }
 
     await setUserEngine(userId, engineId);
     const engineLabel =
-      engineId === "claude"
+      engineId === "pi"
+        ? "Pi Coding Agent CLI (pi)"
+        : engineId === "claude"
         ? "Claude Code CLI (claude)"
         : engineId === "universal"
         ? "Universal / Pi Server (Zero-CLI)"
@@ -94,6 +111,11 @@ export function registerEngineHandlers(bot) {
     });
 
     const keyboard = new InlineKeyboard()
+      .text(
+        `${engineId === "pi" ? "🔘 " : "⚪ "}Pi Coding Agent CLI (pi)`,
+        "set_engine:pi"
+      )
+      .row()
       .text(
         `${engineId === "agy" ? "🔘 " : "⚪ "}Antigravity CLI (agy)`,
         "set_engine:agy"
@@ -111,7 +133,10 @@ export function registerEngineHandlers(bot) {
 
     let engineModel = "";
     let matchedModel = "";
-    if (engineId === "claude") {
+    if (engineId === "pi") {
+      engineModel = await getUserPiModel(userId);
+      matchedModel = `Pi Model (${engineModel})`;
+    } else if (engineId === "claude") {
       engineModel = await getUserClaudeModel(userId);
       matchedModel =
         AVAILABLE_CLAUDE_MODELS.find((m) => m.id === engineModel)?.name || engineModel;
@@ -131,7 +156,7 @@ export function registerEngineHandlers(bot) {
         `⚙️ *Pilihan Engine CLI*\n\n` +
           `✅ Engine aktif sekarang:\n👉 *${engineLabel}*\n\n` +
           `🤖 Model aktif untuk engine ini:\n👉 *${matchedModel}* (\`${engineModel}\`)\n\n` +
-          `💡 _Ketik /model untuk memilih daftar model khusus ${engineId === "claude" ? "Claude" : engineId === "universal" ? "Universal" : "Antigravity"}._`,
+          `💡 _Ketik /model untuk memilih daftar model khusus ${engineId === "pi" ? "Pi CLI" : engineId === "claude" ? "Claude" : engineId === "universal" ? "Universal" : "Antigravity"}._`,
         {
           reply_markup: keyboard,
           parse_mode: "Markdown",

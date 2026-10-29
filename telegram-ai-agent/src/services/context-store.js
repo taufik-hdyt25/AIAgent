@@ -5,6 +5,7 @@ import {
   DEFAULT_ENGINE,
   DEFAULT_AGY_MODEL,
   DEFAULT_CLAUDE_MODEL,
+  DEFAULT_PI_MODEL,
   DEFAULT_UNIVERSAL_MODEL,
 } from "../config/env.js";
 import { resetSessionHistory } from "../universal-agent.js";
@@ -64,6 +65,9 @@ export async function resetUserConversation(userId) {
   if (context.claudeSessions && oldConvId) {
     delete context.claudeSessions[oldConvId];
   }
+  if (context.piSessions && oldConvId) {
+    delete context.piSessions[oldConvId];
+  }
   if (oldConvId) resetSessionHistory(oldConvId);
   resetSessionHistory(newConvId);
   await saveContext(context);
@@ -83,6 +87,24 @@ export async function markClaudeSessionStarted(convId, started = true) {
     context.claudeSessions[convId] = true;
   } else {
     delete context.claudeSessions[convId];
+  }
+  await saveContext(context);
+}
+
+export async function isPiSessionStarted(convId) {
+  if (!convId) return false;
+  const context = await loadContext();
+  return Boolean(context.piSessions?.[convId]);
+}
+
+export async function markPiSessionStarted(convId, started = true) {
+  if (!convId) return;
+  const context = await loadContext();
+  if (!context.piSessions) context.piSessions = {};
+  if (started) {
+    context.piSessions[convId] = true;
+  } else {
+    delete context.piSessions[convId];
   }
   await saveContext(context);
 }
@@ -221,10 +243,26 @@ export async function setUserUniversalModel(userId, modelId) {
 }
 
 
+export async function getUserPiModel(userId) {
+  const envModel = process.env.PI_MODEL;
+  if (!userId) return envModel || DEFAULT_PI_MODEL;
+  const context = await loadContext();
+  return context.piModels?.[String(userId)] || envModel || DEFAULT_PI_MODEL;
+}
+
+export async function setUserPiModel(userId, modelId) {
+  if (!userId) return;
+  const context = await loadContext();
+  if (!context.piModels) context.piModels = {};
+  context.piModels[String(userId)] = modelId;
+  await saveContext(context);
+}
+
 export async function getUserModel(userId, engineOverride = null) {
   const engine = engineOverride || await getUserEngine(userId);
   if (engine === "claude") return getUserClaudeModel(userId);
   if (engine === "universal") return getUserUniversalModel(userId);
+  if (engine === "pi") return getUserPiModel(userId);
   return getUserAgyModel(userId);
 }
 
@@ -232,6 +270,7 @@ export async function setUserModel(userId, modelId) {
   const engine = await getUserEngine(userId);
   if (engine === "claude") return setUserClaudeModel(userId, modelId);
   if (engine === "universal") return setUserUniversalModel(userId, modelId);
+  if (engine === "pi") return setUserPiModel(userId, modelId);
   return setUserAgyModel(userId, modelId);
 }
 
