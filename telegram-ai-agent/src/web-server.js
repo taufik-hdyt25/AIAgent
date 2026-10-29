@@ -140,7 +140,8 @@ export function createWebServer() {
             ALLOWED_TELEGRAM_IDS: parsed.ALLOWED_TELEGRAM_IDS || process.env.ALLOWED_TELEGRAM_IDS || "",
             AGY_MODEL: parsed.AGY_MODEL || process.env.AGY_MODEL || "gemini-3.8-flash-medium",
             CLAUDE_MODEL: parsed.CLAUDE_MODEL || process.env.CLAUDE_MODEL || "sonnet",
-            CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "agy",
+            PI_MODEL: parsed.PI_MODEL || process.env.PI_MODEL || "openai/gpt-oss-120b",
+            CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "pi",
             AGY_AUTO_APPROVE_PERMISSIONS:
               parsed.AGY_AUTO_APPROVE_PERMISSIONS ?? process.env.AGY_AUTO_APPROVE_PERMISSIONS ?? "true",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
@@ -176,6 +177,7 @@ export function createWebServer() {
             agyModels: await getModelList("agy"),
             claudeModels: await getModelList("claude"),
             universalModels: await getModelList("universal"),
+            piModels: await getModelList("pi"),
           },
           system: {
             platform: os.platform(),
@@ -281,7 +283,9 @@ export function createWebServer() {
           universalModels: [],
         };
         const engineKey =
-          payload.engine === "claude"
+          payload.engine === "pi"
+            ? "piModels"
+            : payload.engine === "claude"
             ? "claudeModels"
             : payload.engine === "agy"
             ? "agyModels"
@@ -572,6 +576,9 @@ export function createWebServer() {
           }
           if (payload.CLAUDE_MODEL !== undefined) {
             updates.CLAUDE_MODEL = String(payload.CLAUDE_MODEL).trim();
+          }
+          if (payload.PI_MODEL !== undefined) {
+            updates.PI_MODEL = String(payload.PI_MODEL).trim();
           }
           if (payload.CLI_ENGINE !== undefined) {
             updates.CLI_ENGINE = String(payload.CLI_ENGINE).trim();

@@ -206,6 +206,17 @@
             <div class="form-group">
               <label class="form-label">CLI ENGINE</label>
               <div class="engine-selector">
+                <label class="engine-option" id="optPi">
+                  <input type="radio" name="CLI_ENGINE" value="pi">
+                  <div class="engine-card">
+                    <div class="engine-header">
+                      <span class="engine-name">Pi Coding Agent CLI (pi)</span>
+                      <span class="badge badge-emerald">Rekomendasi</span>
+                    </div>
+                    <p class="engine-desc">Ditenagai oleh Pi CLI (/usr/bin/pi) dengan model Groq / Local Pi tanpa batas turn.</p>
+                  </div>
+                </label>
+
                 <label class="engine-option" id="optAgy">
                   <input type="radio" name="CLI_ENGINE" value="agy" checked>
                   <div class="engine-card">
@@ -238,6 +249,17 @@
                     <p class="engine-desc">Gunakan model dari Server Pi atau endpoint OpenAI-compatible (LiteLLM, Ollama, OpenRouter).</p>
                   </div>
                 </label>
+              </div>
+            </div>
+
+            <!-- Model Default untuk Pi CLI -->
+            <div class="form-group" id="groupPiModel">
+              <div class="label-row">
+                <label for="piModel" class="form-label">DEFAULT MODEL (PI CODING AGENT CLI)</label>
+                <span class="label-hint">Dapat diganti per chat via /model</span>
+              </div>
+              <div class="select-wrapper">
+                <select id="piModel" name="PI_MODEL" class="form-select font-mono"></select>
               </div>
             </div>
 

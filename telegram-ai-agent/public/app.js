@@ -18,11 +18,13 @@ const allowedIdsInput = document.getElementById("allowedIds");
 const idChipsContainer = document.getElementById("idChipsContainer");
 
 const engineRadios = document.querySelectorAll('input[name="CLI_ENGINE"]');
+const piModelSelect = document.getElementById("piModel");
 const agyModelSelect = document.getElementById("agyModel");
 const claudeModelSelect = document.getElementById("claudeModel");
 const universalModelSelect = document.getElementById("universalModel");
 const piQuickUrlInput = document.getElementById("piQuickUrl");
 const btnGetPiModels = document.getElementById("btnGetPiModels");
+const groupPiModel = document.getElementById("groupPiModel");
 const groupAgyModel = document.getElementById("groupAgyModel");
 const groupClaudeModel = document.getElementById("groupClaudeModel");
 const groupUniversalModel = document.getElementById("groupUniversalModel");
@@ -191,6 +193,7 @@ if (toggleGithubKeyBtn && githubTokenInput) {
 
 // Helper untuk menyembunyikan/menampilkan select model sesuai engine
 function syncEngineView(engine) {
+  if (groupPiModel) groupPiModel.style.display = engine === "pi" ? "block" : "none";
   if (groupAgyModel) groupAgyModel.style.display = engine === "agy" ? "block" : "none";
   if (groupClaudeModel) groupClaudeModel.style.display = engine === "claude" ? "block" : "none";
   if (groupUniversalModel) groupUniversalModel.style.display = engine === "universal" ? "block" : "none";
@@ -198,7 +201,10 @@ function syncEngineView(engine) {
 
 // Update Live Badges
 function updateBadges(settings, system) {
-  if (settings.CLI_ENGINE === "claude") {
+  if (settings.CLI_ENGINE === "pi") {
+    badgeEngine.textContent = "Pi Coding Agent";
+    badgeModel.textContent = settings.PI_MODEL || "openai/gpt-oss-120b";
+  } else if (settings.CLI_ENGINE === "claude") {
     badgeEngine.textContent = "Claude Code";
     badgeModel.textContent = settings.CLAUDE_MODEL || "sonnet";
   } else if (settings.CLI_ENGINE === "universal") {
@@ -251,6 +257,18 @@ async function loadSettings() {
     }
     syncEngineView(activeEngine);
     renderAllowedModelsChips();
+
+    // Populate Pi Models Select
+    if (piModelSelect) {
+      piModelSelect.innerHTML = "";
+      for (const m of (availableOptions.piModels || [])) {
+        const opt = document.createElement("option");
+        opt.value = m.id;
+        opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
+        opt.selected = m.id === currentSettings.PI_MODEL;
+        piModelSelect.appendChild(opt);
+      }
+    }
 
     // Populate AGY Models Select
     agyModelSelect.innerHTML = "";
@@ -589,7 +607,10 @@ engineRadios.forEach((r) => {
   r.addEventListener("change", () => {
     syncEngineView(r.value);
     renderAllowedModelsChips();
-    if (r.value === "claude") {
+    if (r.value === "pi") {
+      badgeEngine.textContent = "Pi Coding Agent";
+      badgeModel.textContent = piModelSelect ? piModelSelect.value : "openai/gpt-oss-120b";
+    } else if (r.value === "claude") {
       badgeEngine.textContent = "Claude Code";
       badgeModel.textContent = claudeModelSelect.value;
     } else if (r.value === "universal") {
@@ -610,7 +631,8 @@ const inputNewModelId = document.getElementById("inputNewModelId");
 const btnAddAllowedModel = document.getElementById("btnAddAllowedModel");
 
 function getActiveEngineKey() {
-  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "universal";
+  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "pi";
+  if (selectedEngine === "pi") return { engine: "pi", key: "piModels", label: "PI CODING AGENT", select: piModelSelect };
   if (selectedEngine === "claude") return { engine: "claude", key: "claudeModels", label: "CLAUDE CODE", select: claudeModelSelect };
   if (selectedEngine === "agy") return { engine: "agy", key: "agyModels", label: "ANTIGRAVITY / AGY", select: agyModelSelect };
   return { engine: "universal", key: "universalModels", label: "UNIVERSAL / PI", select: universalModelSelect };
@@ -698,7 +720,10 @@ async function removeAllowedModel(engine, modelId) {
       availableOptions[key] = data.options;
     }
 
-    if (engine === "universal" && universalModelSelect && universalModelSelect.value === modelId) {
+    if (engine === "pi" && piModelSelect && piModelSelect.value === modelId) {
+      piModelSelect.selectedIndex = 0;
+      if (badgeModel) badgeModel.textContent = piModelSelect.value;
+    } else if (engine === "universal" && universalModelSelect && universalModelSelect.value === modelId) {
       universalModelSelect.value = "";
       if (badgeModel) badgeModel.textContent = "Auto-detect";
     } else if (engine === "claude" && claudeModelSelect && claudeModelSelect.value === modelId) {
@@ -765,6 +790,15 @@ if (btnResetDefaultModels) {
     const { engine, label } = getActiveEngineKey();
     if (confirm(`Kembalikan daftar model untuk ${label} ke default bawaan?`)) {
       await resetAllowedModels(engine);
+    }
+  });
+}
+
+if (piModelSelect) {
+  piModelSelect.addEventListener("change", () => {
+    const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;
+    if (selectedEngine === "pi") {
+      badgeModel.textContent = piModelSelect.value;
     }
   });
 }
@@ -996,6 +1030,7 @@ form.addEventListener("submit", async (e) => {
     BOT_TOKEN: botTokenInput.value.trim(),
     ALLOWED_TELEGRAM_IDS: allowedIdsInput.value.trim(),
     CLI_ENGINE: selectedEngine,
+    PI_MODEL: piModelSelect ? piModelSelect.value : (currentSettings.PI_MODEL || "openai/gpt-oss-120b"),
     AGY_MODEL: agyModelSelect.value,
     CLAUDE_MODEL: claudeModelSelect.value,
     UNIVERSAL_MODEL: universalModelSelect ? universalModelSelect.value : "",
