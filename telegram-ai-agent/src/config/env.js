@@ -32,13 +32,30 @@ export const LOG_DIR = (() => {
   } catch {}
   return candidate;
 })();
-export const PROJECTS_DIR = process.env.PROJECTS_DIR
-  ? path.resolve(process.env.PROJECTS_DIR)
-  : (fs.existsSync(path.resolve(ROOT_DIR, "../projects"))
-      ? path.resolve(ROOT_DIR, "../projects")
-      : (fs.existsSync("/home/node/projects")
-          ? "/home/node/projects"
-          : path.resolve(ROOT_DIR, "projects")));
+export const PROJECTS_DIR = (() => {
+  if (process.env.PROJECTS_DIR) {
+    const candidate = path.resolve(process.env.PROJECTS_DIR);
+    if (fs.existsSync(candidate)) {
+      try {
+        const dirs = fs.readdirSync(candidate).filter((d) => !d.startsWith(".") && d !== "PROJECTS_SUMMARY.md");
+        if (dirs.length > 0) return candidate;
+      } catch (_) {}
+    }
+  }
+  if (fs.existsSync("/home/th-agent/projects")) {
+    return "/home/th-agent/projects";
+  }
+  if (fs.existsSync(path.resolve(ROOT_DIR, "../projects"))) {
+    return path.resolve(ROOT_DIR, "../projects");
+  }
+  if (fs.existsSync(path.resolve(ROOT_DIR, "projects"))) {
+    return path.resolve(ROOT_DIR, "projects");
+  }
+  if (fs.existsSync("/home/node/projects")) {
+    return "/home/node/projects";
+  }
+  return process.env.PROJECTS_DIR ? path.resolve(process.env.PROJECTS_DIR) : path.resolve(ROOT_DIR, "projects");
+})();
 export const UPLOADS_DIR = path.resolve(ROOT_DIR, process.env.UPLOADS_DIR || "uploads");
 export const CONTEXT_FILE = path.join(DATA_DIR, "context.json");
 
@@ -82,6 +99,15 @@ function findDefaultBin(binName, unixDefaultRel) {
       if (fs.existsSync(c)) return c;
     }
     return binName;
+  }
+  const unixCandidates = [
+    path.join(os.homedir(), unixDefaultRel),
+    path.join("/home/ubuntu/.local/bin", binName),
+    path.join("/usr/local/bin", binName),
+    path.join("/usr/bin", binName),
+  ];
+  for (const c of unixCandidates) {
+    if (fs.existsSync(c)) return c;
   }
   return path.join(os.homedir(), unixDefaultRel);
 }

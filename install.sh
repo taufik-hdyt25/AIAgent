@@ -958,6 +958,12 @@ EOF
         local service_file="$systemd_user_dir/th-agent.service"
 
         local safe_path="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+        local projects_target="$workspace_dir/projects"
+        if [ -d "/home/th-agent/projects" ] && [ -n "$(ls -A "/home/th-agent/projects" 2>/dev/null | grep -v '^\.git' | grep -v 'PROJECTS_SUMMARY.md')" ]; then
+            projects_target="/home/th-agent/projects"
+        elif [ -L "$global_dir/projects" ]; then
+            projects_target="$(readlink -f "$global_dir/projects")"
+        fi
         cat << EOF > "$service_file"
 [Unit]
 Description=TH Agent - Telegram AI Coding Agent (Standalone Binary)
@@ -974,7 +980,7 @@ StandardError=append:$global_dir/logs/error.log
 Environment=NODE_ENV=production
 Environment=PUBLIC_DIR=$global_dir/public
 Environment=ENV_FILE=$global_dir/.env
-Environment=PROJECTS_DIR=$workspace_dir/projects
+Environment=PROJECTS_DIR=$projects_target
 Environment=WORKSPACE_DIR=$workspace_dir
 Environment=WEB_PORT=$web_port
 Environment=PATH=$safe_path

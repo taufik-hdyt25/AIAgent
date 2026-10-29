@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
 import { LOG_DIR, MAX_OUTPUT, TIMEOUT_MS } from "../config/env.js";
 import { truncate } from "./telegram-files.js";
@@ -104,9 +105,17 @@ export function runProcess({
   onSpawn,
 }) {
   return new Promise((resolve) => {
+    let safeCwd = cwd || process.cwd();
+    if (!fs.existsSync(safeCwd)) {
+      try {
+        fs.mkdirSync(safeCwd, { recursive: true });
+      } catch (_) {
+        safeCwd = process.cwd();
+      }
+    }
     const isWin = process.platform === "win32";
     const child = spawn(command, args, {
-      cwd,
+      cwd: safeCwd,
       shell: isWin ? true : shell,
       detached: !isWin,
       env,

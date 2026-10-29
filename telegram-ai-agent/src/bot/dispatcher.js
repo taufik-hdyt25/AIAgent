@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, mkdir } from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
@@ -458,11 +459,19 @@ ${userMessage}
           }
         }
 
-        const workingDir = isProjectJail
+        let workingDir = isProjectJail
           ? path.resolve(PROJECTS_DIR, userActiveProject)
           : (isCustomRole && allowedList[0]
               ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
               : PROJECTS_DIR);
+
+        try {
+          if (!fs.existsSync(workingDir)) {
+            await mkdir(workingDir, { recursive: true });
+          }
+        } catch (_) {
+          workingDir = fs.existsSync(PROJECTS_DIR) ? PROJECTS_DIR : process.cwd();
+        }
 
         // Untuk Universal Engine: pisahkan user message murni dari system prompt persona
         // agar tidak membengkakkan token context window di server Pi
@@ -671,11 +680,25 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
         delete sanitizedEnv.GEMINI_API_KEY;
       }
 
-      const executionCwd = isProjectJail
+      let executionCwd = isProjectJail
         ? path.resolve(PROJECTS_DIR, userActiveProject)
         : (isCustomRole && allowedList[0]
             ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
             : process.cwd());
+
+      // Pastikan direktori executionCwd valid dan ada di filesystem sebelum spawn untuk mencegah ENOENT
+      try {
+        if (!fs.existsSync(executionCwd)) {
+          await mkdir(executionCwd, { recursive: true });
+        }
+      } catch (err) {
+        console.warn(`[Dispatcher] Gagal membuat executionCwd ${executionCwd}:`, err.message);
+        executionCwd = fs.existsSync(PROJECTS_DIR) ? PROJECTS_DIR : process.cwd();
+      }
+
+      if (!fs.existsSync(executionCwd)) {
+        executionCwd = process.cwd();
+      }
 
       const child = spawn(binToRun, cliArgs, {
         cwd: executionCwd,
@@ -903,6 +926,8 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
             errText = `⏱️ *Batas Waktu Eksekusi Terlampaui (Timeout)*\n\n${engineLabel} memerlukan waktu pemrosesan lebih lama dari batas waktu yang ditentukan. Coba persempit atau pecah instruksi menjadi langkah-langkah yang lebih terarah.`;
           } else if (errText.includes("permission that headless mode cannot prompt for") || errText.includes("permission")) {
             errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan \`AGY_AUTO_APPROVE_PERMISSIONS=true\` diaktifkan pada .env.`;
+          } else if (errText.includes("ENOENT")) {
+            errText = `❌ *Kendala Eksekusi Engine (${engineLabel})*\n\n${truncate(errText, 500)}\n\n💡 _Kemungkinan penyebab: Binary CLI atau direktori kerja proyek tidak ditemukan di server._`;
           } else {
             errText = `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`;
           }
@@ -1267,10 +1292,22 @@ export async function runAgentAutonomous({
     delete sanitizedEnv.GEMINI_API_KEY;
   }
 
+  let safeCwd = cwd || process.cwd();
+  try {
+    if (!fs.existsSync(safeCwd)) {
+      await mkdir(safeCwd, { recursive: true });
+    }
+  } catch (_) {
+    safeCwd = fs.existsSync(PROJECTS_DIR) ? PROJECTS_DIR : process.cwd();
+  }
+  if (!fs.existsSync(safeCwd)) {
+    safeCwd = process.cwd();
+  }
+
   const res = await runProcess({
     command: binToRun,
     args: cliArgs,
-    cwd,
+    cwd: safeCwd,
     timeoutMs,
     env: sanitizedEnv,
     onSpawn,
