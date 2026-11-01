@@ -24,6 +24,13 @@ const DB_USER = "th_user";
 const BACKUP_ROOT = path.join("/home/ubuntu/.th-agent/backups");
 const STATE_FILE = path.join("/home/ubuntu/.th-agent/data/last_db_backup_hash.json");
 
+// Databases excluded from backup
+const EXCLUDED_DATABASES = [
+  "postgres",
+  "th_wedding_db",
+  ...(process.env.BACKUP_EXCLUDE_DBS ? process.env.BACKUP_EXCLUDE_DBS.split(",").map((s) => s.trim()) : []),
+];
+
 // Known databases and auto-discovery rules
 const KNOWN_SQLITE_DATABASES = [
   {
@@ -142,7 +149,7 @@ function getDatabases() {
     return output
       .split("\n")
       .map((d) => d.trim())
-      .filter(Boolean);
+      .filter((d) => Boolean(d) && !EXCLUDED_DATABASES.includes(d));
   } catch (err) {
     console.error("❌ Failed to query databases from container:", err.message);
     process.exit(1);
@@ -270,7 +277,7 @@ async function runBackup() {
     ...pgDatabases.map((db) => ({ name: db, type: "PostgreSQL", source: "postgres" })),
     ...sqliteDatabases,
     ...activeStores,
-  ];
+  ].filter((item) => !EXCLUDED_DATABASES.includes(item.name));
 
   const now = new Date();
   const pad = (n) => String(n).padStart(2, "0");
