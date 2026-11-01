@@ -98,6 +98,10 @@ function getEnvConfig() {
     "/home/th-agent/.env",
     "/home/th-agent/telegram-ai-agent/.env",
   ];
+  let botToken = null;
+  let backupChatId = null;
+  let allowedTelegramIds = null;
+
   for (const envPath of envPaths) {
     if (fs.existsSync(envPath)) {
       try {
@@ -105,21 +109,28 @@ function getEnvConfig() {
         const tokenMatch = content.match(/BOT_TOKEN=([^\r\n]+)/);
         const backupChatMatch = content.match(/TELEGRAM_BACKUP_CHAT_ID=([^\r\n]+)/);
         const idsMatch = content.match(/ALLOWED_TELEGRAM_IDS=([^\r\n]+)/);
-        if (tokenMatch) {
-          const chatId = backupChatMatch
-            ? backupChatMatch[1].trim()
-            : idsMatch
-            ? idsMatch[1].split(",")[0].trim()
-            : null;
-          if (chatId) {
-            return {
-              botToken: tokenMatch[1].trim(),
-              chatId,
-            };
-          }
+
+        if (tokenMatch && !botToken) {
+          botToken = tokenMatch[1].trim();
+        }
+        if (backupChatMatch && !backupChatId) {
+          backupChatId = backupChatMatch[1].trim();
+        }
+        if (idsMatch && !allowedTelegramIds) {
+          allowedTelegramIds = idsMatch[1].split(",")[0].trim();
         }
       } catch (_) {}
     }
+  }
+
+  // Always prioritize TELEGRAM_BACKUP_CHAT_ID if set, else fallback to allowedTelegramIds
+  const chatId = backupChatId || allowedTelegramIds || "-5323409843";
+
+  if (botToken && chatId) {
+    return {
+      botToken,
+      chatId,
+    };
   }
   return null;
 }

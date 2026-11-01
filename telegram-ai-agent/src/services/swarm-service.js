@@ -17,11 +17,12 @@ import { isPiSandboxActive, getAllowedFolders, getSandboxConfig } from "./sandbo
 import { getUserEngine } from "./context-store.js";
 
 export const WORKER_PROFILES = [
-  { name: "Alpha", emoji: "🐺", label: "Worker 1" },
-  { name: "Beta", emoji: "⚡", label: "Worker 2" },
-  { name: "Gamma", emoji: "🛡️", label: "Worker 3" },
-  { name: "Delta", emoji: "🚀", label: "Worker 4" },
-  { name: "Omega", emoji: "🎯", label: "Worker 5" },
+  { name: "Planner", emoji: "📋", label: "Arsitektur & Perencanaan" },
+  { name: "SkillSpecialist", emoji: "🔬", label: "Riset & Standar Teknis" },
+  { name: "Executor", emoji: "⚡", label: "Koding & Deploy" },
+  { name: "QATester", emoji: "🧪", label: "Verifikasi & Bug Hunter" },
+  { name: "DevOps", emoji: "🛡️", label: "Server, SSL & Port Monitor" },
+  { name: "GitSync", emoji: "📦", label: "Git Release Manager" },
 ];
 
 const MAX_SWARM_WORKERS = 4;
