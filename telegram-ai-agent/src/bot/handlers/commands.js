@@ -115,12 +115,7 @@ import {
   setEngineAccessRole,
   getAllowedFolders,
 } from "../../services/sandbox-service.js";
-import {
-  getNotionConfig,
-  saveNotionConfig,
-} from "../../services/notion-service.js";
 import { getUsageReport } from "../../services/usage-service.js";
-import { checkNotionTasks } from "../../services/notion-watcher.js";
 
 export async function sendUsageResponse(ctx) {
   const userId = ctx.from?.id;
@@ -2616,63 +2611,6 @@ export function registerBasicCommands(bot) {
     );
   });
 
-  // ==================== NOTION TASK MANAGEMENT ====================
-
-  // /notion [check|on|off|add <project> <db_id>]
-  bot.command(["notion", "notionsync"], async (ctx) => {
-    const text = (ctx.message?.text || "").trim();
-    const parts = text.split(/\s+/).slice(1);
-    const subcmd = (parts[0] || "").toLowerCase();
-
-    const config = await getNotionConfig();
-
-    if (subcmd === "check" || subcmd === "sync") {
-      await ctx.reply("🔍 Memeriksa task *TODO* di database Notion sekarang...", { parse_mode: "Markdown" });
-      await checkNotionTasks(bot, ctx.chat?.id, true);
-      return;
-    }
-
-    if (subcmd === "on") {
-      config.enabled = true;
-      await saveNotionConfig(config);
-      await ctx.reply("🟢 *Notion Auto-Watcher diaktifkan.* Bot akan rutin memeriksa task TODO.", { parse_mode: "Markdown" });
-      return;
-    }
-
-    if (subcmd === "off") {
-      config.enabled = false;
-      await saveNotionConfig(config);
-      await ctx.reply("🔴 *Notion Auto-Watcher dinonaktifkan.*", { parse_mode: "Markdown" });
-      return;
-    }
-
-    if (subcmd === "add" && parts[1] && parts[2]) {
-      const projName = parts[1].trim();
-      const rawDb = parts[2].trim();
-      const dbId = rawDb.replace(/https:\/\/.*notion\.com\/.*p\//, "").split("?")[0];
-      config.projects[projName] = dbId;
-      await saveNotionConfig(config);
-      await ctx.reply(`✅ *Database Notion Terhubung!*\n\n• Proyek: \`${projName}\`\n• Database ID: \`${dbId}\``, { parse_mode: "Markdown" });
-      return;
-    }
-
-    // Default: Tampilkan status
-    const projectsList = Object.entries(config.projects || {})
-      .map(([p, id]) => `• \`${p}\`: \`${id}\``)
-      .join("\n") || "_(Belum ada proyek yang dipetakan)_";
-
-    await ctx.reply(
-      `📊 *Status Integrasi Notion Task Management*\n\n` +
-      `• Auto-Watcher: ${config.enabled ? "🟢 *Aktif*" : "🔴 *Non-aktif*"}\n` +
-      `• Interval Patroli: *${config.checkIntervalMinutes || 3} menit*\n\n` +
-      `📁 *Database Terdaftar:*\n${projectsList}\n\n` +
-      `💡 *Perintah Bantuan:*\n` +
-      `• \`/notion check\` – Tarik & eksekusi task TODO sekarang\n` +
-      `• \`/notion on\` / \`/notion off\` – Aktifkan / hentikan auto-watcher\n` +
-      `• \`/notion add <project> <database_id>\` – Tambah mapping proyek baru`,
-      { parse_mode: "Markdown" }
-    );
-  });
 }
 
 
