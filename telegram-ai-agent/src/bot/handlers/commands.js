@@ -5,8 +5,6 @@ import { randomUUID } from "node:crypto";
 import { UPLOADS_DIR, MAX_OUTPUT, PROJECTS_DIR, IS_PI } from "../../config/env.js";
 import {
   AVAILABLE_AGY_MODELS,
-  AVAILABLE_CLAUDE_MODELS,
-  AVAILABLE_UNIVERSAL_MODELS,
   AVAILABLE_PI_MODELS,
   fetchRemoteModels,
   normalizePiUrl,
@@ -15,10 +13,8 @@ import {
   getUserEngine,
   setUserEngine,
   getUserAgyModel,
-  getUserClaudeModel,
-  getUserUniversalModel,
   getUserPiModel,
-  setUserUniversalModel,
+  setUserPiModel,
   resetUserConversation,
   getUserAgyConversationId,
   getUserModel,
@@ -137,15 +133,9 @@ export function registerBasicCommands(bot) {
   bot.command(["start", "help", "bantuan"], async (ctx) => {
     const userId = ctx.from?.id;
     const currentEngine = await getUserEngine(userId);
-    const isClaude = currentEngine === "claude";
-    const isUniversal = currentEngine === "universal";
     const isPi = currentEngine === "pi";
     const activeEngineLabel = isPi
       ? "Pi Coding Agent CLI (`pi`)"
-      : isClaude
-      ? "Claude Code CLI (`claude`)"
-      : isUniversal
-      ? "Universal API (`Zero-CLI`)"
       : "Antigravity CLI (`agy`)";
 
     let activeModelDisplay = "";
@@ -153,16 +143,6 @@ export function registerBasicCommands(bot) {
       const piModel = await getUserPiModel(userId);
       const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
       activeModelDisplay = `*${matched?.name || piModel}* (\`${piModel}\`)`;
-    } else if (isClaude) {
-      const claudeModel = await getUserClaudeModel(userId);
-      const matched = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === claudeModel);
-      activeModelDisplay = `*${matched?.name || claudeModel}* (\`${claudeModel}\`)`;
-    } else if (isUniversal) {
-      const univModel = await getUserUniversalModel(userId);
-      const matched = AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === univModel);
-      activeModelDisplay = univModel
-        ? `*${matched?.name || univModel}* (\`${univModel}\`)`
-        : "*⚡ Auto-Detect (Dynamic)* (`auto`)";
     } else {
       const agyModel = await getUserAgyModel(userId);
       const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);
@@ -207,7 +187,7 @@ export function registerBasicCommands(bot) {
         "• `/delskill <id>` - Hapus skill AI yang dipelajari\n" +
         "• `/queue` - Cek daftar antrean instruksi AI\n" +
         "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
-        "• `/engine` - Ganti engine (Antigravity / Claude Code / Universal API)\n" +
+        "• `/engine` - Ganti engine (Pi Coding Agent CLI / Antigravity)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
         "• `/detectmodels` - Pindai & deteksi otomatis daftar model di server\n" +
         "• `/getpi` - Ambil dan aktifkan langsung model asli dari server Pi\n" +
@@ -229,15 +209,9 @@ export function registerBasicCommands(bot) {
   bot.command("status", async (ctx) => {
     const userId = ctx.from?.id;
     const currentEngine = await getUserEngine(userId);
-    const isClaude = currentEngine === "claude";
-    const isUniversal = currentEngine === "universal";
     const isPi = currentEngine === "pi";
     const engineLabel = isPi
       ? "Pi Coding Agent CLI (`pi`)"
-      : isClaude
-      ? "Claude Code CLI (`claude`)"
-      : isUniversal
-      ? "Universal API (`Zero-CLI`)"
       : "Antigravity CLI (`agy`)";
 
     let activeModelDisplay = "";
@@ -245,16 +219,6 @@ export function registerBasicCommands(bot) {
       const piModel = await getUserPiModel(userId);
       const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
       activeModelDisplay = `*${matched?.name || piModel}* (\`${piModel}\`)`;
-    } else if (isClaude) {
-      const claudeModel = await getUserClaudeModel(userId);
-      const matched = AVAILABLE_CLAUDE_MODELS.find((m) => m.id === claudeModel);
-      activeModelDisplay = `*${matched?.name || claudeModel}* (\`${claudeModel}\`)`;
-    } else if (isUniversal) {
-      const univModel = await getUserUniversalModel(userId);
-      const matched = AVAILABLE_UNIVERSAL_MODELS.find((m) => m.id === univModel);
-      activeModelDisplay = univModel
-        ? `*${matched?.name || univModel}* (\`${univModel}\`)`
-        : "*⚡ Auto-Detect (Dynamic)* (`auto`)";
     } else {
       const agyModel = await getUserAgyModel(userId);
       const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);
@@ -1547,15 +1511,9 @@ export function registerBasicCommands(bot) {
     await ctx.answerCallbackQuery({ text: "📊 Memeriksa status..." });
     const userId = ctx.from?.id;
     const currentEngine = await getUserEngine(userId);
-    const isClaude = currentEngine === "claude";
-    const isUniversal = currentEngine === "universal";
     const isPi = currentEngine === "pi";
     const engineLabel = isPi
       ? "Pi Coding Agent CLI (`pi`)"
-      : isClaude
-      ? "Claude Code CLI (`claude`)"
-      : isUniversal
-      ? "Universal API (`Zero-CLI`)"
       : "Antigravity CLI (`agy`)";
 
     const queueLen = getQueueLength();
@@ -1700,15 +1658,12 @@ export function registerBasicCommands(bot) {
   const renderSettingsMenu = async (ctx, editMessageId = null) => {
     const userId = ctx.from?.id;
     const currentEngine = await getUserEngine(userId);
-    const isClaude = currentEngine === "claude";
-    const isUniversal = currentEngine === "universal";
-    const engineLabel = isClaude ? "Claude Code" : isUniversal ? "Universal API" : "Antigravity";
+    const isPi = currentEngine === "pi";
+    const engineLabel = isPi ? "Pi Coding Agent" : "Antigravity";
 
     let activeModel = "";
-    if (isClaude) {
-      activeModel = await getUserClaudeModel(userId);
-    } else if (isUniversal) {
-      activeModel = await getUserUniversalModel(userId);
+    if (isPi) {
+      activeModel = await getUserPiModel(userId);
     } else {
       activeModel = await getUserAgyModel(userId);
     }
@@ -1721,17 +1676,6 @@ export function registerBasicCommands(bot) {
 
     const sandboxCfg = await getSandboxConfig();
 
-    const universalUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-    const hasUniversalKey = Boolean(process.env.UNIVERSAL_API_KEY);
-    const maskedUniversalKey = maskSecret(process.env.UNIVERSAL_API_KEY);
-
-    let universalInfo = "";
-    if (isUniversal) {
-      universalInfo =
-        `🔗 *Base URL:* \`${universalUrl}\`\n` +
-        `🔑 *API Key:* ${hasUniversalKey ? "`" + maskedUniversalKey + "` ✅" : "⚠️ Belum diatur (/setkey)"}\n`;
-    }
-
     const isCustomScope = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
     const scopeLabel = isCustomScope
       ? `🔒 Custom (${sandboxCfg.customFolders || "Folder Tertentu"})`
@@ -1743,7 +1687,6 @@ export function registerBasicCommands(bot) {
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `🧠 *Engine AI:* \`${engineLabel}\`\n` +
       `🤖 *Model AI:* \`${activeModel}\`\n` +
-      universalInfo +
       `🛡️ *Scope Akses:* ${scopeLabel}\n` +
       `🩺 *Sentry 24/7:* ${sentryCfg.enabled ? "🟢 Aktif (" + (sentryCfg.checkIntervalMinutes || 5) + "m)" : "🔴 Nonaktif"}\n` +
       `🛠️ *Auto-Healing:* ${sentryCfg.autoHeal ? "✅ Aktif (Auto-restart)" : "❌ Nonaktif"}\n` +
@@ -1755,13 +1698,7 @@ export function registerBasicCommands(bot) {
     const keyboard = new InlineKeyboard()
       .text("🔄 Ganti Engine", "setting_engine")
       .text("🤖 Ganti Model", "setting_model")
-      .row();
-
-    if (isUniversal) {
-      keyboard.text("🌐 Atur API Key & URL", "setting_universal").row();
-    }
-
-    keyboard
+      .row()
       .text(isCustomScope ? "🌐 Ubah ke Role Root" : "🔒 Ubah ke Role Custom", "setting_toggle_scope")
       .row()
       .text(sentryCfg.enabled ? "🩺 Matikan Sentry" : "🩺 Nyalakan Sentry", "setting_toggle_sentry")
@@ -1996,11 +1933,11 @@ export function registerBasicCommands(bot) {
     const userId = ctx.from?.id;
 
     if (!rawArgs) {
-      const currentUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-      const hasKey = Boolean(process.env.UNIVERSAL_API_KEY);
-      const maskedKey = maskSecret(process.env.UNIVERSAL_API_KEY);
+      const currentUrl = process.env.PI_SERVER_URL || "";
+      const hasKey = Boolean(process.env.PI_SERVER_API_KEY);
+      const maskedKey = maskSecret(process.env.PI_SERVER_API_KEY);
       const currentEngine = await getUserEngine(userId);
-      const currentModel = await getUserUniversalModel(userId);
+      const currentModel = await getUserPiModel(userId);
 
       await ctx.reply(
         `🍓 *Setup Model Pi (Inflection 3 AI)*\n` +
@@ -2014,7 +1951,7 @@ export function registerBasicCommands(bot) {
         `🚀 *Cara Praktis 1-Langkah (via OpenRouter):*\n` +
         `Cukup kirim API Key OpenRouter kamu:\n` +
         `👉 \`/setpi sk-or-v1-xxxxxxxxxxxx\`\n\n` +
-        `_Bot akan otomatis mengatur Base URL ke OpenRouter, memasang API Key, mengaktifkan Universal Engine, dan memilih model Inflection 3 Pi!_\n\n` +
+        `_Bot akan otomatis mengatur Base URL ke OpenRouter, memasang API Key, mengaktifkan engine Pi, dan memilih model Inflection 3 Pi!_\n\n` +
         `🌐 *Atau dengan Custom URL:*\n` +
         `👉 \`/setpi <URL_API> <API_KEY>\`\n` +
         `Contoh:\n` +
@@ -2043,7 +1980,7 @@ export function registerBasicCommands(bot) {
 
     if (parts.length === 1 && isUrlArg) {
       const targetUrl = normalizePiUrl(parts[0]);
-      const res = await syncPiModelDirectly(targetUrl, process.env.UNIVERSAL_API_KEY || "", userId);
+      const res = await syncPiModelDirectly(targetUrl, process.env.PI_SERVER_API_KEY || "", userId);
       if (!res.ok) {
         await ctx.reply(
           `❌ *Gagal mengambil model dari server Pi:*\n${res.error}\n\n` +
@@ -2062,7 +1999,7 @@ export function registerBasicCommands(bot) {
       await ctx.reply(
         `🎉 *Setup Server Pi Berhasil!*\n` +
         `━━━━━━━━━━━━━━━━━━━━\n` +
-        `✅ *Engine Aktif:* \`Universal / Pi Server\`\n` +
+        `✅ *Engine Aktif:* \`Pi Coding Agent CLI (pi)\`\n` +
         `✅ *Link Server Pi:* \`${res.serverUrl}\`\n` +
         `✅ *Model Terpilih:* \`${res.activeModel}\`\n\n` +
         `📋 *Daftar Model Ditemukan (${res.allModels.length}):*\n` +
@@ -2106,14 +2043,14 @@ export function registerBasicCommands(bot) {
     }
 
     await updateEnvFile({
-      UNIVERSAL_BASE_URL: targetUrl,
-      UNIVERSAL_API_KEY: targetKey,
-      CLI_ENGINE: "universal",
-      UNIVERSAL_MODEL: targetModel,
+      PI_SERVER_URL: targetUrl,
+      PI_SERVER_API_KEY: targetKey,
+      CLI_ENGINE: "pi",
+      PI_MODEL: targetModel,
     });
 
-    await setUserEngine(userId, "universal");
-    await setUserUniversalModel(userId, targetModel);
+    await setUserEngine(userId, "pi");
+    await setUserPiModel(userId, targetModel);
 
     let detectionSection = "";
     if (detectedModels.length > 0) {
@@ -2135,7 +2072,7 @@ export function registerBasicCommands(bot) {
     await ctx.reply(
       `🎉 *Setup Custom Pi Berhasil!*\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `✅ *Engine Aktif:* \`Universal API (Zero-CLI)\`\n` +
+      `✅ *Engine Aktif:* \`Pi Coding Agent CLI (pi)\`\n` +
       `✅ *Base URL:* \`${targetUrl}\`\n` +
       `✅ *API Key:* \`${maskSecret(targetKey)}\` (Tersimpan aman di .env)\n` +
       `✅ *Model Aktif:* \`${targetModel}\`\n` +
@@ -2151,8 +2088,8 @@ export function registerBasicCommands(bot) {
   // /detectmodels, /syncmodels, /cekmodels
   bot.command(["detectmodels", "syncmodels", "cekmodels"], async (ctx) => {
     const userId = ctx.from?.id;
-    const url = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-    const key = process.env.UNIVERSAL_API_KEY || "";
+    const url = process.env.PI_SERVER_URL || "";
+    const key = process.env.PI_SERVER_API_KEY || "";
 
     const loadingMsg = await ctx.reply(
       `🔍 *Menghubungi server:* \`${url}/models\`...\n_Mohon tunggu sebentar..._`,
@@ -2178,7 +2115,7 @@ export function registerBasicCommands(bot) {
       return;
     }
 
-    const currentModel = await getUserUniversalModel(userId);
+    const currentModel = await getUserPiModel(userId);
     const keyboard = new InlineKeyboard();
     for (const m of models.slice(0, 30)) {
       const isCurrent = m.id === currentModel;
@@ -2206,8 +2143,8 @@ export function registerBasicCommands(bot) {
   bot.command(["getpi", "syncpi", "tarikpi", "getmodel", "getmodels"], async (ctx) => {
     const rawArg = ctx.match?.trim();
     const userId = ctx.from?.id;
-    const url = normalizePiUrl(rawArg || process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1");
-    const key = process.env.UNIVERSAL_API_KEY || "";
+    const url = normalizePiUrl(rawArg || process.env.PI_SERVER_URL || "");
+    const key = process.env.PI_SERVER_API_KEY || "";
 
     const loadingMsg = await ctx.reply(
       `🔍 *Menghubungi server Pi:* \`${url}\`...\n_Sedang mengambil model langsung dari Pi..._`,
@@ -2248,7 +2185,7 @@ export function registerBasicCommands(bot) {
     const engineLabel =
       currentEngine === "pi"
         ? "Pi Coding Agent CLI (`pi`)"
-        : "Universal / Pi Server";
+        : "Antigravity CLI (`agy`)";
 
     await ctx.api
       .editMessageText(
@@ -2273,7 +2210,7 @@ export function registerBasicCommands(bot) {
     const url = ctx.match?.trim();
     const userId = ctx.from?.id;
     if (!url) {
-      const current = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
+      const current = process.env.PI_SERVER_URL || "";
       await ctx.reply(
         `🔗 *Pengaturan Base URL Server Pi*\n\n` +
         `Link server Pi saat ini:\n\`${current}\`\n\n` +
@@ -2292,21 +2229,21 @@ export function registerBasicCommands(bot) {
 
     const finalUrl = normalizePiUrl(url);
 
-    await updateEnvFile({ UNIVERSAL_BASE_URL: finalUrl, CLI_ENGINE: "universal" });
-    process.env.UNIVERSAL_BASE_URL = finalUrl;
-    process.env.CLI_ENGINE = "universal";
-    await setUserEngine(userId, "universal");
+    await updateEnvFile({ PI_SERVER_URL: finalUrl, CLI_ENGINE: "pi" });
+    process.env.PI_SERVER_URL = finalUrl;
+    process.env.CLI_ENGINE = "pi";
+    await setUserEngine(userId, "pi");
 
     // Coba langsung tarik model dari server baru
     let syncInfo = "";
     try {
-      const syncRes = await syncPiModelDirectly(finalUrl, process.env.UNIVERSAL_API_KEY || "", userId);
+      const syncRes = await syncPiModelDirectly(finalUrl, process.env.PI_SERVER_API_KEY || "", userId);
       if (syncRes.ok) {
         syncInfo = `\n🎯 *Model Auto-Sync:* Langsung terhubung ke model \`${syncRes.activeModel}\` dari server Pi!`;
       }
     } catch {}
 
-    await ctx.reply(`✅ *Link Server Pi berhasil diubah ke:*\n\`${finalUrl}\`${syncInfo}\n\n_Engine otomatis diaktifkan ke Universal / Pi Server._`, {
+    await ctx.reply(`✅ *Link Server Pi berhasil diubah ke:*\n\`${finalUrl}\`${syncInfo}\n\n_Engine otomatis diaktifkan ke Pi Coding Agent CLI._`, {
       parse_mode: "Markdown",
     });
   });
@@ -2315,10 +2252,10 @@ export function registerBasicCommands(bot) {
   bot.command(["setkey", "setapikey"], async (ctx) => {
     const key = ctx.match?.trim();
     if (!key) {
-      const hasKey = Boolean(process.env.UNIVERSAL_API_KEY);
-      const masked = maskSecret(process.env.UNIVERSAL_API_KEY);
+      const hasKey = Boolean(process.env.PI_SERVER_API_KEY);
+      const masked = maskSecret(process.env.PI_SERVER_API_KEY);
       await ctx.reply(
-        `🔑 *Pengaturan Universal API Key*\n\n` +
+        `🔑 *Pengaturan Pi Server API Key*\n\n` +
         `Status API Key saat ini: ${hasKey ? "`" + masked + "` ✅" : "⚠️ _Belum diatur_"}\n\n` +
         `Untuk memasang atau mengganti, gunakan:\n` +
         `👉 \`/setkey <API_KEY>\`\n\n` +
@@ -2329,48 +2266,9 @@ export function registerBasicCommands(bot) {
       return;
     }
 
-    await updateEnvFile({ UNIVERSAL_API_KEY: key });
+    await updateEnvFile({ PI_SERVER_API_KEY: key });
     await ctx.reply(
       `✅ *API Key berhasil disimpan!*\n\nKey: \`${maskSecret(key)}\`\nTersimpan aman di environment dan file \`.env\`.`,
-      { parse_mode: "Markdown" }
-    );
-  });
-
-  // /universal, /setuniversal
-  bot.command(["universal", "setuniversal"], async (ctx) => {
-    const userId = ctx.from?.id;
-    const currentUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-    const hasKey = Boolean(process.env.UNIVERSAL_API_KEY);
-    const maskedKey = maskSecret(process.env.UNIVERSAL_API_KEY);
-    const currentEngine = await getUserEngine(userId);
-    const currentModel = await getUserUniversalModel(userId);
-
-    await ctx.reply(
-      `🌐 *Konfigurasi Universal API (Zero-CLI)*\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `• *Engine Aktif:* \`${currentEngine}\` ${currentEngine === "universal" ? "✅" : "*(Ganti dengan /engine universal)*"}\n` +
-      `• *Model Universal:* \`${currentModel}\`\n` +
-      `• *Base URL:* \`${currentUrl}\`\n` +
-      `• *API Key:* ${hasKey ? "`" + maskedKey + "` ✅" : "⚠️ _Belum diatur_"}\n` +
-      `━━━━━━━━━━━━━━━━━━━━\n` +
-      `💡 *Perintah Cepat:*\n` +
-      `• \`/setpi <API_KEY>\` - Setup otomatis Model Pi via OpenRouter\n` +
-      `• \`/seturl <URL>\` - Ubah Base URL\n` +
-      `• \`/setkey <KEY>\` - Ubah Universal API Key\n` +
-      `• \`/model\` - Pilih daftar model AI`,
-      { parse_mode: "Markdown" }
-    );
-  });
-
-  // Callback: setting_universal
-  bot.callbackQuery("setting_universal", async (ctx) => {
-    await ctx.answerCallbackQuery();
-    await ctx.reply(
-      "🌐 *Pengaturan Universal API & Pi:*\n\n" +
-      "• Atur Base URL: `/seturl <URL>`\n" +
-      "• Atur API Key: `/setkey <API_KEY>`\n" +
-      "• Setup instan Model Pi: `/setpi <API_KEY>`\n\n" +
-      "Atau buka Web Control Panel untuk konfigurasi lengkap.",
       { parse_mode: "Markdown" }
     );
   });
@@ -2397,7 +2295,7 @@ export function registerBasicCommands(bot) {
   bot.callbackQuery("setting_engine", async (ctx) => {
     await ctx.answerCallbackQuery();
     await ctx.reply(
-      "🔄 *Pilih Engine AI:*\n\nKetik `/engine` untuk memilih engine (Antigravity CLI / Claude Code / Universal API).",
+      "🔄 *Pilih Engine AI:*\n\nKetik `/engine` untuk memilih engine (Pi Coding Agent CLI / Antigravity CLI).",
       { parse_mode: "Markdown" }
     );
   });

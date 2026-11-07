@@ -1,6 +1,6 @@
 // State aplikasi
 let currentSettings = {};
-let availableOptions = { agyModels: [], claudeModels: [] };
+let availableOptions = { agyModels: [], piModels: [] };
 let currentCustomModels = {};
 
 // DOM Elements
@@ -20,14 +20,10 @@ const idChipsContainer = document.getElementById("idChipsContainer");
 const engineRadios = document.querySelectorAll('input[name="CLI_ENGINE"]');
 const piModelSelect = document.getElementById("piModel");
 const agyModelSelect = document.getElementById("agyModel");
-const claudeModelSelect = document.getElementById("claudeModel");
-const universalModelSelect = document.getElementById("universalModel");
-const piQuickUrlInput = document.getElementById("piQuickUrl");
+const piServerUrlInput = document.getElementById("piServerUrl");
 const btnGetPiModels = document.getElementById("btnGetPiModels");
 const groupPiModel = document.getElementById("groupPiModel");
 const groupAgyModel = document.getElementById("groupAgyModel");
-const groupClaudeModel = document.getElementById("groupClaudeModel");
-const groupUniversalModel = document.getElementById("groupUniversalModel");
 const autoApproveCheckbox = document.getElementById("autoApprove");
 const scopeRoleRootRadio = document.getElementById("scopeRoleRoot");
 const scopeRoleCustomRadio = document.getElementById("scopeRoleCustom");
@@ -44,21 +40,18 @@ const badgeModel = document.getElementById("badgeModel");
 const badgeToken = document.getElementById("badgeToken");
 const badgeHost = document.getElementById("badgeHost");
 
-const claudeAuthRadios = document.querySelectorAll('input[name="CLAUDE_AUTH_TYPE"]');
 const agyAuthRadios = document.querySelectorAll('input[name="AGY_AUTH_TYPE"]');
 const anthropicApiKeyInput = document.getElementById("anthropicApiKey");
 const geminiApiKeyInput = document.getElementById("geminiApiKey");
-const universalApiKeyInput = document.getElementById("universalApiKey");
-const universalBaseUrlInput = document.getElementById("universalBaseUrl");
+const piServerApiKeyInput = document.getElementById("piServerApiKey");
 const toggleAnthropicKeyBtn = document.getElementById("toggleAnthropicKey");
 const toggleGeminiKeyBtn = document.getElementById("toggleGeminiKey");
-const toggleUniversalKeyBtn = document.getElementById("toggleUniversalKey");
+const togglePiServerKeyBtn = document.getElementById("togglePiServerKey");
 const eyeAnthropicIcon = document.getElementById("eyeAnthropicIcon");
 const eyeGeminiIcon = document.getElementById("eyeGeminiIcon");
-const eyeUniversalIcon = document.getElementById("eyeUniversalIcon");
-const badgeClaudeSession = document.getElementById("badgeClaudeSession");
+const eyePiServerIcon = document.getElementById("eyePiServerIcon");
 const badgeAgySession = document.getElementById("badgeAgySession");
-const badgeUniversalKey = document.getElementById("badgeUniversalKey");
+const badgePiServerKey = document.getElementById("badgePiServerKey");
 
 // Automation & GitHub Elements
 const githubTokenInput = document.getElementById("githubToken");
@@ -171,11 +164,11 @@ if (toggleGeminiKeyBtn && geminiApiKeyInput) {
   });
 }
 
-if (toggleUniversalKeyBtn && universalApiKeyInput) {
-  toggleUniversalKeyBtn.addEventListener("click", () => {
-    const isPass = universalApiKeyInput.type === "password";
-    universalApiKeyInput.type = isPass ? "text" : "password";
-    eyeUniversalIcon.innerHTML = isPass
+if (togglePiServerKeyBtn && piServerApiKeyInput) {
+  togglePiServerKeyBtn.addEventListener("click", () => {
+    const isPass = piServerApiKeyInput.type === "password";
+    piServerApiKeyInput.type = isPass ? "text" : "password";
+    eyePiServerIcon.innerHTML = isPass
       ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
       : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
   });
@@ -195,8 +188,6 @@ if (toggleGithubKeyBtn && githubTokenInput) {
 function syncEngineView(engine) {
   if (groupPiModel) groupPiModel.style.display = engine === "pi" ? "block" : "none";
   if (groupAgyModel) groupAgyModel.style.display = engine === "agy" ? "block" : "none";
-  if (groupClaudeModel) groupClaudeModel.style.display = engine === "claude" ? "block" : "none";
-  if (groupUniversalModel) groupUniversalModel.style.display = engine === "universal" ? "block" : "none";
 }
 
 // Update Live Badges
@@ -204,12 +195,6 @@ function updateBadges(settings, system) {
   if (settings.CLI_ENGINE === "pi") {
     badgeEngine.textContent = "Pi Coding Agent";
     badgeModel.textContent = settings.PI_MODEL || "openai/gpt-oss-120b";
-  } else if (settings.CLI_ENGINE === "claude") {
-    badgeEngine.textContent = "Claude Code";
-    badgeModel.textContent = settings.CLAUDE_MODEL || "sonnet";
-  } else if (settings.CLI_ENGINE === "universal") {
-    badgeEngine.textContent = "Universal API";
-    badgeModel.textContent = settings.UNIVERSAL_MODEL || "Auto-detect";
   } else {
     badgeEngine.textContent = "Antigravity (agy)";
     badgeModel.textContent = settings.AGY_MODEL || "gemini-3.8-flash-medium";
@@ -280,58 +265,12 @@ async function loadSettings() {
       agyModelSelect.appendChild(opt);
     }
 
-    // Populate Claude Models Select
-    claudeModelSelect.innerHTML = "";
-    for (const m of (availableOptions.claudeModels || [])) {
-      const opt = document.createElement("option");
-      opt.value = m.id;
-      opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
-      opt.selected = m.id === currentSettings.CLAUDE_MODEL;
-      claudeModelSelect.appendChild(opt);
+    // Populate Pi Server inputs
+    if (piServerUrlInput) {
+      piServerUrlInput.value = currentSettings.PI_SERVER_URL || "";
     }
-
-    // Populate Universal Models Select
-    if (universalModelSelect) {
-      universalModelSelect.innerHTML = "";
-      const models = availableOptions.universalModels || [];
-      const currentUniModel = currentSettings.UNIVERSAL_MODEL || "";
-
-      // Opsi 1: Otomatis (Dynamic Server Auto-Detect)
-      const autoOpt = document.createElement("option");
-      autoOpt.value = "";
-      autoOpt.textContent = "⚡ Otomatis (Dynamic Auto-Detect dari Server)";
-      autoOpt.selected = !currentUniModel || currentUniModel === "auto";
-      universalModelSelect.appendChild(autoOpt);
-
-      const exists = models.some((m) => m.id === currentUniModel);
-      const isAllowedConfigured = currentCustomModels && Array.isArray(currentCustomModels.universalModels);
-
-      if (!exists && currentUniModel && currentUniModel !== "auto" && !isAllowedConfigured) {
-        const customOpt = document.createElement("option");
-        customOpt.value = currentUniModel;
-        customOpt.textContent = `${currentUniModel} [Custom]`;
-        customOpt.selected = true;
-        universalModelSelect.appendChild(customOpt);
-      }
-
-      for (const m of models) {
-        const opt = document.createElement("option");
-        opt.value = m.id;
-        opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
-        opt.selected = m.id === currentUniModel;
-        universalModelSelect.appendChild(opt);
-      }
-    }
-
-    // Populate Universal API inputs
-    if (universalBaseUrlInput) {
-      universalBaseUrlInput.value = currentSettings.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-    }
-    if (piQuickUrlInput) {
-      piQuickUrlInput.value = currentSettings.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-    }
-    if (universalApiKeyInput) {
-      universalApiKeyInput.value = currentSettings.UNIVERSAL_API_KEY || "";
+    if (piServerApiKeyInput) {
+      piServerApiKeyInput.value = currentSettings.PI_SERVER_API_KEY || "";
     }
 
     // Populate Auto Approve
@@ -359,14 +298,6 @@ async function loadSettings() {
     }
 
     // Populate Auth Mode & API Keys
-    const claudeAuth = currentSettings.CLAUDE_AUTH_TYPE || "oauth";
-    for (const r of claudeAuthRadios) {
-      r.checked = r.value === claudeAuth;
-    }
-    if (anthropicApiKeyInput) {
-      anthropicApiKeyInput.value = currentSettings.ANTHROPIC_API_KEY || "";
-    }
-
     const agyAuth = currentSettings.AGY_AUTH_TYPE || "oauth";
     for (const r of agyAuthRadios) {
       r.checked = r.value === agyAuth;
@@ -377,16 +308,6 @@ async function loadSettings() {
 
     // Status Badges
     if (data.authStatus) {
-      if (badgeClaudeSession) {
-        if (data.authStatus.claudeSessionActive) {
-          badgeClaudeSession.className = "badge badge-primary";
-          badgeClaudeSession.innerHTML = "✓ Sesi Aktif";
-        } else {
-          badgeClaudeSession.className = "badge";
-          badgeClaudeSession.innerHTML = "Belum Login";
-        }
-      }
-
       if (badgeAgySession) {
         if (data.authStatus.agySessionActive) {
           badgeAgySession.className = "badge badge-primary";
@@ -397,13 +318,13 @@ async function loadSettings() {
         }
       }
 
-      if (badgeUniversalKey) {
-        if (data.authStatus.hasUniversalKey) {
-          badgeUniversalKey.className = "badge badge-primary";
-          badgeUniversalKey.innerHTML = "✓ Key Terpasang";
+      if (badgePiServerKey) {
+        if (data.authStatus.hasPiServerKey) {
+          badgePiServerKey.className = "badge badge-primary";
+          badgePiServerKey.innerHTML = "✓ Key Terpasang";
         } else {
-          badgeUniversalKey.className = "badge";
-          badgeUniversalKey.innerHTML = "Belum Diisi";
+          badgePiServerKey.className = "badge";
+          badgePiServerKey.innerHTML = "Belum Diisi";
         }
       }
     }
@@ -610,12 +531,6 @@ engineRadios.forEach((r) => {
     if (r.value === "pi") {
       badgeEngine.textContent = "Pi Coding Agent";
       badgeModel.textContent = piModelSelect ? piModelSelect.value : "openai/gpt-oss-120b";
-    } else if (r.value === "claude") {
-      badgeEngine.textContent = "Claude Code";
-      badgeModel.textContent = claudeModelSelect.value;
-    } else if (r.value === "universal") {
-      badgeEngine.textContent = "Universal / Pi";
-      badgeModel.textContent = universalModelSelect ? universalModelSelect.value : "deepseek-chat";
     } else {
       badgeEngine.textContent = "Antigravity (agy)";
       badgeModel.textContent = agyModelSelect.value;
@@ -631,11 +546,9 @@ const inputNewModelId = document.getElementById("inputNewModelId");
 const btnAddAllowedModel = document.getElementById("btnAddAllowedModel");
 
 function getActiveEngineKey() {
-  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "pi";
+  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "agy";
   if (selectedEngine === "pi") return { engine: "pi", key: "piModels", label: "PI CODING AGENT", select: piModelSelect };
-  if (selectedEngine === "claude") return { engine: "claude", key: "claudeModels", label: "CLAUDE CODE", select: claudeModelSelect };
-  if (selectedEngine === "agy") return { engine: "agy", key: "agyModels", label: "ANTIGRAVITY / AGY", select: agyModelSelect };
-  return { engine: "universal", key: "universalModels", label: "UNIVERSAL / PI", select: universalModelSelect };
+  return { engine: "agy", key: "agyModels", label: "ANTIGRAVITY / AGY", select: agyModelSelect };
 }
 
 function renderAllowedModelsChips() {
@@ -723,12 +636,6 @@ async function removeAllowedModel(engine, modelId) {
     if (engine === "pi" && piModelSelect && piModelSelect.value === modelId) {
       piModelSelect.selectedIndex = 0;
       if (badgeModel) badgeModel.textContent = piModelSelect.value;
-    } else if (engine === "universal" && universalModelSelect && universalModelSelect.value === modelId) {
-      universalModelSelect.value = "";
-      if (badgeModel) badgeModel.textContent = "Auto-detect";
-    } else if (engine === "claude" && claudeModelSelect && claudeModelSelect.value === modelId) {
-      claudeModelSelect.selectedIndex = 0;
-      if (badgeModel) badgeModel.textContent = claudeModelSelect.value;
     } else if (engine === "agy" && agyModelSelect && agyModelSelect.value === modelId) {
       agyModelSelect.selectedIndex = 0;
       if (badgeModel) badgeModel.textContent = agyModelSelect.value;
@@ -810,60 +717,14 @@ agyModelSelect.addEventListener("change", () => {
   }
 });
 
-claudeModelSelect.addEventListener("change", () => {
-  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;
-  if (selectedEngine === "claude") {
-    badgeModel.textContent = claudeModelSelect.value;
-  }
-});
-
-if (universalModelSelect) {
-  universalModelSelect.addEventListener("change", () => {
-    const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;
-    if (selectedEngine === "universal") {
-      badgeModel.textContent = universalModelSelect.value;
-    }
-  });
-}
-
-const btnCustomModelPrompt = document.getElementById("btnCustomModelPrompt");
-if (btnCustomModelPrompt && universalModelSelect) {
-  btnCustomModelPrompt.addEventListener("click", () => {
-    const custom = prompt("Masukkan nama/ID model AI (contoh: litellm):", universalModelSelect.value || "");
-    if (custom && custom.trim()) {
-      const val = custom.trim();
-      let opt = Array.from(universalModelSelect.options).find((o) => o.value === val);
-      if (!opt) {
-        opt = document.createElement("option");
-        opt.value = val;
-        opt.textContent = `${val} [Custom]`;
-        universalModelSelect.appendChild(opt);
-      }
-      universalModelSelect.value = val;
-      badgeModel.textContent = val;
-      showToast(`Model '${val}' dipilih! Silakan klik 'Simpan Pengaturan' di bawah.`, "success");
-    }
-  });
-}
-
-// Two-way sync Link Server Pi
-if (piQuickUrlInput && universalBaseUrlInput) {
-  piQuickUrlInput.addEventListener("input", () => {
-    universalBaseUrlInput.value = piQuickUrlInput.value;
-  });
-  universalBaseUrlInput.addEventListener("input", () => {
-    piQuickUrlInput.value = universalBaseUrlInput.value;
-  });
-}
-
 // Handler Get Model dari Pi
 if (btnGetPiModels) {
   btnGetPiModels.addEventListener("click", async () => {
-    const baseUrl = (piQuickUrlInput ? piQuickUrlInput.value : "") || (universalBaseUrlInput ? universalBaseUrlInput.value : "");
-    const apiKey = universalApiKeyInput ? universalApiKeyInput.value.trim() : "";
+    const baseUrl = piServerUrlInput ? piServerUrlInput.value : "";
+    const apiKey = piServerApiKeyInput ? piServerApiKeyInput.value.trim() : "";
     if (!baseUrl.trim()) {
       showToast("Harap masukkan link / URL server Pi terlebih dahulu!", "warning");
-      if (piQuickUrlInput) piQuickUrlInput.focus();
+      if (piServerUrlInput) piServerUrlInput.focus();
       return;
     }
 
@@ -885,21 +746,17 @@ if (btnGetPiModels) {
       const models = data.models || [];
       const activeModel = data.activeModel || (models[0] ? models[0].id : "");
 
-      // Update URL fields jika dinormalisasi
-      if (data.baseUrl) {
-        if (piQuickUrlInput) piQuickUrlInput.value = data.baseUrl;
-        if (universalBaseUrlInput) universalBaseUrlInput.value = data.baseUrl;
+      // Update URL field jika dinormalisasi
+      if (data.baseUrl && piServerUrlInput) {
+        piServerUrlInput.value = data.baseUrl;
       }
 
       // Update state
-      availableOptions.universalModels = models;
       availableOptions.piModels = models;
       if (!currentCustomModels) currentCustomModels = {};
-      currentCustomModels.universalModels = models;
       currentCustomModels.piModels = models;
-      currentSettings.UNIVERSAL_MODEL = activeModel;
       currentSettings.PI_MODEL = activeModel;
-      currentSettings.UNIVERSAL_BASE_URL = data.baseUrl || baseUrl;
+      currentSettings.PI_SERVER_URL = data.baseUrl || baseUrl;
 
       // Update Pi Model Select dropdown
       if (piModelSelect) {
@@ -916,29 +773,8 @@ if (btnGetPiModels) {
         piModelSelect.value = activeModel;
       }
 
-      // Update Select dropdown
-      if (universalModelSelect) {
-        universalModelSelect.innerHTML = "";
-
-        const autoOpt = document.createElement("option");
-        autoOpt.value = "";
-        autoOpt.textContent = "⚡ Otomatis (Dynamic Server Auto-Detect)";
-        universalModelSelect.appendChild(autoOpt);
-
-        for (const m of models) {
-          const opt = document.createElement("option");
-          opt.value = m.id;
-          opt.textContent = `${m.name} [Pi]`;
-          if (m.id === activeModel) {
-            opt.selected = true;
-          }
-          universalModelSelect.appendChild(opt);
-        }
-        universalModelSelect.value = activeModel;
-      }
-
       // Update badge model
-      badgeModel.textContent = activeModel || "Auto-detect";
+      badgeModel.textContent = activeModel || "openai/gpt-oss-120b";
 
       // Re-render chips manager
       renderAllowedModelsChips();
@@ -953,100 +789,6 @@ if (btnGetPiModels) {
   });
 }
 
-const btnDetectRemoteModels = document.getElementById("btnDetectRemoteModels");
-if (btnDetectRemoteModels) {
-  btnDetectRemoteModels.addEventListener("click", async () => {
-    const baseUrl = universalBaseUrlInput ? universalBaseUrlInput.value.trim() : "";
-    const apiKey = universalApiKeyInput ? universalApiKeyInput.value.trim() : "";
-    const currentSelected = universalModelSelect ? universalModelSelect.value : "";
-    btnDetectRemoteModels.disabled = true;
-    btnDetectRemoteModels.textContent = "⏳ Memindai...";
-    try {
-      const q = new URLSearchParams({ baseUrl, apiKey });
-      const res = await fetch(`/api/models/remote?${q.toString()}`);
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || "Gagal menghubungi server");
-      const models = data.models || [];
-      if (models.length === 0) {
-        showToast("Tidak ada model ditemukan di server (/models)", "warning");
-        return;
-      }
-      universalModelSelect.innerHTML = "";
-
-      // Opsi Auto-Detect
-      const autoOpt = document.createElement("option");
-      autoOpt.value = "";
-      autoOpt.textContent = "⚡ Otomatis (Dynamic Auto-Detect dari Server)";
-      universalModelSelect.appendChild(autoOpt);
-
-      let matchedSelection = false;
-      for (const m of models) {
-        const opt = document.createElement("option");
-        opt.value = m.id;
-        opt.textContent = `${m.name} [Server]`;
-        if (m.id === currentSelected) {
-          opt.selected = true;
-          matchedSelection = true;
-        }
-        universalModelSelect.appendChild(opt);
-      }
-
-      // Jika sebelumnya memilih custom model tapi tidak ada di list server, pertahankan opsinya.
-      // Jika belum ada pilihan, otomatis pilih model pertama dari server Pi (sama seperti /getpi)
-      if (!matchedSelection) {
-        if (currentSelected && currentSelected !== "auto") {
-          const customOpt = document.createElement("option");
-          customOpt.value = currentSelected;
-          customOpt.textContent = `${currentSelected} [Custom]`;
-          customOpt.selected = true;
-          universalModelSelect.appendChild(customOpt);
-        } else if (models.length > 0) {
-          universalModelSelect.value = models[0].id;
-        }
-      }
-
-      badgeModel.textContent = universalModelSelect.value || "Auto-detect";
-
-      // Sinkronkan model yang terdeteksi ke Allowed Models
-      try {
-        await fetch("/api/custom-models", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "sync_remote", engine: "universal", models }),
-        });
-        await fetch("/api/custom-models", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "sync_remote", engine: "pi", models }),
-        });
-        if (!currentCustomModels) currentCustomModels = {};
-        currentCustomModels.universalModels = models;
-        currentCustomModels.piModels = models;
-        if (!availableOptions) availableOptions = {};
-        availableOptions.universalModels = models;
-        availableOptions.piModels = models;
-        if (piModelSelect) {
-          piModelSelect.innerHTML = "";
-          for (const m of models) {
-            const opt = document.createElement("option");
-            opt.value = m.id;
-            opt.textContent = `${m.name} [Pi Server]`;
-            piModelSelect.appendChild(opt);
-          }
-          if (models[0]) piModelSelect.value = models[0].id;
-        }
-        renderAllowedModelsChips();
-      } catch (_) {}
-
-      showToast(`🎯 Berhasil mendeteksi ${models.length} model dari server!`, "success");
-    } catch (err) {
-      showToast(`Gagal deteksi model: ${err.message}`, "error");
-    } finally {
-      btnDetectRemoteModels.disabled = false;
-      btnDetectRemoteModels.textContent = "🔄 Deteksi dari Server";
-    }
-  });
-}
 
 btnReload.addEventListener("click", () => {
   loadSettings();
@@ -1058,7 +800,6 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "agy";
-  const selectedClaudeAuth = document.querySelector('input[name="CLAUDE_AUTH_TYPE"]:checked')?.value || "oauth";
   const selectedAgyAuth = document.querySelector('input[name="AGY_AUTH_TYPE"]:checked')?.value || "oauth";
 
   const payload = {
@@ -1067,11 +808,8 @@ form.addEventListener("submit", async (e) => {
     CLI_ENGINE: selectedEngine,
     PI_MODEL: piModelSelect ? piModelSelect.value : (currentSettings.PI_MODEL || "openai/gpt-oss-120b"),
     AGY_MODEL: agyModelSelect.value,
-    CLAUDE_MODEL: claudeModelSelect.value,
-    UNIVERSAL_MODEL: universalModelSelect ? universalModelSelect.value : "",
-    UNIVERSAL_API_KEY: universalApiKeyInput ? universalApiKeyInput.value.trim() : "",
-    UNIVERSAL_BASE_URL: (piQuickUrlInput ? piQuickUrlInput.value.trim() : "") || (universalBaseUrlInput ? universalBaseUrlInput.value.trim() : ""),
-    CLAUDE_AUTH_TYPE: selectedClaudeAuth,
+    PI_SERVER_API_KEY: piServerApiKeyInput ? piServerApiKeyInput.value.trim() : "",
+    PI_SERVER_URL: piServerUrlInput ? piServerUrlInput.value.trim() : "",
     AGY_AUTH_TYPE: selectedAgyAuth,
     ANTHROPIC_API_KEY: anthropicApiKeyInput ? anthropicApiKeyInput.value.trim() : "",
     GEMINI_API_KEY: geminiApiKeyInput ? geminiApiKeyInput.value.trim() : "",

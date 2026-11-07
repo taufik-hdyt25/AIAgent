@@ -5,18 +5,18 @@
 <h1 align="center">⚡ TH Agent</h1>
 
 <p align="center">
-  <strong>Autonomous AI Coding Assistant & Server Automation powered by Antigravity CLI, Claude Code CLI & Telegram</strong>
+  <strong>Autonomous AI Coding Assistant & Server Automation powered by Antigravity CLI, Pi CLI & Telegram</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-v26-68a063?style=flat-square&logo=node.js" alt="Node.js 26" />
-  <img src="https://img.shields.io/badge/Engine-Antigravity%20%7C%20Claude-8b5cf6?style=flat-square" alt="AI Engines" />
+  <img src="https://img.shields.io/badge/Engine-Antigravity%20%7C%20Pi%20CLI-8b5cf6?style=flat-square" alt="AI Engines" />
   <img src="https://img.shields.io/badge/Platform-Telegram%20Bot-229ED9?style=flat-square&logo=telegram" alt="Telegram" />
 </p>
 
 ---
 
-**TH Agent** adalah asisten AI coding & server automation cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (`agy`) dan Claude Code CLI (`claude`), memungkinkan Anda mendelegasikan tugas coding langsung dari chat Telegram ke repository di server/VPS.
+**TH Agent** adalah asisten AI coding & server automation cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (`agy`) dan Pi Coding Agent (`pi`), memungkinkan Anda mendelegasikan tugas coding langsung dari chat Telegram ke repository di server/VPS.
 
 ---
 
@@ -93,7 +93,7 @@ Atau jika sudah melakukan git clone:
 
 ### Apa yang Dilakukan Installer Ini Secara Otomatis?
 1. Mengunduh repository ke folder `telegram-ai-agent` (jika belum di-clone).
-2. Memeriksa & memasang runtime **Node.js**, **Antigravity CLI (`agy`)**, **Claude Code CLI (`claude`)**, dan **PM2 Process Manager**.
+2. Memeriksa & memasang runtime **Node.js**, **Antigravity CLI (`agy`)**, **Pi Coding Agent CLI (`pi`)**, dan binary runner.
 3. Menyiapkan folder kerja, file `.env`, dan model AI default.
 4. **Auto-Start & Background Service:** Mengonfigurasi bot agar langsung berjalan di latar belakang dan otomatis aktif kembali saat komputer/VPS menyala (*auto-start on boot*).
 5. Di Linux VPS & Raspberry Pi: Memberikan opsi instalasi **Native PM2** (sangat ringan ~60MB RAM) atau **Docker Container**.
@@ -203,7 +203,7 @@ pm2 logs telegram-coding-agent
 | `/exec <cmd>` | Menjalankan perintah terminal langsung di server (misal: `/exec python3 uploads/...`) |
 | `/queue` / `/antrean` | Melihat daftar antrean instruksi AI yang sedang menunggu giliran |
 | `/clearqueue` | Mengosongkan seluruh antrean instruksi yang menunggu |
-| `/engine` / `/cli` | Memilih engine CLI yang digunakan (**Antigravity CLI** `agy` atau **Claude Code CLI** `claude` / **Universal API**) |
+| `/engine` / `/cli` | Memilih engine CLI yang digunakan (**Antigravity CLI** `agy` atau **Pi Coding Agent CLI** `pi`) |
 | `/model` | Membuka menu pemilihan model AI (Claude, Gemini, DeepSeek, GPT) |
 | `/status` | Melihat status task aktif, status antrean, engine, & model yang aktif |
 | `/reset` / `/new` | Memulai sesi obrolan baru dari awal (reset memori percakapan) |
@@ -222,7 +222,7 @@ Bot mendukung penerimaan file kode, skrip, data, dan gambar secara langsung dari
   * _"eksekusi file ini dengan python3 dan cek outputnya"_
   * _"analisis file ini dan perbaiki bug di dalamnya"_
 - File otomatis diunduh dan disimpan di folder `./uploads/`.
-- Agent AI (`agy` / `claude`) akan menerima path file beserta cuplikan isinya, lalu mengeksekusi langsung di terminal server dan mengembalikan hasil outputnya ke Telegram!
+- Agent AI (`agy` / `pi`) akan menerima path file beserta cuplikan isinya, lalu mengeksekusi langsung di terminal server dan mengembalikan hasil outputnya ke Telegram!
 
 ### 2. Mengirim Gambar / Screenshot Error
 - Kirim foto/screenshot terminal error, diagram alur, atau desain UI.

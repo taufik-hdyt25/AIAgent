@@ -29,8 +29,6 @@ function resolvePublicDir() {
 
 import {
   AVAILABLE_AGY_MODELS,
-  AVAILABLE_CLAUDE_MODELS,
-  AVAILABLE_UNIVERSAL_MODELS,
   getModelList,
   fetchRemoteModels,
   loadCustomModels,
@@ -38,7 +36,7 @@ import {
   normalizePiUrl,
 } from "./config/models.js";
 import { syncPiModelDirectly } from "./services/pi-service.js";
-import { setGlobalUniversalModel, setGlobalEngine } from "./services/context-store.js";
+import { setGlobalEngine } from "./services/context-store.js";
 import { loadWatchConfig, saveWatchConfig } from "./services/github-service.js";
 import {
   getDeployConfig,
@@ -126,12 +124,12 @@ export function createWebServer() {
     if (pathname === "/api/settings" && req.method === "GET") {
       try {
         const { parsed } = await readEnvFile();
-        const claudeSessionActive = await stat(path.join(os.homedir(), ".claude")).then(() => true).catch(() => false);
         const agySessionActive = await stat(path.join(os.homedir(), ".gemini")).then(() => true).catch(() => false);
         const voiceConfig = await getVoiceConfig();
         const sentryConfig = await getSentryConfig();
         const sandboxConfig = await getSandboxConfig();
         const dockerStatus = await getDockerContainers();
+        const customModels = (await loadCustomModels()) || {};
 
         return sendJson(200, {
           ok: true,
@@ -139,7 +137,6 @@ export function createWebServer() {
             BOT_TOKEN: parsed.BOT_TOKEN || process.env.BOT_TOKEN || "",
             ALLOWED_TELEGRAM_IDS: parsed.ALLOWED_TELEGRAM_IDS || process.env.ALLOWED_TELEGRAM_IDS || "",
             AGY_MODEL: parsed.AGY_MODEL || process.env.AGY_MODEL || "gemini-3.8-flash-medium",
-            CLAUDE_MODEL: parsed.CLAUDE_MODEL || process.env.CLAUDE_MODEL || "sonnet",
             PI_MODEL: parsed.PI_MODEL || process.env.PI_MODEL || "openai/gpt-oss-120b",
             CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "pi",
             AGY_AUTO_APPROVE_PERMISSIONS:
@@ -148,11 +145,9 @@ export function createWebServer() {
             WEB_PORT: parsed.WEB_PORT || process.env.WEB_PORT || "3030",
             ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "",
             GEMINI_API_KEY: parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY || "",
-            CLAUDE_AUTH_TYPE: parsed.CLAUDE_AUTH_TYPE || (parsed.ANTHROPIC_API_KEY ? "api_key" : "oauth"),
             AGY_AUTH_TYPE: parsed.AGY_AUTH_TYPE || (parsed.GEMINI_API_KEY ? "api_key" : "oauth"),
-            UNIVERSAL_BASE_URL: parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "http://127.0.0.1:46315/v1",
-            UNIVERSAL_API_KEY: parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "",
-            UNIVERSAL_MODEL: parsed.UNIVERSAL_MODEL ?? process.env.UNIVERSAL_MODEL ?? "",
+            PI_SERVER_URL: parsed.PI_SERVER_URL || process.env.PI_SERVER_URL || "",
+            PI_SERVER_API_KEY: parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY || "",
             GITHUB_TOKEN: parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
             DEPLOY_COMMAND: parsed.DEPLOY_COMMAND || process.env.DEPLOY_COMMAND || "git pull && npm install && pm2 reload all || pm2 reload ecosystem.config.cjs",
             GROQ_API_KEY: parsed.GROQ_API_KEY || process.env.GROQ_API_KEY || voiceConfig.groqApiKey || "",
@@ -160,11 +155,10 @@ export function createWebServer() {
           },
           sandboxConfig,
           authStatus: {
-            claudeSessionActive,
             agySessionActive,
             hasAnthropicKey: Boolean(parsed.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY),
             hasGeminiKey: Boolean(parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
-            hasUniversalKey: Boolean(parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY),
+            hasPiServerKey: Boolean(parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY),
             hasGithubToken: Boolean(parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN),
             hasGroqKey: Boolean(parsed.GROQ_API_KEY || process.env.GROQ_API_KEY || voiceConfig.groqApiKey),
             hasOpenaiKey: Boolean(parsed.OPENAI_API_KEY || process.env.OPENAI_API_KEY || voiceConfig.openaiApiKey),
@@ -172,11 +166,12 @@ export function createWebServer() {
           voiceConfig,
           sentryConfig,
           dockerStatus,
-          customModels: (await loadCustomModels()) || {},
+          customModels: {
+            agyModels: customModels.agyModels || [],
+            piModels: customModels.piModels || [],
+          },
           options: {
             agyModels: await getModelList("agy"),
-            claudeModels: await getModelList("claude"),
-            universalModels: await getModelList("universal"),
             piModels: await getModelList("pi"),
           },
           system: {
@@ -201,19 +196,19 @@ export function createWebServer() {
       }
     }
 
-    // API: Tarik remote models dari provider (DeepSeek / OpenAI-compatible / custom server)
+    // API: Tarik remote models dari provider (OpenAI-compatible / custom server)
     if (pathname === "/api/models/remote" && req.method === "GET") {
       try {
         const { parsed } = await readEnvFile();
         const baseUrl =
           url.searchParams.get("baseUrl") ||
-          parsed.UNIVERSAL_BASE_URL ||
-          process.env.UNIVERSAL_BASE_URL ||
+          parsed.PI_SERVER_URL ||
+          process.env.PI_SERVER_URL ||
           "http://127.0.0.1:46315/v1";
         const apiKey =
           url.searchParams.get("apiKey") !== null
             ? url.searchParams.get("apiKey")
-            : (parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "");
+            : (parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY || "");
 
         const models = await fetchRemoteModels(baseUrl, apiKey);
         return sendJson(200, { ok: true, models, count: models.length });
@@ -229,8 +224,8 @@ export function createWebServer() {
         for await (const chunk of req) body += chunk;
         const payload = JSON.parse(body || "{}");
         const { parsed } = await readEnvFile();
-        const baseUrl = payload.baseUrl || parsed.UNIVERSAL_BASE_URL || process.env.UNIVERSAL_BASE_URL || "";
-        const apiKey = payload.apiKey !== undefined ? payload.apiKey : (parsed.UNIVERSAL_API_KEY || process.env.UNIVERSAL_API_KEY || "");
+        const baseUrl = payload.baseUrl || parsed.PI_SERVER_URL || process.env.PI_SERVER_URL || "";
+        const apiKey = payload.apiKey !== undefined ? payload.apiKey : (parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY || "");
         const selectModel = payload.selectModel || null;
 
         if (!baseUrl) {
@@ -263,8 +258,7 @@ export function createWebServer() {
           ok: true,
           customModels: {
             agyModels: custom.agyModels || [],
-            claudeModels: custom.claudeModels || [],
-            universalModels: custom.universalModels || [],
+            piModels: custom.piModels || [],
           },
         });
       } catch (err) {
@@ -279,17 +273,9 @@ export function createWebServer() {
         const payload = JSON.parse(body || "{}");
         const existing = (await loadCustomModels()) || {
           agyModels: [],
-          claudeModels: [],
-          universalModels: [],
+          piModels: [],
         };
-        const engineKey =
-          payload.engine === "pi"
-            ? "piModels"
-            : payload.engine === "claude"
-            ? "claudeModels"
-            : payload.engine === "agy"
-            ? "agyModels"
-            : "universalModels";
+        const engineKey = payload.engine === "pi" ? "piModels" : "agyModels";
 
         if (payload.action === "reset") {
           delete existing[engineKey];
@@ -298,7 +284,7 @@ export function createWebServer() {
             ok: true,
             message: "Daftar model berhasil direset ke default.",
             customModels: existing,
-            options: await getModelList(payload.engine || "universal"),
+            options: await getModelList(payload.engine || "agy"),
           });
         }
 
@@ -315,7 +301,7 @@ export function createWebServer() {
 
         if (payload.action === "add" && payload.modelId) {
           if (!Array.isArray(existing[engineKey])) {
-            const currentList = await getModelList(payload.engine || "universal");
+            const currentList = await getModelList(payload.engine || "agy");
             existing[engineKey] = [...currentList];
           }
           const id = payload.modelId.trim();
@@ -328,13 +314,13 @@ export function createWebServer() {
             ok: true,
             message: `Model '${id}' berhasil ditambahkan ke daftar yang diizinkan.`,
             customModels: existing,
-            options: await getModelList(payload.engine || "universal"),
+            options: await getModelList(payload.engine || "agy"),
           });
         }
 
         if (payload.action === "remove" && payload.modelId) {
           if (!Array.isArray(existing[engineKey])) {
-            const currentList = await getModelList(payload.engine || "universal");
+            const currentList = await getModelList(payload.engine || "agy");
             existing[engineKey] = [...currentList];
           }
           const targetId = payload.modelId.trim().toLowerCase();
@@ -346,22 +332,15 @@ export function createWebServer() {
           // Jika model yang dihapus sedang aktif di env, reset ke auto / model pertama yang valid
           let envUpdated = false;
           const updates = {};
-          if (payload.engine === "universal" || !payload.engine) {
-            const current = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
+          if (payload.engine === "pi") {
+            const current = (process.env.PI_MODEL || "").trim().toLowerCase();
             if (current === targetId) {
-              updates.UNIVERSAL_MODEL = "";
-              process.env.UNIVERSAL_MODEL = "";
+              const nextModel = existing.piModels?.[0]?.id || "openai/gpt-oss-120b";
+              updates.PI_MODEL = nextModel;
+              process.env.PI_MODEL = nextModel;
               envUpdated = true;
             }
-          } else if (payload.engine === "claude") {
-            const current = (process.env.CLAUDE_MODEL || "").trim().toLowerCase();
-            if (current === targetId) {
-              const nextModel = existing.claudeModels?.[0]?.id || "sonnet";
-              updates.CLAUDE_MODEL = nextModel;
-              process.env.CLAUDE_MODEL = nextModel;
-              envUpdated = true;
-            }
-          } else if (payload.engine === "agy") {
+          } else if (payload.engine === "agy" || !payload.engine) {
             const current = (process.env.AGY_MODEL || "").trim().toLowerCase();
             if (current === targetId) {
               const nextModel = existing.agyModels?.[0]?.id || "gemini-3.8-flash-medium";
@@ -378,7 +357,7 @@ export function createWebServer() {
             ok: true,
             message: `Model '${payload.modelId}' berhasil dihapus dari daftar.`,
             customModels: existing,
-            options: await getModelList(payload.engine || "universal"),
+            options: await getModelList(payload.engine || "agy"),
           });
         }
 
@@ -574,9 +553,6 @@ export function createWebServer() {
           if (payload.AGY_MODEL !== undefined) {
             updates.AGY_MODEL = String(payload.AGY_MODEL).trim();
           }
-          if (payload.CLAUDE_MODEL !== undefined) {
-            updates.CLAUDE_MODEL = String(payload.CLAUDE_MODEL).trim();
-          }
           if (payload.PI_MODEL !== undefined) {
             updates.PI_MODEL = String(payload.PI_MODEL).trim();
           }
@@ -596,23 +572,14 @@ export function createWebServer() {
           if (payload.GEMINI_API_KEY !== undefined) {
             updates.GEMINI_API_KEY = String(payload.GEMINI_API_KEY).trim();
           }
-          if (payload.CLAUDE_AUTH_TYPE !== undefined) {
-            updates.CLAUDE_AUTH_TYPE = String(payload.CLAUDE_AUTH_TYPE).trim();
-          }
           if (payload.AGY_AUTH_TYPE !== undefined) {
             updates.AGY_AUTH_TYPE = String(payload.AGY_AUTH_TYPE).trim();
           }
-          if (payload.UNIVERSAL_MODEL !== undefined) {
-            updates.UNIVERSAL_MODEL = String(payload.UNIVERSAL_MODEL).trim();
-            if (updates.UNIVERSAL_MODEL) {
-              await setGlobalUniversalModel(updates.UNIVERSAL_MODEL);
-            }
+          if (payload.PI_SERVER_API_KEY !== undefined) {
+            updates.PI_SERVER_API_KEY = String(payload.PI_SERVER_API_KEY).trim();
           }
-          if (payload.UNIVERSAL_API_KEY !== undefined) {
-            updates.UNIVERSAL_API_KEY = String(payload.UNIVERSAL_API_KEY).trim();
-          }
-          if (payload.UNIVERSAL_BASE_URL !== undefined) {
-            updates.UNIVERSAL_BASE_URL = normalizePiUrl(String(payload.UNIVERSAL_BASE_URL).trim());
+          if (payload.PI_SERVER_URL !== undefined) {
+            updates.PI_SERVER_URL = normalizePiUrl(String(payload.PI_SERVER_URL).trim());
           }
           if (payload.GITHUB_TOKEN !== undefined) {
             updates.GITHUB_TOKEN = String(payload.GITHUB_TOKEN).trim();

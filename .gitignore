@@ -18,9 +18,7 @@ telegram-ai-agent/logs/
 data/*
 !data/projects.json
 !data/.gitkeep
-claude_auth/
 gemini_auth/
-telegram-ai-agent/claude_auth/
 telegram-ai-agent/gemini_auth/
 telegram-ai-agent/data/*
 !telegram-ai-agent/data/projects.json
@@ -52,9 +50,11 @@ telegram-ai-agent/docker-compose.override.yml
 /data
 /logs
 /uploads
-/claude_auth
 /gemini_auth
 
 # Local project summary registry (do not track on github)
 projects/PROJECTS_SUMMARY.md
 PROJECTS_SUMMARY.md
+
+# Local AI tooling config
+.commandcode/

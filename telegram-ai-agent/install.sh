@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Universal One-Command Installer: Telegram AI Coding Agent
+# One-Command Installer: Telegram AI Coding Agent
 # Mendukung: macOS (Apple Silicon & Intel) dan Linux VPS (Ubuntu / Debian / dll.)
 #
 set -e
@@ -205,55 +205,47 @@ ensure_local_bin_in_path() {
 # ==============================================================================
 # 1. CHECKLIST ENGINE AI
 # ==============================================================================
+SELECTED_PI=false
 SELECTED_AGY=false
-SELECTED_CLAUDE=false
-SELECTED_UNIVERSAL=false
-DEFAULT_ENGINE="agy"
+DEFAULT_ENGINE="pi"
 
 choose_engines() {
     echo -e "\n${BLUE}======================================================${NC}"
     echo -e "${MAGENTA}[1/3] CHECKLIST ENGINE / PROVIDER AI                  ${NC}"
     echo -e "${BLUE}======================================================${NC}"
     echo -e "Pilih AI Engine yang ingin dipasang dan diaktifkan di bot:"
-    echo -e "  ${CYAN}[1] Antigravity CLI (agy)${NC}  - Google Gemini 3.8 Flash, Thinking & Pro"
-    echo -e "  ${CYAN}[2] Claude Code CLI (claude)${NC} - Anthropic Claude 3.7 Sonnet, Opus & Haiku"
-    echo -e "  ${CYAN}[3] Universal API (Zero-CLI)${NC} - DeepSeek V3/R1, OpenRouter, OpenAI (Direct API)"
-    echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} - Pasang & aktifkan semua engine (Rekomendasi)"
+    echo -e "  ${CYAN}[1] Pi Coding Agent CLI (pi)${NC}  - Groq / Local Pi Server CLI"
+    echo -e "  ${CYAN}[2] Antigravity CLI (agy)${NC}      - Google Gemini 3.8 Flash, Thinking & Pro"
+    echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC}    - Pasang & aktifkan semua engine (Rekomendasi)"
     echo ""
-    prompt_user "Pilihan Anda (contoh: 1,2 atau 1,3 atau A) [default: A]: " engine_choice
+    prompt_user "Pilihan Anda (contoh: 1,2 atau A) [default: A]: " engine_choice
     engine_choice="${engine_choice:-A}"
 
     case "$engine_choice" in
         *[aA]*)
+            SELECTED_PI=true
             SELECTED_AGY=true
-            SELECTED_CLAUDE=true
-            SELECTED_UNIVERSAL=true
-            DEFAULT_ENGINE="agy"
+            DEFAULT_ENGINE="pi"
             ;;
         *)
-            if [[ "$engine_choice" == *"1"* ]]; then SELECTED_AGY=true; fi
-            if [[ "$engine_choice" == *"2"* ]]; then SELECTED_CLAUDE=true; fi
-            if [[ "$engine_choice" == *"3"* ]]; then SELECTED_UNIVERSAL=true; fi
+            if [[ "$engine_choice" == *"1"* ]]; then SELECTED_PI=true; fi
+            if [[ "$engine_choice" == *"2"* ]]; then SELECTED_AGY=true; fi
 
-            if [ "$SELECTED_AGY" = true ]; then
+            if [ "$SELECTED_PI" = true ]; then
+                DEFAULT_ENGINE="pi"
+            elif [ "$SELECTED_AGY" = true ]; then
                 DEFAULT_ENGINE="agy"
-            elif [ "$SELECTED_CLAUDE" = true ]; then
-                DEFAULT_ENGINE="claude"
-            elif [ "$SELECTED_UNIVERSAL" = true ]; then
-                DEFAULT_ENGINE="universal"
             else
+                SELECTED_PI=true
                 SELECTED_AGY=true
-                SELECTED_CLAUDE=true
-                SELECTED_UNIVERSAL=true
-                DEFAULT_ENGINE="agy"
+                DEFAULT_ENGINE="pi"
             fi
             ;;
     esac
 
     echo -e "${GREEN}✓ Engine aktif:${NC}"
+    [ "$SELECTED_PI" = true ] && echo -e "  • Pi Coding Agent CLI (pi)"
     [ "$SELECTED_AGY" = true ] && echo -e "  • Antigravity CLI (agy)"
-    [ "$SELECTED_CLAUDE" = true ] && echo -e "  • Claude Code CLI (claude)"
-    [ "$SELECTED_UNIVERSAL" = true ] && echo -e "  • Universal API (Zero-CLI / DeepSeek)"
     echo -e "  • Default Engine Awal: ${YELLOW}${DEFAULT_ENGINE}${NC}"
 }
 
@@ -276,8 +268,6 @@ choose_models() {
     if [[ "$model_mode" =~ ^[cC]$ ]]; then
         # Tampilkan pilihan per engine
         local agy_sel="A"
-        local claude_sel="A"
-        local univ_sel="A"
 
         if [ "$SELECTED_AGY" = true ]; then
             echo -e "\n${CYAN}--- Model Antigravity (agy) ---${NC}"
@@ -290,33 +280,6 @@ choose_models() {
             echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} | ${RED}[H] Hapus Semua${NC}"
             prompt_user "Pilih nomor model agy (contoh: 1,4 atau A atau H) [default: A]: " agy_sel
             agy_sel="${agy_sel:-A}"
-        fi
-
-        if [ "$SELECTED_CLAUDE" = true ]; then
-            echo -e "\n${CYAN}--- Model Claude Code (claude) ---${NC}"
-            echo -e "  [1] Claude Sonnet      (sonnet - Default)"
-            echo -e "  [2] Claude Opus        (opus - Penalaran Kompleks)"
-            echo -e "  [3] Claude Haiku       (haiku - Cepat & Ringan)"
-            echo -e "  [4] Claude 3.7 Sonnet  (claude-3-7-sonnet - Hybrid Reasoning)"
-            echo -e "  [5] Claude 3.5 Sonnet  (claude-3-5-sonnet - Coding Specialist)"
-            echo -e "  [6] Claude 3.5 Haiku   (claude-3-5-haiku - Hemat & Cepat)"
-            echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} | ${RED}[H] Hapus Semua${NC}"
-            prompt_user "Pilih nomor model claude (contoh: 1,4 atau A atau H) [default: A]: " claude_sel
-            claude_sel="${claude_sel:-A}"
-        fi
-
-        if [ "$SELECTED_UNIVERSAL" = true ]; then
-            echo -e "\n${CYAN}--- Model Universal API (Zero-CLI / DeepSeek) ---${NC}"
-            echo -e "  [1] DeepSeek Chat V3/V4  (deepseek-chat - Official)"
-            echo -e "  [2] DeepSeek Reasoner R1 (deepseek-reasoner - Official)"
-            echo -e "  [3] DeepSeek V4          (deepseek/deepseek-v4 - OpenRouter)"
-            echo -e "  [4] DeepSeek V3          (deepseek/deepseek-chat - OpenRouter)"
-            echo -e "  [5] DeepSeek R1          (deepseek/deepseek-r1 - OpenRouter)"
-            echo -e "  [6] Claude 3.7 Sonnet    (anthropic/claude-3.7-sonnet - OpenRouter)"
-            echo -e "  [7] GPT-4o               (openai/gpt-4o - OpenRouter)"
-            echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} | ${RED}[H] Hapus Semua${NC}"
-            prompt_user "Pilih nomor model universal (contoh: 1,2 atau A atau H) [default: A]: " univ_sel
-            univ_sel="${univ_sel:-A}"
         fi
 
         # Filter dan tulis ke data/models.json menggunakan Node.js
@@ -333,25 +296,6 @@ choose_models() {
           { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)', badge: 'Open' }
         ];
 
-        const allClaude = [
-          { id: 'sonnet', name: 'Claude Sonnet (Default - Cepat & Cerdas)', badge: 'Default' },
-          { id: 'opus', name: 'Claude Opus (Penalaran Kompleks)', badge: 'Kuat' },
-          { id: 'haiku', name: 'Claude Haiku (Ultra Cepat & Ringan)', badge: 'Cepat' },
-          { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet (Hybrid Reasoning)', badge: 'Thinking' },
-          { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet (Coding Specialist)', badge: 'Populer' },
-          { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku (Cost Efficient)', badge: 'Hemat' }
-        ];
-
-        const allUniv = [
-          { id: 'deepseek-chat', name: 'DeepSeek Chat (V3 / V4 - Cepat & Cerdas)', badge: 'Official' },
-          { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner (R1 - Penalaran Mendalam)', badge: 'Official' },
-          { id: 'deepseek/deepseek-v4', name: 'DeepSeek V4 (OpenRouter)', badge: 'Terbaru' },
-          { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3 (OpenRouter)', badge: 'Rekomendasi' },
-          { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1 (OpenRouter)', badge: 'Thinking' },
-          { id: 'anthropic/claude-3.7-sonnet', name: 'Claude 3.7 Sonnet (OpenRouter)', badge: 'Thinking' },
-          { id: 'openai/gpt-4o', name: 'GPT-4o (OpenRouter)', badge: 'Flagship' }
-        ];
-
         function filterList(list, input) {
           const val = (input || '').trim().toUpperCase();
           if (val === 'H' || val === 'NONE' || val === '0') return [];
@@ -362,9 +306,7 @@ choose_models() {
         }
 
         const out = {
-          agyModels: filterList(allAgy, '${agy_sel}'),
-          claudeModels: filterList(allClaude, '${claude_sel}'),
-          universalModels: filterList(allUniv, '${univ_sel}')
+          agyModels: filterList(allAgy, '${agy_sel}')
         };
 
         fs.writeFileSync(path.join('data', 'models.json'), JSON.stringify(out, null, 2));
@@ -383,23 +325,6 @@ choose_models() {
             { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Thinking)', badge: 'Populer' },
             { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)', badge: 'Kuat' },
             { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)', badge: 'Open' }
-          ],
-          claudeModels: [
-            { id: 'sonnet', name: 'Claude Sonnet (Default - Cepat & Cerdas)', badge: 'Default' },
-            { id: 'opus', name: 'Claude Opus (Penalaran Kompleks)', badge: 'Kuat' },
-            { id: 'haiku', name: 'Claude Haiku (Ultra Cepat & Ringan)', badge: 'Cepat' },
-            { id: 'claude-3-7-sonnet', name: 'Claude 3.7 Sonnet (Hybrid Reasoning)', badge: 'Thinking' },
-            { id: 'claude-3-5-sonnet', name: 'Claude 3.5 Sonnet (Coding Specialist)', badge: 'Populer' },
-            { id: 'claude-3-5-haiku', name: 'Claude 3.5 Haiku (Cost Efficient)', badge: 'Hemat' }
-          ],
-          universalModels: [
-            { id: 'deepseek-chat', name: 'DeepSeek Chat (V3 / V4 - Cepat & Cerdas)', badge: 'Official' },
-            { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner (R1 - Penalaran Mendalam)', badge: 'Official' },
-            { id: 'deepseek/deepseek-v4', name: 'DeepSeek V4 (OpenRouter)', badge: 'Terbaru' },
-            { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3 (OpenRouter)', badge: 'Rekomendasi' },
-            { id: 'deepseek/deepseek-r1', name: 'DeepSeek R1 (OpenRouter)', badge: 'Thinking' },
-            { id: 'anthropic/claude-3.7-sonnet', name: 'Claude 3.7 Sonnet (OpenRouter)', badge: 'Thinking' },
-            { id: 'openai/gpt-4o', name: 'GPT-4o (OpenRouter)', badge: 'Flagship' }
           ]
         };
         fs.writeFileSync(path.join('data', 'models.json'), JSON.stringify(out, null, 2));
@@ -540,16 +465,6 @@ install_agy_cli() {
     fi
 }
 
-install_claude_cli() {
-    echo -e "\n${BLUE}Memeriksa Claude Code CLI...${NC}"
-    if ! command -v claude &>/dev/null; then
-        echo -e "${YELLOW}Claude Code CLI belum terpasang. Memasang via npm...${NC}"
-        npm install -g @anthropic-ai/claude-code 2>/dev/null || sudo npm install -g @anthropic-ai/claude-code 2>/dev/null || npm install @anthropic-ai/claude-code || true
-    else
-        echo -e "${GREEN}✓ Claude Code CLI terdeteksi: $(command -v claude)${NC}"
-    fi
-}
-
 install_pi_cli() {
     echo -e "\n${BLUE}Memeriksa Pi Coding Agent CLI...${NC}"
     if ! command -v pi &>/dev/null; then
@@ -564,7 +479,7 @@ setup_directories() {
     echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
     mkdir -p projects
     if [ -d "telegram-ai-agent" ]; then
-        mkdir -p telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/claude_auth telegram-ai-agent/public
+        mkdir -p telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/public
     else
         mkdir -p data logs uploads
     fi
@@ -609,7 +524,6 @@ setup_env_file() {
 
     # Deteksi path binary aktual di sistem ini
     ACTUAL_AGY_BIN="$(command -v agy || echo "$HOME/.local/bin/agy")"
-    ACTUAL_CLAUDE_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
 
     # Perbarui path binary & default engine di .env jika belum diset
     if grep -q "^AGY_BIN=" "$env_file"; then
@@ -618,14 +532,6 @@ setup_env_file() {
         fi
     else
         echo "AGY_BIN=${ACTUAL_AGY_BIN}" >> "$env_file"
-    fi
-
-    if grep -q "^CLAUDE_BIN=" "$env_file"; then
-        if [ -n "$ACTUAL_CLAUDE_BIN" ] && [ -x "$ACTUAL_CLAUDE_BIN" ]; then
-            sed -i.bak "s|^CLAUDE_BIN=.*|CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}|" "$env_file" && rm -f "$env_file.bak"
-        fi
-    else
-        echo "CLAUDE_BIN=${ACTUAL_CLAUDE_BIN}" >> "$env_file"
     fi
 
     if ! grep -q "^CLI_ENGINE=" "$env_file"; then
@@ -638,14 +544,6 @@ setup_env_file() {
 
     if ! grep -q "^AGY_MODEL=" "$env_file"; then
         echo "AGY_MODEL=gemini-3.8-flash-medium" >> "$env_file"
-    fi
-
-    if ! grep -q "^UNIVERSAL_BASE_URL=" "$env_file"; then
-        echo "UNIVERSAL_BASE_URL=https://api.deepseek.com/v1" >> "$env_file"
-    fi
-
-    if ! grep -q "^UNIVERSAL_MODEL=" "$env_file"; then
-        echo "UNIVERSAL_MODEL=" >> "$env_file"
     fi
 
     # Cek apakah BOT_TOKEN dan ALLOWED_TELEGRAM_IDS sudah terisi
@@ -678,7 +576,7 @@ setup_env_file() {
 }
 
 # ==============================================================================
-# UNIVERSAL STANDALONE BINARY BUNDLE & 24/7 BACKGROUND SERVICE
+# STANDALONE BINARY BUNDLE & 24/7 BACKGROUND SERVICE
 # ==============================================================================
 setup_binary_bundle_and_service() {
     resolve_workspace_and_agent_dirs
@@ -1165,10 +1063,9 @@ setup_github_cli
 if [ "$SELECTED_AGY" = true ]; then
     install_agy_cli
 fi
-if [ "$SELECTED_CLAUDE" = true ]; then
-    install_claude_cli
+if [ "$SELECTED_PI" = true ]; then
+    install_pi_cli
 fi
-install_pi_cli
 
 # 4. Direktori & .env
 setup_directories

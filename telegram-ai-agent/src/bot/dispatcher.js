@@ -5,7 +5,6 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   AGY_BIN,
-  CLAUDE_BIN,
   PI_BIN,
   DEFAULT_PI_MODEL,
   TIMEOUT_MS,
@@ -21,7 +20,6 @@ import {
   getAllowedFolders,
   detectProjectFromText,
 } from "../services/sandbox-service.js";
-import { syncPiModelDirectly } from "../services/pi-service.js";
 import {
   getUserConversationId,
   getUserAgyConversationId,
@@ -30,12 +28,8 @@ import {
   setUserEngine,
   getUserAgyModel,
   setUserAgyModel,
-  getUserClaudeModel,
-  getUserUniversalModel,
   getUserPiModel,
   setUserPiModel,
-  isClaudeSessionStarted,
-  markClaudeSessionStarted,
   isPiSessionStarted,
   markPiSessionStarted,
   getUserModel,
@@ -56,7 +50,6 @@ import {
   isProjectBusy,
 } from "../services/cli-runner.js";
 import { truncate, sendSmartReply, stripAnsi } from "../services/telegram-files.js";
-import { runUniversalAgent, hasUniversalMessages } from "../universal-agent.js";
 import {
   GITHUB_ISSUE_REGEX,
   fetchIssueDetails,
@@ -74,7 +67,7 @@ import {
   resumeQueue,
 } from "../services/queue-service.js";
 import { ensureProjectsIndexed } from "../services/project-indexer.js";
-import { recordUsage, getAgySessionTokens, recordAgySessionUsage } from "../services/usage-service.js";
+import { getAgySessionTokens, recordAgySessionUsage } from "../services/usage-service.js";
 import {
   searchMemories,
   formatMemoriesForPrompt,
@@ -90,7 +83,6 @@ import {
   executeSwarm,
   WORKER_PROFILES,
 } from "../services/swarm-service.js";
-import { resolveDynamicUniversalModel } from "../config/models.js";
 import { detectTargetProject } from "../services/project-detector.js";
 
 /**
@@ -159,7 +151,7 @@ export async function processAutonomousOutput(rawText) {
   };
 }
 
-// Fungsi inti eksekusi instruksi AI (CLI atau Universal API)
+// Fungsi inti eksekusi instruksi AI (CLI pi / agy)
 export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null, targetProject = null, engineOverride = null, _fallbackAttempted = false }) {
   const userId = ctx.from?.id;
   const taskId = id || randomUUID().slice(0, 8);
@@ -237,12 +229,9 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     const engine = engineOverride || await getUserEngine(userId);
     const userModel = await getUserModel(userId, engine);
     const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
-    const hasUniversal = engine === "universal" && convId && hasUniversalMessages(convId);
     const isOngoingSession = Boolean(
-      (engine === "claude" && (await isClaudeSessionStarted(convId))) ||
       (engine === "agy" && agyConvId) ||
-      (engine === "pi" && (await isPiSessionStarted(convId))) ||
-      hasUniversal
+      (engine === "pi" && (await isPiSessionStarted(convId)))
     );
 
     const currentQueueLen = getQueueLength();
@@ -419,216 +408,7 @@ ${userMessage}
 `.trim();
     }
 
-    // Engine 3: Universal / Pi Agent (Zero-CLI / Built-in Tools)
-    if (engine === "universal") {
-      const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-        const isCustomServer =
-          universalBaseUrl.startsWith("http://") ||
-          universalBaseUrl.includes(":") ||
-          universalBaseUrl.includes("localhost") ||
-          !universalBaseUrl.includes("deepseek.com");
 
-        let universalApiKey =
-          process.env.UNIVERSAL_API_KEY ||
-          process.env.OPENROUTER_API_KEY ||
-          process.env.OPENAI_API_KEY ||
-          process.env.DEEPSEEK_API_KEY;
-
-        if (!universalApiKey && isCustomServer) {
-          universalApiKey = "sk-no-key-required";
-        }
-
-        if (!universalApiKey) {
-          clearInterval(typingInterval);
-          clearActiveTask(taskId);
-          await ctx.reply(
-            "⚠️ *API Key Universal belum diisi!*\n\nUntuk menggunakan engine Universal / Pi Server, gunakan perintah:\n👉 `/setkey <api_key>`\n_Atau buka Web Control Panel di http://localhost:3030 (jika server Pi/lokal tidak butuh auth, isi dummy seperti `sk-local`)._",
-            { parse_mode: "Markdown" }
-          );
-          processNextQueue().catch(() => {});
-          return;
-        }
-
-        let universalModel = (engine === "universal" && userModel) ? userModel : await getUserUniversalModel(userId);
-        if (!universalModel || universalModel === "auto") {
-          universalModel = (process.env.UNIVERSAL_MODEL || "").trim();
-        }
-
-        // Auto-get model langsung dari server jika belum diset atau eksplisit auto
-        if (isCustomServer && (!universalModel || universalModel === "auto")) {
-          try {
-            const dynamicModel = await resolveDynamicUniversalModel(universalBaseUrl, universalApiKey);
-            if (dynamicModel) {
-              universalModel = dynamicModel;
-            }
-          } catch {
-            // Lanjut jika gagal
-          }
-        }
-
-        let workingDir = isProjectJail
-          ? path.resolve(PROJECTS_DIR, userActiveProject)
-          : (isCustomRole && allowedList[0]
-              ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
-              : PROJECTS_DIR);
-
-        try {
-          if (!fs.existsSync(workingDir)) {
-            await mkdir(workingDir, { recursive: true });
-          }
-        } catch (_) {
-          workingDir = fs.existsSync(PROJECTS_DIR) ? PROJECTS_DIR : process.cwd();
-        }
-
-        // Untuk Universal Engine: pisahkan user message murni dari system prompt persona
-        // agar tidak membengkakkan token context window di server Pi
-        let userTurnPrompt = userMessage;
-        if (fileInfoPrompt) userTurnPrompt += `\n\n${fileInfoPrompt}`;
-        if (issueInfoPrompt) userTurnPrompt += `\n\n${issueInfoPrompt}`;
-
-        const abortController = new AbortController();
-        task.abortController = abortController;
-
-        const onInvokeSubagent = async ({ task: subTask, target_project = "" }) => {
-          const activeWorkers = getActiveWorkers();
-          const usedNames = new Set(activeWorkers.map((w) => w.name));
-          const profile = WORKER_PROFILES.find((p) => !usedNames.has(p.name)) || WORKER_PROFILES[activeWorkers.length % WORKER_PROFILES.length];
-          const subWorkerId = `sub-${randomUUID().slice(0, 6)}`;
-
-          if (ctx.chat?.id) {
-            ctx.reply(
-              `🤖 *[Subagent ${profile.name} ${profile.emoji}] Diaktifkan!*\n` +
-              `📌 _"${truncate(subTask, 80)}"_${target_project ? ` (\`projects/${target_project}\`)` : ""}\n` +
-              `⏱ _Subagent sedang bekerja otonom di server..._`,
-              { parse_mode: "Markdown" }
-            ).catch(() => {});
-          }
-
-          const subCwd = target_project
-            ? path.resolve(PROJECTS_DIR, target_project.replace(/^projects\//, ""))
-            : workingDir;
-
-          const subSystemPrompt = `Kamu adalah Subagent [${profile.name} ${profile.emoji}] dari TH Agent yang bekerja otonom di server.
-Selesaikan tugas spesifik ini sampai tuntas menggunakan tools yang tersedia tanpa meminta konfirmasi (Zero-Confirmation).
-Berikan ringkasan hasil yang padat, jelas, dan to the point.`;
-
-          registerWorker(subWorkerId, {
-            id: subWorkerId,
-            name: profile.name,
-            emoji: profile.emoji,
-            title: subTask,
-            targetProject: target_project || "",
-          });
-
-          try {
-            const res = await runAgentAutonomous({
-              prompt: subTask,
-              convId: `sub-${subWorkerId}`,
-              userId,
-              cwd: subCwd,
-              systemPrompt: subSystemPrompt,
-              engineOverride: engine,
-              onSpawn: (child) => {
-                const w = activeWorkers.find((x) => x.id === subWorkerId);
-                if (w) {
-                  w.process = child?.kill ? child : null;
-                  w.abortController = child?.abortController || null;
-                }
-              },
-            });
-            unregisterWorker(subWorkerId);
-            if (ctx.chat?.id) {
-              ctx.reply(
-                `✅ *[Subagent ${profile.name} ${profile.emoji}] Selesai!*\n` +
-                `📌 _"${truncate(subTask, 60)}"_\n\n${truncate(res.output || "Tugas selesai.", 600)}`,
-                { parse_mode: "Markdown" }
-              ).catch(() => {});
-            }
-            return res.output || "Subagent selesai tanpa output.";
-          } catch (subErr) {
-            unregisterWorker(subWorkerId);
-            return `Error subagent: ${subErr.message}`;
-          }
-        };
-
-        const fullSystemPrompt = `Kamu adalah TH Agent, asisten software engineer cowok (pria) yang memiliki AKSES PENUH & 100% OTONOM di server ini melalui tools mandiri (execute_command, read_file, write_file, list_directory, invoke_subagent).
-
-PERSONA & GAYA KOMUNIKASI:
-- Persona: Cowok programmer senior yang ramah, asik, cerdas, solutif, dan bisa diandalkan.
-- Gaya Bicara: Santai dan akrab layaknya rekan kerja/bro sesama developer (bisa pakai sapaan 'bro', 'mas', dsb.), tidak kaku, namun tetap profesional dan to the point saat membahas kode/solusi teknis.
-
-PRINSIP UTAMA: ZERO-CONFIRMATION & AKSES PENUH:
-1. DILARANG KERAS BERTANYA BALIK MEMINTA IZIN ATAU KONFIRMASI (seperti "apakah ingin dijalankan?", "boleh saya buat filenya?"). Pertanyaan semacam ini dilarang karena memperlama proses eksekusi.
-2. LANGSUNG EKSEKUSI tugas secara nyata menggunakan tools yang kamu miliki sampai selesai tuntas.
-${isProjectJail ? `3. ATURAN KETAT WORKSPACE SANDBOX (OPSI 1 - PROJECT JAIL AKTIF): Ruang lingkup kerja kamu TERKUNCI 100% HANYA di dalam folder proyek: 'projects/${userActiveProject}'. Dilarang keras mengakses, membaca, membuat, memodifikasi file, atau menjalankan perintah terminal di luar direktori proyek tersebut.` : (isCustomRole ? `3. ATURAN SCOPE ENGINE (ROLE CUSTOM): Seluruh pengerjaan dan eksekusi proyek coding dibatasi HANYA di dalam folder: ${allowedDisplay}. Dilarang mengeksekusi proyek di luar folder tersebut.` : "3. LINGKUNGAN SERVER & AKSES PROYEK: Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.).")}
-4. Ambil inisiatif teknis terbaik secara mandiri, jalankan perintah shell, buat/edit file yang dibutuhkan, uji/test jika perlu, dan laporkan hasil jadinya dengan santai, ramah, dan profesional.
-5. FITUR MULTI-SUBAGENT SPESIALIS (ZERO-QUEUE & DELEGASI OTONOM):
-   Kamu bertindak sebagai Primary Tech Lead & Dispatcher yang merespons chat Bos secara instan (< 2 detik).
-   Jika ada tugas berat (perencanaan, riset, coding panjang, QA, DevOps, atau git release), gunakan tool 'invoke_subagent' untuk mendelegasikannya ke subagent spesialis di background agar antrean chat Telegram tidak mengalami blocking:
-   - Planner: Merancang arsitektur & step-by-step task.
-   - SkillSpecialist: Riset dokumentasi & validasi standar teknis.
-   - Executor: Eksekusi coding, build, dan modifikasi kode proyek.
-   - QATester: Pengujian endpoint API & verifikasi bug sebelum rilis.
-   - DevOps: Manajemen server, Nginx, SSL, PM2, dan port.
-   - GitSync: Auto-commit rapi, rebase, dan push otonom ke GitHub.
-${queueStatusPrompt ? `\n${queueStatusPrompt}\n` : ""}
-${availableProjectsPrompt ? `${availableProjectsPrompt}\n` : ""}${projectsSummaryPrompt ? `${projectsSummaryPrompt}\n` : ""}
-FITUR OTONOM: PERSISTENT MEMORY & AUTO-SKILL CREATION:
-1. Persistent Vector Memory:
-   Jika developer menyampaikan preferensi, aturan kerja, port container, atau fakta penting yang harus selalu diingat lintas sesi, kamu BISA menyimpan memori baru dengan menyisipkan blok tag berikut di akhir jawabanmu:
-   :::memory:add {"content": "Deskripsi fakta yang diingat", "category": "preference|architecture|workflow|solution", "tags": ["tag1", "tag2"]}:::
-2. Auto-Skill Creation:
-   Jika kamu berhasil menyelesaikan masalah kompleks, deployment khusus, atau prosedur berulang yang sangat bernilai untuk dipakai kembali di masa depan, kamu BISA membuat skill baru secara otomatis dengan menyisipkan tag:
-   :::skill:add {"id": "nama-skill-kebab-case", "name": "Judul Skill", "description": "Kegunaan skill", "triggers": ["trigger 1", "trigger 2"], "instructions": "Langkah-langkah instruksi..."}:::
-   Sistem akan otomatis menyimpan dan mengindeks skill tersebut ke dalam persistent storage.
-
-ATURAN FORMAT OUTPUT TELEGRAM (RINGKAS & TO-THE-POINT):
-- Jawaban WAJIB RINGKAS, PADAT, dan FOKUS KE POIN PENTING & KESIMPULAN (Summary).
-- DILARANG KERAS men-dump log terminal mentah panjang, seluruh baris kode, atau rincian berbelit-belit yang membuat pesan terpotong!
-- Cukup sampaikan: (1) Apa yang dilakukan/diperbaiki, (2) Poin perubahan penting, (3) Status akhir.
-${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}`.trim();
-
-        try {
-          const replyText = await runUniversalAgent({
-            prompt: userTurnPrompt,
-            convId,
-            apiKey: universalApiKey,
-            baseUrl: universalBaseUrl,
-            model: universalModel,
-            workingDir,
-            sandboxed: isCustomRole,
-            abortSignal: abortController.signal,
-            systemPrompt: fullSystemPrompt,
-            onToolStart: () => {
-              sendTyping();
-            },
-            onInvokeSubagent,
-            onUsage: (u) => {
-              recordUsage({
-                userId,
-                engine: "universal",
-                model: universalModel,
-                inputTokens: u.inputTokens,
-                outputTokens: u.outputTokens,
-                convId,
-              }).catch(() => {});
-            },
-          });
-
-          const { cleanedText } = await processAutonomousOutput(replyText);
-          await sendSmartReply(ctx, cleanedText);
-        } catch (err) {
-          console.error(`[Universal Agent Error]:`, err.message);
-          await ctx.reply(`❌ Maaf, Universal Agent mengalami kendala:\n${err.message}`);
-        } finally {
-          clearInterval(typingInterval);
-          clearActiveTask(taskId);
-          processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
-        }
-        return;
-    }
-
-    const isClaude = engine === "claude";
     const isPi = engine === "pi";
 
     const executeCli = async (sessionFlagOverride = null) => {
@@ -684,24 +464,6 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
             cliArgs.unshift("--provider", "local-pi", "--model", piModel);
           }
         }
-      } else if (isClaude) {
-        binToRun = CLAUDE_BIN;
-        const isStarted = await isClaudeSessionStarted(convId);
-        const sessionFlag = sessionFlagOverride || (isStarted ? "--resume" : "--session-id");
-        const claudeModel = await getUserClaudeModel(userId);
-        cliArgs = [
-          sessionFlag,
-          convId,
-          "--model",
-          claudeModel,
-          "-p",
-          prompt,
-          "--output-format",
-          "text",
-        ];
-        if (AUTO_APPROVE_PERMISSIONS) {
-          cliArgs.push("--dangerously-skip-permissions", "--permission-mode", "bypassPermissions");
-        }
       } else {
         binToRun = AGY_BIN;
         const agyModel = (engine === "agy" && userModel) ? userModel : await getUserAgyModel(userId);
@@ -731,14 +493,10 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
       sanitizedEnv.CI = "true";
       sanitizedEnv.NONINTERACTIVE = "1";
       sanitizedEnv.DEBIAN_FRONTEND = "noninteractive";
-      sanitizedEnv.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS = "1";
       sanitizedEnv.QUEUE_LENGTH = String(currentQueueLen);
       sanitizedEnv.HAS_PENDING_QUEUE = currentQueueLen > 0 ? "1" : "0";
       sanitizedEnv.QUEUE_STATUS_FILE = path.join(process.cwd(), "data", "queue-status.json");
 
-      if (process.env.CLAUDE_AUTH_TYPE === "oauth") {
-        delete sanitizedEnv.ANTHROPIC_API_KEY;
-      }
       if (process.env.AGY_AUTH_TYPE === "oauth") {
         delete sanitizedEnv.GEMINI_API_KEY;
       }
@@ -801,35 +559,17 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
         clearTimeout(timer);
         clearTimeout(killTimer);
 
-        // Auto-recovery sesi Claude Code
-        if (isClaude && !task.cancelled) {
-          const fullErr = (stderr + "\n" + stdout).toLowerCase();
-          if (fullErr.includes("already in use") && sessionFlagOverride !== "--resume") {
-            console.log(`[Claude Session] Sesi ${convId} sudah ada di Claude, beralih ke --resume...`);
-            await markClaudeSessionStarted(convId, true);
-            return executeCli("--resume");
-          }
-          if (fullErr.includes("no conversation found") && sessionFlagOverride !== "--session-id") {
-            console.log(`[Claude Session] Sesi ${convId} belum terdaftar, beralih ke --session-id...`);
-            await markClaudeSessionStarted(convId, false);
-            return executeCli("--session-id");
-          }
-          if (code === 0) {
-            await markClaudeSessionStarted(convId, true);
-          }
-        }
-
         if (isPi && code === 0) {
           await markPiSessionStarted(convId, true);
         }
 
         clearInterval(typingInterval);
 
-        const engineLabel = isPi ? "Pi Coding Agent CLI" : (isClaude ? "Claude Code" : "Antigravity");
+        const engineLabel = isPi ? "Pi Coding Agent CLI" : "Antigravity";
         let responseText = "";
         let jsonError = null;
 
-        if (!isClaude && !isPi) {
+        if (!isPi) {
           const rawOutput = stdout.trim();
           let parsed = null;
           try {
@@ -948,21 +688,15 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
               }
             }
 
-            // 2. Chain antar-engine: pi → agy → claude → universal → (stop)
-            const fallbackChain = { pi: "agy", agy: "claude", claude: "universal" };
+            // 2. Chain antar-engine: pi → agy → (stop)
+            const fallbackChain = { pi: "agy" };
             const nextEngine = fallbackChain[currentEngine];
 
             if (nextEngine) {
               task._fallbackAttempted = true;
               await setUserEngine(userId, nextEngine);
               const nextLabel =
-                nextEngine === "pi"
-                  ? "Pi Coding Agent CLI"
-                  : nextEngine === "claude"
-                  ? "Claude Code CLI"
-                  : nextEngine === "agy"
-                  ? "Antigravity CLI"
-                  : "Universal API";
+                nextEngine === "pi" ? "Pi Coding Agent CLI" : "Antigravity CLI";
               const resetMatch = errText.match(/Resets in (\d+h\d+m\d+s|\d+m\d+s)/);
               const resetInfo = resetMatch ? ` *(quota reset: ${resetMatch[1]})*` : "";
 
@@ -990,7 +724,7 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
               return;
             } else {
               // Semua engine sudah dicoba
-              errText = "❌ Semua engine sudah mencapai limit quota! Tunggu quota reset atau konfigurasi API key Universal di .env";
+              errText = "❌ Semua engine sudah mencapai limit quota! Tunggu quota reset atau ganti model/engine secara manual.";
               await ctx.reply(errText, { parse_mode: "Markdown" }).catch(() => ctx.reply(errText));
               processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
               return;
@@ -1005,8 +739,6 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
           } else if (errText.includes("ENOENT")) {
             const installHint = isPi
               ? "\n\n💡 *Solusi:* Install binary Pi CLI secara global:\n`npm install -g @earendil-works/pi-coding-agent`"
-              : isClaude
-              ? "\n\n💡 *Solusi:* Install binary Claude Code:\n`npm install -g @anthropic-ai/claude-code`"
               : "";
             errText = `❌ *Kendala Eksekusi Engine (${engineLabel})*\n\n${truncate(errText, 500)}\n\n💡 _Kemungkinan penyebab: Binary CLI atau direktori kerja proyek tidak ditemukan di server._${installHint}`;
           } else {
@@ -1260,74 +992,10 @@ export async function runAgentAutonomous({
   const engine = engineOverride || (userId ? await getUserEngine(userId) : process.env.CLI_ENGINE || "agy");
   const actualConvId = convId || `auto-${randomUUID().slice(0, 8)}`;
 
-  // 1. Engine: Universal API (Zero-CLI)
-  if (engine === "universal") {
-    const universalBaseUrl = process.env.UNIVERSAL_BASE_URL || "http://127.0.0.1:46315/v1";
-    const isCustomServer =
-      universalBaseUrl.startsWith("http://") ||
-      universalBaseUrl.includes(":") ||
-      universalBaseUrl.includes("localhost") ||
-      !universalBaseUrl.includes("deepseek.com");
 
-    const rawApiKey =
-      process.env.UNIVERSAL_API_KEY ||
-      process.env.OPENROUTER_API_KEY ||
-      process.env.OPENAI_API_KEY ||
-      process.env.DEEPSEEK_API_KEY;
-
-    if (!rawApiKey && !isCustomServer) {
-      throw new Error("UNIVERSAL_API_KEY belum dikonfigurasi di file .env atau Web Control Panel.");
-    }
-    const universalApiKey = rawApiKey || "sk-pi";
-
-    let universalModel = userId ? await getUserUniversalModel(userId) : (process.env.UNIVERSAL_MODEL || "");
-
-    // Jika model belum diset (kosong atau 'auto'), ambil secara dinamis langsung dari server
-    if (!universalModel || universalModel === "auto") {
-      try {
-        const dynamicModel = await resolveDynamicUniversalModel(universalBaseUrl, universalApiKey);
-        if (dynamicModel) {
-          universalModel = dynamicModel;
-          console.log(`[Universal Agent] Model dinamis terpilih dari server: ${universalModel}`);
-        }
-      } catch (e) {
-        console.warn("[Universal Agent] Gagal auto-detect model dinamis:", e.message);
-      }
-    }
-
-    if (!universalModel) {
-      throw new Error(
-        `Model Universal API belum ditentukan dan server di ${universalBaseUrl} tidak merespon daftar model otomatis (/v1/models). Silakan atur model via command /model <id> atau isi UNIVERSAL_MODEL di pengaturan.`
-      );
-    }
-
-    const abortController = new AbortController();
-    if (typeof onSpawn === "function") {
-      onSpawn({
-        pid: `universal-${actualConvId}`,
-        abortController,
-        kill: () => abortController.abort(),
-      });
-    }
-
-    const replyText = await runUniversalAgent({
-      prompt,
-      convId: actualConvId,
-      apiKey: universalApiKey,
-      baseUrl: universalBaseUrl,
-      model: universalModel,
-      systemPrompt: systemPrompt || "Kamu adalah TH Agent, asisten AI software engineer cowok (pria) yang otonom, ramah, dan solutif.",
-      workingDir: cwd,
-      abortSignal: abortController.signal,
-    });
-
-    return { ok: true, output: replyText };
-  }
-
-  // 2. Engine: CLI (pi, agy, atau claude)
-  const isClaude = engine === "claude";
+  // 2. Engine: CLI (pi atau agy)
   const isPi = engine === "pi";
-  const binToRun = isPi ? PI_BIN : (isClaude ? CLAUDE_BIN : AGY_BIN);
+  const binToRun = isPi ? PI_BIN : AGY_BIN;
 
   let cliArgs = [];
   if (isPi) {
@@ -1344,12 +1012,6 @@ export async function runAgentAutonomous({
       } else {
         cliArgs.unshift("--provider", "local-pi", "--model", piModel);
       }
-    }
-  } else if (isClaude) {
-    const claudeModel = userId ? await getUserClaudeModel(userId) : (process.env.CLAUDE_MODEL || "sonnet");
-    cliArgs = ["--session-id", actualConvId, "--model", claudeModel, "-p", prompt, "--output-format", "text"];
-    if (AUTO_APPROVE_PERMISSIONS) {
-      cliArgs.push("--dangerously-skip-permissions", "--permission-mode", "bypassPermissions");
     }
   } else {
     const agyModel = userId ? await getUserAgyModel(userId) : (process.env.AGY_MODEL || "gemini-3.8-flash-medium");
@@ -1377,13 +1039,9 @@ export async function runAgentAutonomous({
   sanitizedEnv.CI = "true";
   sanitizedEnv.NONINTERACTIVE = "1";
   sanitizedEnv.DEBIAN_FRONTEND = "noninteractive";
-  sanitizedEnv.CLAUDE_CODE_DANGEROUSLY_SKIP_PERMISSIONS = "1";
 
   if (process.env.GITHUB_TOKEN) {
     sanitizedEnv.GH_TOKEN = process.env.GITHUB_TOKEN;
-  }
-  if (process.env.CLAUDE_AUTH_TYPE === "oauth") {
-    delete sanitizedEnv.ANTHROPIC_API_KEY;
   }
   if (process.env.AGY_AUTH_TYPE === "oauth") {
     delete sanitizedEnv.GEMINI_API_KEY;
@@ -1414,7 +1072,7 @@ export async function runAgentAutonomous({
   });
 
   if (res.code === 0 && res.stdout) {
-    if (!isClaude && !isPi) {
+    if (!isPi) {
       try {
         let parsed = null;
         try {

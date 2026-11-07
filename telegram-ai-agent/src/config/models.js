@@ -16,25 +16,6 @@ export const DEFAULT_AGY_MODELS = [
   { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)", badge: "Open" },
 ];
 
-export const DEFAULT_CLAUDE_MODELS = [
-  { id: "sonnet", name: "Claude Sonnet (Default - Cepat & Cerdas)", badge: "Default" },
-  { id: "opus", name: "Claude Opus (Penalaran Kompleks & Mendalam)", badge: "Kuat" },
-  { id: "haiku", name: "Claude Haiku (Ultra Cepat & Ringan)", badge: "Cepat" },
-  { id: "fable", name: "Claude Fable (Experimental Creative Agent)", badge: "Eksperimental" },
-  { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
-  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
-  { id: "claude-3.5-sonnet", name: "Claude 3.5 Sonnet (Dot Notation)", badge: "Populer" },
-  { id: "claude-3-5-haiku", name: "Claude 3.5 Haiku (Fast & Cost Efficient)", badge: "Hemat" },
-  { id: "claude-3-opus", name: "Claude 3 Opus (Deep Analysis)", badge: "Maksimal" },
-];
-
-export const DEFAULT_UNIVERSAL_MODELS = [
-  { id: "pi-qwen2.5-coder-32b", name: "Qwen 2.5 Coder 32B (Pi Server)", badge: "Pi" },
-  { id: "pi-deepseek-r1-7b", name: "DeepSeek R1 7B (Pi Server)", badge: "Pi" },
-  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Pi / LiteLLM)", badge: "Pi" },
-  { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Pi / LiteLLM)", badge: "Pi" },
-];
-
 export const DEFAULT_PI_MODELS = [
   { id: "openai/gpt-oss-120b", name: "GPT-OSS 120B (Groq - Ultra Cepat)", badge: "Rekomendasi" },
   { id: "pi-deepseek-r1-7b", name: "DeepSeek R1 7B (Local Pi Server)", badge: "Lokal" },
@@ -42,8 +23,6 @@ export const DEFAULT_PI_MODELS = [
 ];
 
 export const AVAILABLE_AGY_MODELS = DEFAULT_AGY_MODELS;
-export const AVAILABLE_CLAUDE_MODELS = DEFAULT_CLAUDE_MODELS;
-export const AVAILABLE_UNIVERSAL_MODELS = DEFAULT_UNIVERSAL_MODELS;
 export const AVAILABLE_PI_MODELS = DEFAULT_PI_MODELS;
 export const AVAILABLE_MODELS = AVAILABLE_AGY_MODELS;
 
@@ -77,52 +56,24 @@ export async function saveCustomModels(customData) {
 // HANYA MODEL YANG DITAMBAHKAN YANG BOLEH MUNCUL!
 export async function getModelList(engine) {
   const custom = await loadCustomModels();
-  const engineKey =
-    engine === "claude"
-      ? "claudeModels"
-      : engine === "universal"
-      ? "universalModels"
-      : engine === "pi"
-      ? "piModels"
-      : "agyModels";
+  const engineKey = engine === "pi" ? "piModels" : "agyModels";
 
   if (custom && Array.isArray(custom[engineKey]) && custom[engineKey].length > 0) {
     return custom[engineKey];
   }
 
   if (engine === "pi") {
-    if (custom && Array.isArray(custom.universalModels) && custom.universalModels.length > 0) {
-      return custom.universalModels;
-    }
-    const uniUrl = process.env.UNIVERSAL_BASE_URL;
-    const uniKey = process.env.UNIVERSAL_API_KEY || "";
-    if (uniUrl) {
+    const serverUrl = process.env.PI_SERVER_URL;
+    const serverKey = process.env.PI_SERVER_API_KEY || "";
+    if (serverUrl) {
       try {
-        const remote = await fetchRemoteModels(uniUrl, uniKey);
+        const remote = await fetchRemoteModels(serverUrl, serverKey);
         if (remote.length > 0) {
           return remote;
         }
       } catch {}
     }
     return AVAILABLE_PI_MODELS;
-  }
-  if (engine === "claude") {
-    return AVAILABLE_CLAUDE_MODELS;
-  }
-  if (engine === "universal") {
-    const uniUrl = process.env.UNIVERSAL_BASE_URL;
-    const uniKey = process.env.UNIVERSAL_API_KEY || "";
-    if (uniUrl) {
-      try {
-        const remote = await fetchRemoteModels(uniUrl, uniKey);
-        if (remote.length > 0) {
-          return remote;
-        }
-      } catch {
-        // Fallback ke default jika endpoint server gagal
-      }
-    }
-    return AVAILABLE_UNIVERSAL_MODELS;
   }
   return AVAILABLE_AGY_MODELS;
 }
@@ -165,32 +116,6 @@ export function normalizePiUrl(rawUrl) {
   }
 
   return url;
-}
-
-/**
- * Mengambil model pertama yang aktif dari remote server (dynamic fallback)
- */
-export async function resolveDynamicUniversalModel(baseUrl, apiKey) {
-  const targetUrl = normalizePiUrl(baseUrl || process.env.UNIVERSAL_BASE_URL || "");
-  const targetKey = apiKey !== undefined ? apiKey : (process.env.UNIVERSAL_API_KEY || "");
-  if (!targetUrl) return "";
-
-  try {
-    const list = await fetchRemoteModels(targetUrl, targetKey);
-    if (list && list.length > 0) {
-      // 1. Cek apakah model yang dikonfigurasi pengguna di Web Settings / .env ada di daftar server Pi
-      const configuredModel = (process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
-      if (configuredModel && configuredModel !== "auto") {
-        const foundConfigured = list.find((m) => m.id.toLowerCase() === configuredModel);
-        if (foundConfigured) return foundConfigured.id;
-      }
-
-      // 2. Ambil langsung model yang di-declare di server Pi (urutan pertama)
-      return list[0].id;
-    }
-  } catch (_) {}
-
-  return "";
 }
 
 // Fetch model real-time dari provider OpenAI-compatible (misal Pi Server / LiteLLM / OpenRouter / Ollama)

@@ -202,7 +202,7 @@ if (
         { command: "compact", description: "Padatkan riwayat sesi agar token hemat" },
         { command: "update", description: "Perbarui TH Agent langsung dari GitHub" },
         { command: "cekupdate", description: "Cek pembaruan baru di GitHub" },
-        { command: "engine", description: "Pilih engine (Antigravity / Claude / Universal)" },
+        { command: "engine", description: "Pilih engine (Pi CLI / Antigravity)" },
         { command: "reset", description: "Mulai sesi percakapan baru" },
         { command: "cancel", description: "Hentikan tugas aktif atau antrean" },
       ])

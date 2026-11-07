@@ -1,75 +1,26 @@
 import { InlineKeyboard } from "grammy";
-import {
-  AVAILABLE_AGY_MODELS,
-  AVAILABLE_CLAUDE_MODELS,
-  AVAILABLE_UNIVERSAL_MODELS,
-  AVAILABLE_PI_MODELS,
-  fetchRemoteModels,
-  getModelList,
-  loadCustomModels,
-} from "../../config/models.js";
+import { getModelList } from "../../config/models.js";
 import {
   getUserEngine,
   getUserAgyModel,
   setUserAgyModel,
-  getUserClaudeModel,
-  setUserClaudeModel,
-  getUserUniversalModel,
-  setUserUniversalModel,
   getUserPiModel,
   setUserPiModel,
-  setGlobalUniversalModel,
 } from "../../services/context-store.js";
-import { updateEnvFile } from "../../services/env-service.js";
 
 export function registerModelHandlers(bot) {
   bot.command(["model", "models"], async (ctx) => {
     const arg = ctx.match?.trim();
     const userId = ctx.from?.id;
     const currentEngine = await getUserEngine(userId);
-    const isClaude = currentEngine === "claude";
-    const isUniversal = currentEngine === "universal";
     const isPi = currentEngine === "pi";
-    let modelList = await getModelList(currentEngine);
+    const modelList = await getModelList(currentEngine);
     const currentModel = isPi
       ? await getUserPiModel(userId)
-      : isClaude
-      ? await getUserClaudeModel(userId)
-      : isUniversal
-      ? await getUserUniversalModel(userId)
       : await getUserAgyModel(userId);
-    const engineLabel = isPi
-      ? "Pi Coding Agent CLI"
-      : isClaude
-      ? "Claude Code CLI"
-      : isUniversal
-      ? "Universal / Pi Server"
-      : "Antigravity CLI";
-
-    let detectedCount = 0;
-    if (isUniversal) {
-      const uniUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-      const uniKey = process.env.UNIVERSAL_API_KEY || "";
-      try {
-        const remote = await fetchRemoteModels(uniUrl, uniKey);
-        if (remote.length > 0) {
-          detectedCount = remote.length;
-          modelList = remote;
-        }
-      } catch {}
-    }
+    const engineLabel = isPi ? "Pi Coding Agent CLI" : "Antigravity CLI";
 
     if (arg) {
-      if (isUniversal && ["auto", "dynamic", "reset", "clear", "default"].includes(arg.toLowerCase())) {
-        await setUserUniversalModel(userId, "");
-        await updateEnvFile({ UNIVERSAL_MODEL: "" });
-        await ctx.reply(
-          `✅ Model untuk *${engineLabel}* diatur ke: *⚡ Auto-Detect (Dynamic)*\nModel akan diambil secara otomatis dari endpoint server saat instruksi dijalankan.`,
-          { parse_mode: "Markdown" }
-        );
-        return;
-      }
-
       const matched = modelList.find(
         (m) => m.id.toLowerCase() === arg.toLowerCase()
       );
@@ -78,13 +29,6 @@ export function registerModelHandlers(bot) {
 
       if (isPi) {
         await setUserPiModel(userId, chosenId);
-      } else if (isClaude) {
-        await setUserClaudeModel(userId, chosenId);
-      } else if (isUniversal) {
-        await setUserUniversalModel(userId, chosenId);
-        await setGlobalUniversalModel(chosenId);
-        await updateEnvFile({ UNIVERSAL_MODEL: chosenId });
-        process.env.UNIVERSAL_MODEL = chosenId;
       } else {
         await setUserAgyModel(userId, chosenId);
       }
@@ -98,11 +42,6 @@ export function registerModelHandlers(bot) {
     }
 
     const keyboard = new InlineKeyboard();
-    if (isUniversal) {
-      const isAuto = !currentModel || currentModel === "auto";
-      keyboard.text(`${isAuto ? "🔘 " : "⚪ "}⚡ Auto-Detect (Dynamic dari Server)`, "set_model:auto").row();
-    }
-
     const displayModels = modelList.slice(0, 30);
     for (const model of displayModels) {
       const isCurrent = model.id === currentModel;
@@ -111,15 +50,8 @@ export function registerModelHandlers(bot) {
     }
 
     const activeName =
-      (isUniversal && (!currentModel || currentModel === "auto"))
-        ? "⚡ Auto-Detect (Dynamic dari Server)"
-        : (modelList.find((m) => m.id === currentModel)?.name || currentModel || "⚡ Auto-Detect");
-    const activeModelId = currentModel || "auto";
-
-    const detectedInfo =
-      detectedCount > 0
-        ? `\n🔍 *Auto-Detect Server:* \`${detectedCount}\` model ditemukan di \`${process.env.UNIVERSAL_BASE_URL || ""}\`\n`
-        : "";
+      modelList.find((m) => m.id === currentModel)?.name || currentModel || "Default";
+    const activeModelId = currentModel || "default";
 
     const moreHint =
       modelList.length > 30
@@ -130,7 +62,6 @@ export function registerModelHandlers(bot) {
       `🤖 *Pilihan Model AI*\n\n` +
         `⚙️ Engine aktif: *${engineLabel}*\n` +
         `👉 Model aktif saat ini:\n*${activeName}* (\`${activeModelId}\`)\n` +
-        detectedInfo +
         moreHint +
         `\nSilakan pilih model khusus *${engineLabel}* di bawah ini:`,
       {
@@ -144,56 +75,9 @@ export function registerModelHandlers(bot) {
     const modelId = ctx.match[1];
     const userId = ctx.from?.id;
     const currentEngine = await getUserEngine(userId);
-    const isClaude = currentEngine === "claude";
-    const isUniversal = currentEngine === "universal";
     const isPi = currentEngine === "pi";
-    let modelList = await getModelList(currentEngine);
-    const engineLabel = isPi
-      ? "Pi Coding Agent CLI"
-      : isClaude
-      ? "Claude Code CLI"
-      : isUniversal
-      ? "Universal / Pi Server"
-      : "Antigravity CLI";
-
-    if (isUniversal) {
-      const uniUrl = process.env.UNIVERSAL_BASE_URL || "https://api.deepseek.com/v1";
-      const uniKey = process.env.UNIVERSAL_API_KEY || "";
-      const remote = await fetchRemoteModels(uniUrl, uniKey);
-      if (remote.length > 0) {
-        modelList = remote;
-      }
-
-      if (modelId === "auto") {
-        await setUserUniversalModel(userId, "");
-        await setGlobalUniversalModel("");
-        await updateEnvFile({ UNIVERSAL_MODEL: "" });
-        process.env.UNIVERSAL_MODEL = "";
-        await ctx.answerCallbackQuery({
-          text: "Model diatur ke Auto-Detect (Dynamic)",
-        });
-
-        const keyboard = new InlineKeyboard();
-        keyboard.text("🔘 ⚡ Auto-Detect (Dynamic dari Server)", "set_model:auto").row();
-        for (const model of modelList.slice(0, 30)) {
-          keyboard.text(`⚪ ${model.name}`, `set_model:${model.id}`).row();
-        }
-
-        try {
-          await ctx.editMessageText(
-            `🤖 *Pilihan Model AI*\n\n` +
-              `⚙️ Engine aktif: *${engineLabel}*\n` +
-              `✅ Model aktif sekarang:\n👉 *⚡ Auto-Detect (Dynamic)* (\`auto\`)\n\n` +
-              `Model akan dideteksi dan diambil secara dinamis dari server saat eksekusi.\nSilakan klik tombol di bawah jika ingin mengganti ke model lain:`,
-            {
-              reply_markup: keyboard,
-              parse_mode: "Markdown",
-            }
-          );
-        } catch {}
-        return;
-      }
-    }
+    const modelList = await getModelList(currentEngine);
+    const engineLabel = isPi ? "Pi Coding Agent CLI" : "Antigravity CLI";
 
     const matched = modelList.find((m) => m.id === modelId);
     const chosenId = matched ? matched.id : modelId;
@@ -201,13 +85,6 @@ export function registerModelHandlers(bot) {
 
     if (isPi) {
       await setUserPiModel(userId, chosenId);
-    } else if (isClaude) {
-      await setUserClaudeModel(userId, chosenId);
-    } else if (isUniversal) {
-      await setUserUniversalModel(userId, chosenId);
-      await setGlobalUniversalModel(chosenId);
-      await updateEnvFile({ UNIVERSAL_MODEL: chosenId });
-      process.env.UNIVERSAL_MODEL = chosenId;
     } else {
       await setUserAgyModel(userId, chosenId);
     }
@@ -217,9 +94,6 @@ export function registerModelHandlers(bot) {
     });
 
     const keyboard = new InlineKeyboard();
-    if (isUniversal) {
-      keyboard.text("⚪ ⚡ Auto-Detect (Dynamic dari Server)", "set_model:auto").row();
-    }
     for (const model of modelList.slice(0, 30)) {
       const isCurrent = model.id === chosenId;
       const label = `${isCurrent ? "🔘 " : "⚪ "}${model.name}`;

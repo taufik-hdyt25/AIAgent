@@ -1,5 +1,5 @@
 # ==============================================================================
-# 🤖 Universal One-Command Installer: Telegram AI Coding Agent (Windows)
+# 🤖 One-Command Installer: Telegram AI Coding Agent (Windows)
 # Mendukung: Windows 10, Windows 11 & Windows Server (PowerShell 5.1 & PS 7+)
 # ==============================================================================
 

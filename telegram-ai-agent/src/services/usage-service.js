@@ -461,8 +461,7 @@ export async function getUsageReport({ activeEngine = "agy", activeModel = "defa
   const capacity = getModelCapacity(activeModel);
   const engineLabel =
     activeEngine === "agy" ? "Antigravity CLI (agy)" :
-    activeEngine === "claude" ? "Claude Code CLI" :
-    activeEngine === "universal" ? "Universal / Pi Server" : activeEngine;
+    activeEngine === "pi" ? "Pi Coding Agent CLI (pi)" : activeEngine;
 
   let text = `📊 *Statistik Token (Current Model)*\n\n`;
 

@@ -74,10 +74,9 @@ async function runCmd(cmd, cwd = process.cwd()) {
   });
 }
 
-// Menjalankan AI Agent (Antigravity CLI / Claude Code) pada repository
+// Menjalankan AI Agent (Antigravity CLI) pada repository
 async function solveIssueWithAI({ repoPath, repo, issue, engine = "agy", model = null }) {
   const agyBin = process.env.AGY_BIN || "/home/node/.local/bin/agy";
-  const claudeBin = process.env.CLAUDE_BIN || "/usr/local/bin/claude";
   const convId = randomUUID();
   const activeModel = model || process.env.AGY_MODEL || "gemini-3.8-flash-high";
 
@@ -100,29 +99,15 @@ INSTRUKSI PENGERJAAN:
 6. Di akhir proses, berikan penjelasan ringkas tentang apa yang telah kamu selesaikan.
 `.trim();
 
-  let bin = agyBin;
-  let args = [];
-
-  if (engine === "claude") {
-    bin = claudeBin;
-    args = [
-      "--session-id", convId,
-      "--model", "sonnet",
-      "-p", prompt,
-      "--output-format", "text",
-      "--dangerously-skip-permissions",
-    ];
-  } else {
-    bin = agyBin;
-    args = [
-      "--conversation", convId,
-      "--model", activeModel,
-      "-p", prompt,
-      "--output-format", "text",
-      "--print-timeout", "15m",
-      "--dangerously-skip-permissions",
-    ];
-  }
+  const bin = agyBin;
+  const args = [
+    "--conversation", convId,
+    "--model", activeModel,
+    "-p", prompt,
+    "--output-format", "text",
+    "--print-timeout", "15m",
+    "--dangerously-skip-permissions",
+  ];
 
   return new Promise((resolve, reject) => {
     let stdout = "";

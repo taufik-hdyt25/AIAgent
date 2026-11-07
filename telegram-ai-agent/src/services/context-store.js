@@ -4,11 +4,8 @@ import {
   CONTEXT_FILE,
   DEFAULT_ENGINE,
   DEFAULT_AGY_MODEL,
-  DEFAULT_CLAUDE_MODEL,
   DEFAULT_PI_MODEL,
-  DEFAULT_UNIVERSAL_MODEL,
 } from "../config/env.js";
-import { resetSessionHistory } from "../universal-agent.js";
 
 export async function loadContext() {
   try {
@@ -62,31 +59,8 @@ export async function resetUserConversation(userId) {
     delete context.agyConversations[String(userId)];
   }
 
-  if (context.claudeSessions && oldConvId) {
-    delete context.claudeSessions[oldConvId];
-  }
   if (context.piSessions && oldConvId) {
     delete context.piSessions[oldConvId];
-  }
-  if (oldConvId) resetSessionHistory(oldConvId);
-  resetSessionHistory(newConvId);
-  await saveContext(context);
-}
-
-export async function isClaudeSessionStarted(convId) {
-  if (!convId) return false;
-  const context = await loadContext();
-  return Boolean(context.claudeSessions?.[convId]);
-}
-
-export async function markClaudeSessionStarted(convId, started = true) {
-  if (!convId) return;
-  const context = await loadContext();
-  if (!context.claudeSessions) context.claudeSessions = {};
-  if (started) {
-    context.claudeSessions[convId] = true;
-  } else {
-    delete context.claudeSessions[convId];
   }
   await saveContext(context);
 }
@@ -141,107 +115,11 @@ export async function setUserAgyModel(userId, modelId) {
     if (context.conversations) {
       context.conversations[String(userId)] = randomUUID();
     }
-    // Reset Claude session flag jika ada (cross-engine sync)
-    if (context.claudeSessions) {
-      const oldConvId = context.conversations?.[String(userId)];
-      if (oldConvId) delete context.claudeSessions[oldConvId];
-    }
     console.log(`[Context] Model switch: ${prevModel} → ${modelId} for user ${userId}. All sessions reset.`);
   }
 
   await saveContext(context);
 }
-
-export async function getUserClaudeModel(userId) {
-  const envModel = process.env.CLAUDE_MODEL;
-  if (!userId) return envModel || DEFAULT_CLAUDE_MODEL;
-  const context = await loadContext();
-  return context.claudeModels?.[String(userId)] || envModel || DEFAULT_CLAUDE_MODEL;
-}
-
-export async function setUserClaudeModel(userId, modelId) {
-  if (!userId) return;
-  const context = await loadContext();
-  if (!context.claudeModels) context.claudeModels = {};
-  const prevModel = context.claudeModels[String(userId)];
-  context.claudeModels[String(userId)] = modelId;
-
-  if (prevModel && prevModel !== modelId) {
-    // Reset conversation UUID untuk fresh session
-    const newConvId = randomUUID();
-    if (context.conversations) {
-      const oldConvId = context.conversations[String(userId)];
-      context.conversations[String(userId)] = newConvId;
-      // Reset Claude session flag
-      if (oldConvId && context.claudeSessions) {
-        delete context.claudeSessions[oldConvId];
-      }
-    }
-    // Reset session history di memory
-    resetSessionHistory(newConvId);
-    console.log(`[Context] Claude model switch: ${prevModel} → ${modelId} for user ${userId}. Session reset.`);
-  }
-
-  await saveContext(context);
-}
-
-export async function getUserUniversalModel(userId) {
-  const envModel = (process.env.UNIVERSAL_MODEL || "").trim();
-  if (!userId) return envModel || DEFAULT_UNIVERSAL_MODEL;
-  const context = await loadContext();
-  const userSpecific = context.universalModels?.[String(userId)];
-
-  if (userSpecific && userSpecific !== "auto") {
-    return userSpecific;
-  }
-  if (envModel && envModel !== "auto") {
-    return envModel;
-  }
-  return userSpecific || envModel || DEFAULT_UNIVERSAL_MODEL;
-}
-
-export async function setGlobalUniversalModel(modelId) {
-  if (!modelId) return;
-  const context = await loadContext();
-  if (!context.universalModels) context.universalModels = {};
-
-  const allUserIds = new Set([
-    ...Object.keys(context.universalModels || {}),
-    ...Object.keys(context.engines || {}),
-    ...Object.keys(context.conversations || {}),
-    ...Object.keys(context.models || {}),
-  ]);
-
-  for (const uId of allUserIds) {
-    const prev = context.universalModels[uId];
-    context.universalModels[uId] = modelId;
-    if (prev && prev !== modelId && context.conversations?.[uId]) {
-      resetSessionHistory(context.conversations[uId]);
-    }
-  }
-
-  await saveContext(context);
-}
-
-export async function setUserUniversalModel(userId, modelId) {
-  if (!userId) return;
-  const context = await loadContext();
-  if (!context.universalModels) context.universalModels = {};
-  const prevModel = context.universalModels[String(userId)];
-  context.universalModels[String(userId)] = modelId;
-
-  // Reset session jika model berubah agar tidak mewarisi rate-limit / context lama
-  if (prevModel && prevModel !== modelId && modelId) {
-    const convId = context.conversations?.[String(userId)];
-    if (convId) {
-      resetSessionHistory(convId);
-    }
-    console.log(`[Context] Universal model switch: ${prevModel} → ${modelId} for user ${userId}. Session history reset.`);
-  }
-
-  await saveContext(context);
-}
-
 
 export async function getUserPiModel(userId) {
   const envModel = process.env.PI_MODEL;
@@ -260,25 +138,26 @@ export async function setUserPiModel(userId, modelId) {
 
 export async function getUserModel(userId, engineOverride = null) {
   const engine = engineOverride || await getUserEngine(userId);
-  if (engine === "claude") return getUserClaudeModel(userId);
-  if (engine === "universal") return getUserUniversalModel(userId);
   if (engine === "pi") return getUserPiModel(userId);
   return getUserAgyModel(userId);
 }
 
 export async function setUserModel(userId, modelId) {
   const engine = await getUserEngine(userId);
-  if (engine === "claude") return setUserClaudeModel(userId, modelId);
-  if (engine === "universal") return setUserUniversalModel(userId, modelId);
   if (engine === "pi") return setUserPiModel(userId, modelId);
   return setUserAgyModel(userId, modelId);
 }
 
 export async function getUserEngine(userId) {
   const envEngine = process.env.CLI_ENGINE;
-  if (!userId) return envEngine || DEFAULT_ENGINE;
+  const normalize = (engine) =>
+    engine === "pi" || engine === "agy" ? engine : DEFAULT_ENGINE;
+
+  if (!userId) {
+    return normalize(envEngine || DEFAULT_ENGINE);
+  }
   const context = await loadContext();
-  return context.engines?.[String(userId)] || envEngine || DEFAULT_ENGINE;
+  return normalize(context.engines?.[String(userId)] || envEngine || DEFAULT_ENGINE);
 }
 
 export async function setUserEngine(userId, engine) {

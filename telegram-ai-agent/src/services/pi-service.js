@@ -2,15 +2,8 @@ import { writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fetchRemoteModels, normalizePiUrl, loadCustomModels, saveCustomModels } from "../config/models.js";
-import { updateEnvFile, maskSecret } from "./env-service.js";
-import {
-  getUserEngine,
-  setUserEngine,
-  setUserUniversalModel,
-  getUserUniversalModel,
-  setUserPiModel,
-  setGlobalUniversalModel,
-} from "./context-store.js";
+import { updateEnvFile } from "./env-service.js";
+import { setUserPiModel } from "./context-store.js";
 
 /**
  * Sinkronisasi konfigurasi models.json untuk Pi CLI
@@ -51,8 +44,8 @@ export async function syncPiCliConfig(baseUrl, apiKey, models) {
  * dan langsung mengaktifkannya sebagai model default
  */
 export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel = null) {
-  const targetUrl = normalizePiUrl(baseUrl || process.env.UNIVERSAL_BASE_URL || "http://127.0.0.1:46315/v1");
-  const targetKey = apiKey !== undefined ? apiKey : (process.env.UNIVERSAL_API_KEY || "");
+  const targetUrl = normalizePiUrl(baseUrl || process.env.PI_SERVER_URL || "http://127.0.0.1:46315/v1");
+  const targetKey = apiKey !== undefined ? apiKey : (process.env.PI_SERVER_API_KEY || "");
 
   const models = await fetchRemoteModels(targetUrl, targetKey);
   if (!models || models.length === 0) {
@@ -63,10 +56,9 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel =
     };
   }
 
-  // Simpan daftar model dari Pi ke data/models.json (baik untuk universalModels dan piModels)
+  // Simpan daftar model dari Pi ke data/models.json
   try {
     const custom = (await loadCustomModels()) || {};
-    custom.universalModels = models;
     custom.piModels = models;
     await saveCustomModels(custom);
   } catch (err) {
@@ -85,9 +77,9 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel =
     chosenModel = models.find((m) => m.id.toLowerCase() === selectModel.toLowerCase());
   }
 
-  // 2. Cek apakah ada model yang sudah dikonfigurasi pengguna di UNIVERSAL_MODEL atau PI_MODEL
+  // 2. Cek apakah ada model yang sudah dikonfigurasi pengguna di PI_MODEL
   if (!chosenModel) {
-    const configured = (process.env.PI_MODEL || process.env.UNIVERSAL_MODEL || "").trim().toLowerCase();
+    const configured = (process.env.PI_MODEL || "").trim().toLowerCase();
     if (configured && configured !== "auto") {
       chosenModel = models.find((m) => m.id.toLowerCase() === configured);
     }
@@ -100,35 +92,19 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel =
 
   const chosenId = chosenModel.id;
 
-  // Cek engine aktif pengguna
-  const currentEngine = userId ? await getUserEngine(userId) : (process.env.CLI_ENGINE || "pi");
-  const isPiActive = currentEngine === "pi";
-
   // Simpan ke .env & update process.env
   const envUpdates = {
-    UNIVERSAL_BASE_URL: targetUrl,
-    UNIVERSAL_MODEL: chosenId,
+    PI_SERVER_URL: targetUrl,
     PI_MODEL: chosenId,
+    CLI_ENGINE: "pi",
   };
-  if (isPiActive) {
-    envUpdates.CLI_ENGINE = "pi";
-  } else if (currentEngine === "universal") {
-    envUpdates.CLI_ENGINE = "universal";
-  }
   if (apiKey) {
-    envUpdates.UNIVERSAL_API_KEY = apiKey;
+    envUpdates.PI_SERVER_API_KEY = apiKey;
   }
   await updateEnvFile(envUpdates);
 
-  // Update secara global ke context untuk seluruh user
-  await setGlobalUniversalModel(chosenId);
-
   if (userId) {
-    if (isPiActive) {
-      await setUserPiModel(userId, chosenId);
-    } else {
-      await setUserUniversalModel(userId, chosenId);
-    }
+    await setUserPiModel(userId, chosenId);
   }
 
   return {

@@ -13,8 +13,7 @@ services:
       - NODE_ENV=production
       - WEB_PORT=${WEB_PORT:-3030}
       - AGY_BIN=/home/node/.local/bin/agy
-      - CLAUDE_BIN=/usr/local/bin/claude
-      - CLI_ENGINE=${CLI_ENGINE:-agy}
+      - CLI_ENGINE=${CLI_ENGINE:-pi}
       - PROJECTS_DIR=/home/node/projects
       - PROJECTS_FILE=/app/data/projects.json
       - TASK_TIMEOUT_MS=${TASK_TIMEOUT_MS:-900000}
@@ -31,8 +30,6 @@ services:
       - ./uploads:/app/uploads
       # Persistensi sesi login & setting Antigravity CLI
       - ./gemini_auth:/home/node/.gemini
-      # Persistensi sesi login & config Claude Code CLI
-      - ./claude_auth:/home/node/.claude
       # Akses Docker daemon host (DooD)
       - /var/run/docker.sock:/var/run/docker.sock
       # Source code mount
