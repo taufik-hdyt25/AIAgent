@@ -716,6 +716,7 @@ export function startWebServer(port = process.env.WEB_PORT || 3030) {
 }
 
 // Jika dijalankan langsung via node src/web-server.js
-if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+// (jangan aktif saat file ini ikut dibundel ke binary utama)
+if (process.argv[1] && path.basename(process.argv[1]) === "web-server.js") {
   startWebServer(process.env.WEB_PORT || 3030);
 }
