@@ -197,6 +197,7 @@ if (
         { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
         { command: "usage", description: "Cek statistik & jumlah token AI yang terpakai" },
         { command: "model", description: "Pilih model AI" },
+        { command: "engine", description: "Pilih engine (Pi CLI / Command Code)" },
         { command: "compact", description: "Padatkan riwayat sesi agar token hemat" },
         { command: "update", description: "Perbarui TH Agent langsung dari GitHub" },
         { command: "cekupdate", description: "Cek pembaruan baru di GitHub" },

@@ -112,6 +112,25 @@ import {
 import { getUsageReport } from "../../services/usage-service.js";
 import { checkNotionTasks } from "../../services/notion-watcher.js";
 
+function currentEngine() {
+  const v = String(process.env.CLI_ENGINE || "pi").toLowerCase();
+  return v === "commandcode" || v === "command-code" || v === "cmd" ? "commandcode" : "pi";
+}
+
+function engineLabelText() {
+  return currentEngine() === "commandcode"
+    ? "Command Code CLI (`cmd`)"
+    : "Pi Coding Agent CLI (`pi`)";
+}
+
+function engineKeyboard() {
+  const cur = currentEngine();
+  return new InlineKeyboard()
+    .text(`${cur === "pi" ? "🔘 " : "⚪ "}Pi Coding Agent CLI (pi)`, "set_engine:pi")
+    .row()
+    .text(`${cur === "commandcode" ? "🔘 " : "⚪ "}Command Code CLI (cmd)`, "set_engine:commandcode");
+}
+
 export async function sendUsageResponse(ctx) {
   const userId = ctx.from?.id;
   const activeModel = (userId ? await getUserPiModel(userId) : null) || "default";
@@ -124,7 +143,7 @@ export function registerBasicCommands(bot) {
   // /start, /help
   bot.command(["start", "help", "bantuan"], async (ctx) => {
     const userId = ctx.from?.id;
-    const activeEngineLabel = "Pi Coding Agent CLI (`pi`)";
+    const activeEngineLabel = engineLabelText();
 
     const piModel = await getUserPiModel(userId);
     const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
@@ -168,6 +187,7 @@ export function registerBasicCommands(bot) {
         "• `/delskill <id>` - Hapus skill AI yang dipelajari\n" +
         "• `/queue` - Cek daftar antrean instruksi AI\n" +
         "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
+        "• `/engine` - Pilih engine (Pi CLI / Command Code)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
         "• `/detectmodels` - Pindai & deteksi otomatis daftar model di server\n" +
         "• `/getpi` - Ambil dan aktifkan langsung model asli dari server Pi\n" +
@@ -185,10 +205,50 @@ export function registerBasicCommands(bot) {
     );
   });
 
+  // /engine [pi|commandcode]
+  bot.command(["engine", "cli"], async (ctx) => {
+    const arg = (ctx.match || "").trim().toLowerCase();
+    if (arg) {
+      const engine = arg === "pi"
+        ? "pi"
+        : (arg === "commandcode" || arg === "cmd" || arg === "command-code" ? "commandcode" : null);
+      if (!engine) {
+        await ctx.reply("❌ Engine tidak dikenal.\nGunakan `/engine pi` atau `/engine commandcode`.", { parse_mode: "Markdown" });
+        return;
+      }
+      await updateEnvFile({ CLI_ENGINE: engine });
+      process.env.CLI_ENGINE = engine;
+      await ctx.reply(`✅ Engine diubah ke: *${engineLabelText()}*`, { parse_mode: "Markdown" });
+      return;
+    }
+
+    await ctx.reply(
+      `⚙️ *Pilih Engine Eksekusi*\n\nEngine aktif sekarang:\n👉 *${engineLabelText()}*\n\nPilih engine di bawah:`,
+      { reply_markup: engineKeyboard(), parse_mode: "Markdown" }
+    );
+  });
+
+  bot.callbackQuery(/^set_engine:(.+)$/, async (ctx) => {
+    const engine = ctx.match[1];
+    if (engine !== "pi" && engine !== "commandcode") {
+      await ctx.answerCallbackQuery({ text: "Engine tidak valid!" });
+      return;
+    }
+    await updateEnvFile({ CLI_ENGINE: engine });
+    process.env.CLI_ENGINE = engine;
+    await ctx.answerCallbackQuery({ text: `Engine diubah ke ${engine}` });
+    try {
+      await ctx.editMessageText(
+        `⚙️ *Engine aktif sekarang:*\n👉 *${engineLabelText()}*\n\nPilih engine lain di bawah:`,
+        { reply_markup: engineKeyboard(), parse_mode: "Markdown" }
+      );
+    } catch {}
+  });
+
   // /status
   bot.command("status", async (ctx) => {
     const userId = ctx.from?.id;
-    const engineLabel = "Pi Coding Agent CLI (`pi`)";
+    const engineLabel = engineLabelText();
 
     const piModel = await getUserPiModel(userId);
     const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
@@ -1479,7 +1539,7 @@ export function registerBasicCommands(bot) {
   bot.callbackQuery("menu_status", async (ctx) => {
     await ctx.answerCallbackQuery({ text: "📊 Memeriksa status..." });
     const userId = ctx.from?.id;
-    const engineLabel = "Pi Coding Agent CLI (`pi`)";
+    const engineLabel = engineLabelText();
 
     const queueLen = getQueueLength();
     const queueStatus =
@@ -1622,7 +1682,7 @@ export function registerBasicCommands(bot) {
   // Helper render Panel Pengaturan Agent
   const renderSettingsMenu = async (ctx, editMessageId = null) => {
     const userId = ctx.from?.id;
-    const engineLabel = "Pi Coding Agent";
+    const engineLabel = currentEngine() === "commandcode" ? "Command Code" : "Pi Coding Agent";
 
     const activeModel = await getUserPiModel(userId);
 
@@ -2134,7 +2194,7 @@ export function registerBasicCommands(bot) {
         ? `\n_...dan ${res.allModels.length - 30} model lainnya._`
         : "";
 
-    const engineLabel = "Pi Coding Agent CLI (`pi`)";
+    const engineLabel = engineLabelText();
 
     await ctx.api
       .editMessageText(
