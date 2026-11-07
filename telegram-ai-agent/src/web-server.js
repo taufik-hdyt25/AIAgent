@@ -1,4 +1,5 @@
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import { readFile, writeFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -118,6 +119,27 @@ export function createWebServer() {
 
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     const { pathname } = url;
+
+    // Basic Auth (aktif jika WEB_AUTH_PASS diset). Webhook GitHub dikecualikan
+    // karena punya verifikasi signature sendiri.
+    const authPass = process.env.WEB_AUTH_PASS || "";
+    const authUser = process.env.WEB_AUTH_USER || "admin";
+    const authExempt = pathname === "/webhook/update";
+    if (authPass && !authExempt) {
+      const provided = req.headers.authorization || "";
+      const expected = "Basic " + Buffer.from(`${authUser}:${authPass}`).toString("base64");
+      const a = Buffer.from(provided);
+      const b = Buffer.from(expected);
+      const valid = a.length === b.length && crypto.timingSafeEqual(a, b);
+      if (!valid) {
+        res.writeHead(401, {
+          "WWW-Authenticate": 'Basic realm="TH Agent", charset="UTF-8"',
+          "Content-Type": "text/plain; charset=utf-8",
+        });
+        res.end("401 Unauthorized");
+        return;
+      }
+    }
 
     // Handle CORS preflight
     if (req.method === "OPTIONS") {
