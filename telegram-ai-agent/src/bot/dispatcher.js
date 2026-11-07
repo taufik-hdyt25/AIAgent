@@ -72,6 +72,7 @@ import {
   WORKER_PROFILES,
 } from "../services/swarm-service.js";
 import { detectTargetProject } from "../services/project-detector.js";
+import { getEngine, isCommandCodeEngine, buildCmdArgs, parseCmdResult } from "../services/engine-service.js";
 
 /**
  * Memproses tag otonom dari output AI (Hermes-like self-learning & persistent memory):
@@ -393,49 +394,56 @@ ${userMessage}
 
 
     const executeCli = async (sessionFlagOverride = null) => {
-      let binToRun = PI_BIN;
-      if (!fs.existsSync(binToRun)) {
-        try {
-          const { execSync } = await import("node:child_process");
-          let w = "";
-          try {
-            w = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
-          } catch (_) {}
-          if (w && fs.existsSync(w)) {
-            binToRun = w;
-          } else {
-            console.log("[Dispatcher] Pi CLI belum terpasang, menginstal otomatis...");
-            if (ctx?.reply) {
-              ctx.reply("⏳ *Menginstal binary Pi Coding Agent CLI di sistem...*\n_Mohon tunggu sebentar (hanya sekali saat pertama kali)..._", { parse_mode: "Markdown" }).catch(() => {});
-            }
-            execSync("npm install -g @earendil-works/pi-coding-agent 2>/dev/null || sudo npm install -g @earendil-works/pi-coding-agent 2>/dev/null || npm install @earendil-works/pi-coding-agent || true", { timeout: 180000 });
-            try {
-              const wAfter = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
-              if (wAfter && fs.existsSync(wAfter)) binToRun = wAfter;
-            } catch (_) {}
-          }
-        } catch (autoErr) {
-          console.warn("[Dispatcher] Gagal auto-install Pi CLI:", autoErr.message);
-        }
-      }
-      const piModel = userModel || await getUserPiModel(userId);
-      const cliArgs = [
-        "--session-id",
-        convId,
-        "-p",
-        prompt,
-        "--approve",
-      ];
-      if (piModel) {
-        const isGroqModel =
-          piModel === "openai/gpt-oss-120b" ||
-          piModel === "llama-3.1-8b-instant" ||
-          piModel.startsWith("groq/");
+      const useCmd = isCommandCodeEngine(getEngine());
+      let binToRun = useCmd ? (process.env.CMD_BIN || "cmd") : PI_BIN;
+      let cliArgs = [];
 
-        if (isGroqModel) {
-          cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
-        } else {
-          cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
+      if (useCmd) {
+        cliArgs = buildCmdArgs(prompt);
+      } else {
+        if (!fs.existsSync(binToRun)) {
+          try {
+            const { execSync } = await import("node:child_process");
+            let w = "";
+            try {
+              w = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
+            } catch (_) {}
+            if (w && fs.existsSync(w)) {
+              binToRun = w;
+            } else {
+              console.log("[Dispatcher] Pi CLI belum terpasang, menginstal otomatis...");
+              if (ctx?.reply) {
+                ctx.reply("⏳ *Menginstal binary Pi Coding Agent CLI di sistem...*\n_Mohon tunggu sebentar (hanya sekali saat pertama kali)..._", { parse_mode: "Markdown" }).catch(() => {});
+              }
+              execSync("npm install -g @earendil-works/pi-coding-agent 2>/dev/null || sudo npm install -g @earendil-works/pi-coding-agent 2>/dev/null || npm install @earendil-works/pi-coding-agent || true", { timeout: 180000 });
+              try {
+                const wAfter = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
+                if (wAfter && fs.existsSync(wAfter)) binToRun = wAfter;
+              } catch (_) {}
+            }
+          } catch (autoErr) {
+            console.warn("[Dispatcher] Gagal auto-install Pi CLI:", autoErr.message);
+          }
+        }
+        const piModel = userModel || await getUserPiModel(userId);
+        cliArgs = [
+          "--session-id",
+          convId,
+          "-p",
+          prompt,
+          "--approve",
+        ];
+        if (piModel) {
+          const isGroqModel =
+            piModel === "openai/gpt-oss-120b" ||
+            piModel === "llama-3.1-8b-instant" ||
+            piModel.startsWith("groq/");
+
+          if (isGroqModel) {
+            cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
+          } else {
+            cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
+          }
         }
       }
 
@@ -508,15 +516,21 @@ ${userMessage}
         clearTimeout(timer);
         clearTimeout(killTimer);
 
-        if (code === 0) {
+        if (!useCmd && code === 0) {
           await markPiSessionStarted(convId, true);
         }
 
         clearInterval(typingInterval);
 
-        const engineLabel = "Pi Coding Agent CLI";
+        const engineLabel = useCmd ? "Command Code" : "Pi Coding Agent CLI";
         let responseText = stdout.trim();
         let jsonError = null;
+
+        if (useCmd) {
+          const parsed = parseCmdResult(stdout);
+          responseText = parsed.text || "";
+          jsonError = parsed.error;
+        }
 
         // Process autonomous tags (Memory & Skills) jika response ada
         if (responseText) {
@@ -555,7 +569,10 @@ ${userMessage}
           } else if (errText.includes("permission that headless mode cannot prompt for") || errText.includes("permission")) {
             errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan Pi CLI dijalankan dengan flag \`--approve\`.`;
           } else if (errText.includes("ENOENT")) {
-            errText = `❌ *Kendala Eksekusi Engine (${engineLabel})*\n\n${truncate(errText, 500)}\n\n💡 *Solusi:* Install binary Pi CLI secara global:\n\`npm install -g @earendil-works/pi-coding-agent\``;
+            const installHint = useCmd
+              ? "Install Command Code CLI secara global:\n`npm install -g command-code` lalu `cmd login`"
+              : "Install binary Pi CLI secara global:\n`npm install -g @earendil-works/pi-coding-agent`";
+            errText = `❌ *Kendala Eksekusi Engine (${engineLabel})*\n\n${truncate(errText, 500)}\n\n💡 *Solusi:* ${installHint}`;
           } else {
             errText = `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`;
           }
@@ -805,21 +822,29 @@ export async function runAgentAutonomous({
   onSpawn = null,
 }) {
   const actualConvId = convId || `auto-${randomUUID().slice(0, 8)}`;
+  const useCmd = isCommandCodeEngine(engineOverride || getEngine());
 
-  const binToRun = PI_BIN;
+  let binToRun;
+  let cliArgs;
 
-  const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
-  const cliArgs = ["--session-id", actualConvId, "-p", prompt, "--approve"];
-  if (piModel) {
-    const isGroqModel =
-      piModel === "openai/gpt-oss-120b" ||
-      piModel === "llama-3.1-8b-instant" ||
-      piModel.startsWith("groq/");
+  if (useCmd) {
+    binToRun = process.env.CMD_BIN || "cmd";
+    cliArgs = buildCmdArgs(prompt);
+  } else {
+    binToRun = PI_BIN;
+    const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
+    cliArgs = ["--session-id", actualConvId, "-p", prompt, "--approve"];
+    if (piModel) {
+      const isGroqModel =
+        piModel === "openai/gpt-oss-120b" ||
+        piModel === "llama-3.1-8b-instant" ||
+        piModel.startsWith("groq/");
 
-    if (isGroqModel) {
-      cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
-    } else {
-      cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
+      if (isGroqModel) {
+        cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
+      } else {
+        cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
+      }
     }
   }
 
@@ -859,6 +884,15 @@ export async function runAgentAutonomous({
     env: sanitizedEnv,
     onSpawn,
   });
+
+  if (useCmd) {
+    const parsed = parseCmdResult(res.stdout || "");
+    if (parsed.error) throw new Error(parsed.error);
+    const output = parsed.text || res.stdout || "";
+    if (res.code === 0 || output.length > 0) {
+      return { ok: true, output, sessionId: parsed.sessionId, usage: parsed.usage || null };
+    }
+  }
 
   if (res.code === 0 && res.stdout) {
     return { ok: true, output: res.stdout };

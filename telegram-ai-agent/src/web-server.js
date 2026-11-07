@@ -168,6 +168,7 @@ export function createWebServer() {
             BOT_TOKEN: parsed.BOT_TOKEN || process.env.BOT_TOKEN || "",
             ALLOWED_TELEGRAM_IDS: parsed.ALLOWED_TELEGRAM_IDS || process.env.ALLOWED_TELEGRAM_IDS || "",
             PI_MODEL: parsed.PI_MODEL || process.env.PI_MODEL || "openai/gpt-oss-120b",
+            CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "pi",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
             WEB_PORT: parsed.WEB_PORT || process.env.WEB_PORT || "3030",
             PI_SERVER_URL: parsed.PI_SERVER_URL || process.env.PI_SERVER_URL || "",
@@ -684,6 +685,14 @@ export function createWebServer() {
           }
           if (payload.PI_MODEL !== undefined) {
             updates.PI_MODEL = String(payload.PI_MODEL).trim();
+          }
+          if (payload.CLI_ENGINE !== undefined) {
+            const rawEngine = String(payload.CLI_ENGINE).trim().toLowerCase();
+            const engine = rawEngine === "commandcode" || rawEngine === "command-code" || rawEngine === "cmd"
+              ? "commandcode"
+              : "pi";
+            updates.CLI_ENGINE = engine;
+            process.env.CLI_ENGINE = engine;
           }
           if (payload.TASK_TIMEOUT_MS !== undefined) {
             updates.TASK_TIMEOUT_MS = String(payload.TASK_TIMEOUT_MS).trim();

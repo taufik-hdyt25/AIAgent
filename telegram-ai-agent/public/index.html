@@ -203,15 +203,20 @@
 
           <div class="card-body">
             <div class="form-group">
-              <div class="toggle-card">
-                <div class="toggle-info">
-                  <span class="toggle-title">Pi Coding Agent CLI (pi)</span>
-                  <span class="toggle-desc">
-                    Satu-satunya engine agent. Pi CLI menjalankan tool-calling &amp; eksekusi, lalu terhubung ke endpoint OpenAI-compatible (CLIProxyAPI / LiteLLM / Ollama) lewat URL server di bawah.
-                  </span>
-                </div>
-                <span class="badge badge-emerald">Aktif</span>
+              <div class="label-row">
+                <label for="cliEngine" class="form-label">ENGINE EKSEKUSI</label>
+                <span class="label-hint">Pi CLI atau Command Code CLI</span>
               </div>
+              <div class="select-wrapper">
+                <select id="cliEngine" name="CLI_ENGINE" class="form-select font-mono">
+                  <option value="pi">Pi Coding Agent CLI (pi)</option>
+                  <option value="commandcode">Command Code CLI (cmd)</option>
+                </select>
+              </div>
+              <p class="form-help" style="margin-top: 6px;">
+                <strong>pi</strong>: tool-calling ke endpoint OpenAI-compatible (CLIProxyAPI/LiteLLM/Ollama).
+                <strong>commandcode</strong>: menjalankan <code>cmd -p ... --yolo</code> memakai akun/plan Command Code.
+              </p>
             </div>
 
             <!-- Model Default untuk Pi CLI -->

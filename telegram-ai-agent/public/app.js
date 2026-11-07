@@ -17,6 +17,7 @@ const botTelegramLink = document.getElementById("botTelegramLink");
 const allowedIdsInput = document.getElementById("allowedIds");
 const idChipsContainer = document.getElementById("idChipsContainer");
 
+const cliEngineSelect = document.getElementById("cliEngine");
 const piModelSelect = document.getElementById("piModel");
 const piServerUrlInput = document.getElementById("piServerUrl");
 const btnGetPiModels = document.getElementById("btnGetPiModels");
@@ -194,6 +195,11 @@ async function loadSettings() {
 
     renderAllowedModelsChips();
     loadPiProviders();
+
+    // Populate Engine Select
+    if (cliEngineSelect) {
+      cliEngineSelect.value = currentSettings.CLI_ENGINE === "commandcode" ? "commandcode" : "pi";
+    }
 
     // Populate Pi Models Select
     if (piModelSelect) {
@@ -1058,6 +1064,7 @@ form.addEventListener("submit", async (e) => {
   const payload = {
     BOT_TOKEN: botTokenInput.value.trim(),
     ALLOWED_TELEGRAM_IDS: allowedIdsInput.value.trim(),
+    CLI_ENGINE: cliEngineSelect ? cliEngineSelect.value : (currentSettings.CLI_ENGINE || "pi"),
     PI_MODEL: piModelSelect ? piModelSelect.value : (currentSettings.PI_MODEL || "openai/gpt-oss-120b"),
     PI_SERVER_API_KEY: piServerApiKeyInput ? piServerApiKeyInput.value.trim() : "",
     PI_SERVER_URL: piServerUrlInput ? piServerUrlInput.value.trim() : "",
