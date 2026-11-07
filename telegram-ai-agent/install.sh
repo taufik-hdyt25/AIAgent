@@ -39,6 +39,86 @@ else
     echo -e "${CYAN}Sistem Terdeteksi: ${OS} (${ARCH})${NC}"
 fi
 
+# ==============================================================================
+# Deteksi Lingkungan Instalasi (Mac lokal / VPS / Raspberry Pi / Docker / WSL)
+# ==============================================================================
+detect_target_env() {
+    if [ -n "${TH_AGENT_ENV:-}" ]; then
+        TARGET_ENV="$TH_AGENT_ENV"
+        return 0
+    fi
+    if [ "$OS" = "Darwin" ]; then
+        TARGET_ENV="mac"
+    elif [ "$IS_PI" = true ]; then
+        TARGET_ENV="raspberry-pi"
+    elif [ -f "/.dockerenv" ] || grep -qaE 'docker|kubepods' /proc/1/cgroup 2>/dev/null; then
+        TARGET_ENV="docker"
+    elif grep -qiE 'microsoft|wsl' /proc/version 2>/dev/null; then
+        TARGET_ENV="wsl"
+    else
+        TARGET_ENV="vps"
+    fi
+}
+detect_target_env
+
+target_env_label() {
+    case "$TARGET_ENV" in
+        mac) echo "macOS lokal (laptop/desktop)" ;;
+        vps) echo "Linux VPS / server" ;;
+        raspberry-pi) echo "Raspberry Pi" ;;
+        docker) echo "Docker container" ;;
+        wsl) echo "Windows WSL" ;;
+        *) echo "$TARGET_ENV" ;;
+    esac
+}
+
+default_web_host() {
+    case "$TARGET_ENV" in
+        mac|wsl) echo "127.0.0.1" ;;
+        *) echo "0.0.0.0" ;;
+    esac
+}
+
+detect_server_ip() {
+    local ip=""
+    for url in "https://api.ipify.org" "https://ifconfig.me/ip" "https://icanhazip.com"; do
+        ip="$(curl -fsS -m 4 "$url" 2>/dev/null | tr -d '[:space:]')"
+        if [ -n "$ip" ]; then
+            echo "$ip"
+            return 0
+        fi
+    done
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    echo "${ip:-localhost}"
+}
+
+env_get() {
+    local file="$1" key="$2"
+    [ -f "$file" ] || return 0
+    grep -E "^${key}=" "$file" 2>/dev/null | head -n 1 | cut -d '=' -f2- | tr -d ' \r'
+}
+
+env_set() {
+    local file="$1" key="$2" value="$3"
+    [ -f "$file" ] || touch "$file"
+    if grep -qE "^${key}=" "$file" 2>/dev/null; then
+        awk -v k="$key" -v v="$value" 'BEGIN{FS=OFS="="} $1==k {print k"="v; next} {print}' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$file"
+    fi
+}
+
+rand_hex() {
+    local bytes="${1:-16}"
+    if command -v openssl &>/dev/null; then
+        openssl rand -hex "$bytes"
+    else
+        head -c "$bytes" /dev/urandom | od -An -tx1 | tr -d ' \n'
+    fi
+}
+
+echo -e "${CYAN}🌍 Lingkungan instalasi: ${TARGET_ENV} — $(target_env_label)${NC}"
+
 case "$OS" in
     MINGW*|MSYS*|CYGWIN*)
         echo -e "${YELLOW}🪟 Terdeteksi Lingkungan Windows (Git Bash / MSYS)!${NC}"
@@ -374,6 +454,260 @@ install_pi_cli() {
     fi
 }
 
+# ==============================================================================
+# CLIProxyAPI LOKAL — mengikuti mesin tempat TH Agent dipasang
+# Mac lokal → CLIProxyAPI di Mac. VPS → CLIProxyAPI di VPS.
+# ==============================================================================
+CLIPROXY_PORT="${CLIPROXY_PORT:-8317}"
+
+cliproxy_target_asset() {
+    case "$OS:$ARCH" in
+        Darwin:arm64) echo "darwin_aarch64" ;;
+        Darwin:x86_64) echo "darwin_amd64" ;;
+        Linux:x86_64|Linux:amd64) echo "linux_amd64" ;;
+        Linux:aarch64|Linux:arm64) echo "linux_aarch64" ;;
+        *) echo "" ;;
+    esac
+}
+
+cliproxy_download_binary() {
+    local target_bin="$1"
+    local asset
+    asset="$(cliproxy_target_asset)"
+    if [ -z "$asset" ]; then
+        echo -e "${YELLOW}⚠️  Arsitektur ${OS}/${ARCH} belum didukung untuk CLIProxyAPI.${NC}"
+        return 1
+    fi
+
+    local version="${CLIPROXY_VERSION:-}"
+    if [ -z "$version" ]; then
+        version="$(curl -fsSL -m 10 "https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest" 2>/dev/null \
+            | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | cut -d'"' -f4)"
+    fi
+    [ -z "$version" ] && version="v8.0.59"
+
+    local version_num="${version#v}"
+    local url="https://github.com/router-for-me/CLIProxyAPI/releases/download/${version}/CLIProxyAPI_${version_num}_${asset}.tar.gz"
+
+    echo -e "${CYAN}Mengunduh CLIProxyAPI ${version} (${asset})...${NC}"
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
+    if ! curl -fsSL --retry 2 -m 300 "$url" -o "$tmp_dir/cpa.tar.gz"; then
+        rm -rf "$tmp_dir"
+        echo -e "${YELLOW}⚠️  Gagal mengunduh CLIProxyAPI.${NC}"
+        return 1
+    fi
+    if ! tar -xzf "$tmp_dir/cpa.tar.gz" -C "$tmp_dir" 2>/dev/null; then
+        rm -rf "$tmp_dir"
+        echo -e "${YELLOW}⚠️  Gagal mengekstrak CLIProxyAPI.${NC}"
+        return 1
+    fi
+    local extracted
+    extracted="$(find "$tmp_dir" -type f -name 'cli-proxy-api*' | head -n 1)"
+    if [ -z "$extracted" ]; then
+        rm -rf "$tmp_dir"
+        echo -e "${YELLOW}⚠️  Binary CLIProxyAPI tidak ditemukan di arsip.${NC}"
+        return 1
+    fi
+    mkdir -p "$(dirname "$target_bin")"
+    cp "$extracted" "$target_bin"
+    chmod +x "$target_bin"
+    xattr -dr com.apple.quarantine "$target_bin" 2>/dev/null || true
+    rm -rf "$tmp_dir"
+    echo -e "${GREEN}✓ CLIProxyAPI terpasang: $target_bin${NC}"
+}
+
+cliproxy_install_service() {
+    local cpa_home="$1"
+    if [ "$OS" = "Darwin" ]; then
+        local plist="$HOME/Library/LaunchAgents/com.taufik.cli-proxy-api.plist"
+        mkdir -p "$HOME/Library/LaunchAgents" "$cpa_home/logs"
+        cat << EOF > "$plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.taufik.cli-proxy-api</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$cpa_home/bin/cli-proxy-api</string>
+        <string>-config</string>
+        <string>$cpa_home/config.yaml</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>$cpa_home</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>$cpa_home/logs/cliproxy.log</string>
+    <key>StandardErrorPath</key>
+    <string>$cpa_home/logs/cliproxy.error.log</string>
+</dict>
+</plist>
+EOF
+        launchctl unload "$plist" 2>/dev/null || true
+        launchctl load "$plist" 2>/dev/null || true
+        echo -e "${GREEN}✓ CLIProxyAPI aktif sebagai LaunchAgent (auto-start saat login)${NC}"
+    else
+        local unit_dir="$HOME/.config/systemd/user"
+        mkdir -p "$unit_dir" "$cpa_home/logs"
+        cat << EOF > "$unit_dir/cli-proxy-api.service"
+[Unit]
+Description=CLIProxyAPI (OpenAI-compatible gateway)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$cpa_home
+ExecStart=$cpa_home/bin/cli-proxy-api -config $cpa_home/config.yaml
+Restart=on-failure
+RestartSec=3
+StandardOutput=append:$cpa_home/logs/cliproxy.log
+StandardError=append:$cpa_home/logs/cliproxy.error.log
+
+[Install]
+WantedBy=default.target
+EOF
+        if systemctl --user daemon-reload 2>/dev/null; then
+            systemctl --user enable cli-proxy-api 2>/dev/null || true
+            systemctl --user restart cli-proxy-api 2>/dev/null || true
+            loginctl enable-linger "$USER" 2>/dev/null || true
+            echo -e "${GREEN}✓ CLIProxyAPI aktif sebagai systemd user service${NC}"
+        else
+            pkill -f "cli-proxy-api -config" 2>/dev/null || true
+            nohup "$cpa_home/bin/cli-proxy-api" -config "$cpa_home/config.yaml" > "$cpa_home/logs/cliproxy.log" 2>&1 &
+            echo -e "${GREEN}✓ CLIProxyAPI aktif di background (PID $!)${NC}"
+        fi
+    fi
+}
+
+install_cliproxy_api() {
+    if [ "${TH_SKIP_CLIPROXY:-}" = "1" ] || [ "$NO_CLIPROXY" = true ]; then
+        echo -e "${YELLOW}⏭️  CLIProxyAPI dilewati (TH_SKIP_CLIPROXY=1 / --no-cliproxy).${NC}"
+        return 0
+    fi
+    if [ "$TARGET_ENV" = "docker" ]; then
+        echo -e "${YELLOW}ℹ️  Terdeteksi Docker container. CLIProxyAPI tidak dipasang otomatis di dalam container.${NC}"
+        echo -e "   Arahkan ${YELLOW}PI_SERVER_URL${NC} ke CLIProxyAPI di host/container lain."
+        return 0
+    fi
+
+    local cpa_home="$HOME/.cli-proxy-api"
+    local cpa_bin="$cpa_home/bin/cli-proxy-api"
+    local env_file="$AGENT_DIR/.env"
+    [ -d "$AGENT_DIR" ] || env_file=".env"
+
+    local existing_url
+    existing_url="$(env_get "$env_file" "PI_SERVER_URL")"
+    if [ -n "$existing_url" ] && ! echo "$existing_url" | grep -qE '(^|//)(127\.0\.0\.1|localhost):'; then
+        echo -e "${YELLOW}ℹ️  PI_SERVER_URL sudah menunjuk endpoint eksternal: $existing_url${NC}"
+        echo -e "${YELLOW}   CLIProxyAPI lokal tidak dipasang agar konfigurasi Anda tidak tertimpa.${NC}"
+        return 0
+    fi
+
+    echo -e "\n${BLUE}======================================================${NC}"
+    echo -e "${BLUE}🧩 Menyiapkan CLIProxyAPI di mesin ini                ${NC}"
+    echo -e "${BLUE}======================================================${NC}"
+
+    mkdir -p "$cpa_home/bin" "$cpa_home/logs"
+
+    if [ ! -x "$cpa_bin" ]; then
+        cliproxy_download_binary "$cpa_bin" || {
+            echo -e "${YELLOW}⚠️  CLIProxyAPI otomatis dilewati. Anda tetap bisa memakai endpoint eksternal.${NC}"
+            return 0
+        }
+    else
+        echo -e "${GREEN}✓ CLIProxyAPI sudah terpasang: $cpa_bin${NC}"
+    fi
+
+    local mgmt_key client_key mgmt_created=false client_created=false
+    if [ -s "$cpa_home/management-key.txt" ]; then
+        mgmt_key="$(tr -d '[:space:]' < "$cpa_home/management-key.txt")"
+    else
+        mgmt_key="$(rand_hex 16)"
+        printf '%s\n' "$mgmt_key" > "$cpa_home/management-key.txt"
+        chmod 600 "$cpa_home/management-key.txt"
+        mgmt_created=true
+    fi
+
+    if [ -s "$cpa_home/client-key.txt" ]; then
+        client_key="$(tr -d '[:space:]' < "$cpa_home/client-key.txt")"
+    elif [ -f "$cpa_home/config.yaml" ]; then
+        # Config lama adalah sumber kebenaran untuk API key client yang sudah dipakai
+        client_key="$(awk '/^access:/{f=1;next} f&&/^[[:space:]]*-[[:space:]]*"/{gsub(/^[[:space:]]*-[[:space:]]*"|".*$/,"");print;exit}' "$cpa_home/config.yaml")"
+    fi
+    if [ -z "$client_key" ]; then
+        client_key="sk-th-$(rand_hex 16)"
+        client_created=true
+    fi
+    printf '%s\n' "$client_key" > "$cpa_home/client-key.txt"
+    chmod 600 "$cpa_home/client-key.txt"
+
+    if [ ! -f "$cpa_home/config.yaml" ]; then
+        cat << EOF > "$cpa_home/config.yaml"
+config-version: 8
+server:
+  host: "127.0.0.1"
+  port: ${CLIPROXY_PORT}
+management:
+  allow-remote: false
+  secret-key: "${mgmt_key}"
+access:
+  api-keys:
+    - "${client_key}"
+oauth:
+  auth-dir: "${cpa_home}"
+EOF
+        chmod 600 "$cpa_home/config.yaml"
+        echo -e "${GREEN}✓ Konfigurasi CLIProxyAPI dibuat: $cpa_home/config.yaml${NC}"
+    else
+        echo -e "${GREEN}✓ Konfigurasi CLIProxyAPI sudah ada, dipertahankan.${NC}"
+        if [ "$mgmt_created" = true ] && grep -qE '^[[:space:]]*secret-key:' "$cpa_home/config.yaml"; then
+            awk -v k="$mgmt_key" '/^[[:space:]]*secret-key:/{print "  secret-key: \"" k "\""; next} {print}' "$cpa_home/config.yaml" > "$cpa_home/config.yaml.tmp" && mv "$cpa_home/config.yaml.tmp" "$cpa_home/config.yaml"
+            echo -e "${GREEN}✓ Management key disinkronkan ke config CLIProxyAPI.${NC}"
+        fi
+        if [ "$client_created" = true ]; then
+            if grep -qE '^[[:space:]]*api-keys:' "$cpa_home/config.yaml"; then
+                awk -v k="$client_key" '/^[[:space:]]*api-keys:/{print; print "    - \"" k "\""; next} {print}' "$cpa_home/config.yaml" > "$cpa_home/config.yaml.tmp" && mv "$cpa_home/config.yaml.tmp" "$cpa_home/config.yaml"
+            elif grep -qE '^access:' "$cpa_home/config.yaml"; then
+                awk -v k="$client_key" '/^access:/{print; print "  api-keys:"; print "    - \"" k "\""; next} {print}' "$cpa_home/config.yaml" > "$cpa_home/config.yaml.tmp" && mv "$cpa_home/config.yaml.tmp" "$cpa_home/config.yaml"
+            else
+                { echo 'access:'; echo '  api-keys:'; echo "    - \"$client_key\""; } >> "$cpa_home/config.yaml"
+            fi
+            echo -e "${GREEN}✓ API key client disinkronkan ke config CLIProxyAPI.${NC}"
+        fi
+    fi
+
+    cliproxy_install_service "$cpa_home"
+
+    env_set "$env_file" "CLIPROXY_URL" "http://127.0.0.1:${CLIPROXY_PORT}"
+    env_set "$env_file" "CLIPROXY_MGMT_KEY" "$mgmt_key"
+    env_set "$env_file" "CLIPROXY_CLIENT_KEY" "$client_key"
+    env_set "$env_file" "PI_SERVER_URL" "http://127.0.0.1:${CLIPROXY_PORT}/v1"
+    env_set "$env_file" "PI_SERVER_API_KEY" "$client_key"
+
+    if [ -f "$HOME/.th-agent/.env" ] && [ "$env_file" != "$HOME/.th-agent/.env" ]; then
+        env_set "$HOME/.th-agent/.env" "CLIPROXY_URL" "http://127.0.0.1:${CLIPROXY_PORT}"
+        env_set "$HOME/.th-agent/.env" "CLIPROXY_MGMT_KEY" "$mgmt_key"
+        env_set "$HOME/.th-agent/.env" "CLIPROXY_CLIENT_KEY" "$client_key"
+        env_set "$HOME/.th-agent/.env" "PI_SERVER_URL" "http://127.0.0.1:${CLIPROXY_PORT}/v1"
+        env_set "$HOME/.th-agent/.env" "PI_SERVER_API_KEY" "$client_key"
+    fi
+
+    sleep 2
+    if curl -fsS -m 5 -H "Authorization: Bearer ${client_key}" "http://127.0.0.1:${CLIPROXY_PORT}/v1/models" >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ CLIProxyAPI online di http://127.0.0.1:${CLIPROXY_PORT}${NC}"
+    else
+        echo -e "${YELLOW}ℹ️  CLIProxyAPI belum merespons. Cek log: $cpa_home/logs/${NC}"
+        echo -e "   Login provider: buka Web UI → Login via Browser, atau jalankan:"
+        echo -e "   ${CYAN}$cpa_bin -config $cpa_home/config.yaml -antigravity-login${NC}"
+    fi
+}
+
 setup_directories() {
     echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
     mkdir -p projects
@@ -436,6 +770,11 @@ setup_env_file() {
     # Default endpoint Pi (CLIProxyAPI default port 8317)
     if ! grep -q "^PI_SERVER_URL=" "$env_file"; then
         echo "PI_SERVER_URL=http://127.0.0.1:8317/v1" >> "$env_file"
+    fi
+
+    # Host bind Web UI: Mac/WSL lokal hanya localhost, VPS/server bisa diakses dari luar
+    if [ -z "$(env_get "$env_file" "WEB_HOST")" ]; then
+        env_set "$env_file" "WEB_HOST" "$(default_web_host)"
     fi
 
     if ! grep -q "^PI_MODEL=" "$env_file"; then
@@ -763,9 +1102,7 @@ EOF
 
         local safe_path="/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
         local projects_target="$workspace_dir/projects"
-        if [ -d "/home/th-agent/projects" ] && [ -n "$(ls -A "/home/th-agent/projects" 2>/dev/null | grep -v '^\.git' | grep -v 'PROJECTS_SUMMARY.md')" ]; then
-            projects_target="/home/th-agent/projects"
-        elif [ -L "$global_dir/projects" ]; then
+        if [ -L "$global_dir/projects" ]; then
             projects_target="$(readlink -f "$global_dir/projects")"
         fi
         cat << EOF > "$service_file"
@@ -805,12 +1142,25 @@ EOF
         fi
     fi
 
+    local web_host display_url
+    web_host="$(env_get "$global_dir/.env" "WEB_HOST")"
+    web_host="${web_host:-$(default_web_host)}"
+    if [ "$web_host" = "127.0.0.1" ] || [ "$web_host" = "localhost" ]; then
+        display_url="http://localhost:${web_port}"
+    else
+        display_url="http://$(detect_server_ip):${web_port}"
+    fi
+
     echo -e "\n${GREEN}======================================================${NC}"
     echo -e "${GREEN}🎉 SUKSES! TH Agent Terpasang & Langsung Aktif 24/7!  ${NC}"
     echo -e "${GREEN}======================================================${NC}"
+    echo -e "• ${CYAN}Lingkungan:${NC}     ${YELLOW}$(target_env_label)${NC}"
     echo -e "• ${CYAN}Binary Command:${NC} ${YELLOW}th-agent${NC} (tersedia langsung di terminal)"
     echo -e "• ${CYAN}Folder Proyek:${NC}  ${YELLOW}$workspace_dir/projects${NC} (Zero node_modules!)"
-    echo -e "• ${CYAN}Web Dashboard:${NC}  ${BLUE}http://localhost:${web_port}${NC}"
+    echo -e "• ${CYAN}Web Dashboard:${NC}  ${BLUE}${display_url}${NC}"
+    if [ -x "$HOME/.cli-proxy-api/bin/cli-proxy-api" ]; then
+        echo -e "• ${CYAN}CLIProxyAPI:${NC}    ${BLUE}http://127.0.0.1:${CLIPROXY_PORT}${NC} (lokal, kelola via Web UI)"
+    fi
     echo ""
     echo -e "Perintah Cepat CLI:"
     echo -e "  • Pantau Log Live : ${BLUE}th-agent logs${NC}"
@@ -837,6 +1187,7 @@ perform_fast_update() {
 
     setup_directories
     setup_env_file
+    install_cliproxy_api
     setup_binary_bundle_and_service
     exit 0
 }
@@ -901,6 +1252,14 @@ if [ -d ".git" ]; then
     fi
 fi
 
+# Opsi untuk melewati pemasangan CLIProxyAPI lokal
+NO_CLIPROXY=false
+for arg in "$@"; do
+    case "$arg" in
+        --no-cliproxy|--skip-cliproxy) NO_CLIPROXY=true ;;
+    esac
+done
+
 # Cek argumen CLI (misal: curl ... | bash -s -- --update / --uninstall)
 if [ "$1" = "--update" ] || [ "$1" = "-u" ] || [ "$1" = "update" ]; then
     perform_fast_update
@@ -962,8 +1321,11 @@ install_pi_cli
 setup_directories
 setup_env_file
 
-# 5. Catatan konfigurasi endpoint Pi
-echo -e "\n${BLUE}Pi CLI siap. Arahkan PI_SERVER_URL ke CLIProxyAPI (default: http://127.0.0.1:8317/v1).${NC}"
+# 5. CLIProxyAPI lokal di mesin ini (Mac lokal atau VPS)
+install_cliproxy_api
 
-# 6. Kompilasi Standalone Binary Bundle & Jalankan Service 24/7
+# 6. Catatan konfigurasi endpoint Pi
+echo -e "\n${BLUE}Pi CLI siap. Endpoint PI_SERVER_URL mengarah ke CLIProxyAPI di mesin ini (default: http://127.0.0.1:8317/v1).${NC}"
+
+# 7. Kompilasi Standalone Binary Bundle & Jalankan Service 24/7
 setup_binary_bundle_and_service

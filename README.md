@@ -30,9 +30,11 @@ curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.
 > curl -fsSL https://raw.githubusercontent.com/taufik-hdyt25/AIAgent/main/install.sh | bash -s -- --update
 > ```
 
-The installer automatically compiles and configures a **24/7 Standalone Binary Runner** directly on your system:
+The installer automatically detects **where it is running** and adapts the whole stack to that machine:
 - 🍏 **On macOS (Local):** Bundles the bot to `~/.th-agent/th-agent-bin`, registers a 24/7 background LaunchAgent service (anti-sleep `caffeinate -dimsu`), and keeps the `th-agent/projects/` workspace **100% clean without `node_modules`**.
 - 🐧 **On Linux VPS / Server / Raspberry Pi:** Bundles the bot to `~/.th-agent/th-agent-bin`, registers a 24/7 systemd service (auto-starts on boot), without Docker containers or PM2 overhead.
+- 🧩 **CLIProxyAPI follows the install location:** Installs and runs CLIProxyAPI on the **same machine** as TH Agent (Mac local → CLIProxyAPI on that Mac, VPS → CLIProxyAPI on that VPS), generates its API keys, registers the service (LaunchAgent / systemd), and wires `PI_SERVER_URL` automatically. Skip it with `--no-cliproxy` or `TH_SKIP_CLIPROXY=1`.
+- 🌐 **Web UI binding adapts:** Mac/WSL binds to `127.0.0.1` (local-only), VPS/server binds to `0.0.0.0` and prints the public URL. Override anytime with `WEB_HOST` in `.env`.
 - ⚡ **CLI Binary Command:** The `th-agent` command is automatically available in your terminal (`th-agent logs`, `th-agent status`, `th-agent restart`, `th-agent stop`).
 
 ---
@@ -73,7 +75,8 @@ th-agent run        # Run in foreground terminal for live debugging
 ---
 
 ## 🎛️ Services & Server Ports
-- **Web UI Control Panel:** `http://localhost:3030`
+- **Web UI Control Panel:** `http://localhost:3030` (lokal Mac) atau `http://<IP-publik>:3030` (VPS)
+- **CLIProxyAPI:** `http://127.0.0.1:8317` (selalu lokal di mesin yang sama dengan TH Agent)
 - **Telegram Bot:** Directly connected via Telegram Webhook / Long Polling
 - **Coding Workspace:** All autonomous AI execution is strictly scoped within `./projects/`
 

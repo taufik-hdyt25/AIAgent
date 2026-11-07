@@ -133,7 +133,10 @@ Edit file `.env` dan isi token Anda:
 BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxyz
 ALLOWED_TELEGRAM_IDS=987654321
 PI_SERVER_URL=http://127.0.0.1:8317/v1  # Endpoint CLIProxyAPI / OpenAI-compatible
+WEB_HOST=0.0.0.0                        # 127.0.0.1 untuk Mac lokal, 0.0.0.0 untuk VPS
 ```
+
+> Installer `install.sh` mengisi otomatis `WEB_HOST` dan memasang **CLIProxyAPI di mesin yang sama** (Mac lokal → Mac, VPS → VPS), termasuk `CLIPROXY_URL`, `CLIPROXY_MGMT_KEY`, `CLIPROXY_CLIENT_KEY`, dan service 24/7-nya.
 
 ### 3. Daftarkan Project
 Anda bisa menambahkan project secara manual di `data/projects.json`:

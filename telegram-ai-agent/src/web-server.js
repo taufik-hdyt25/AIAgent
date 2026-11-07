@@ -916,12 +916,17 @@ export function createWebServer() {
   return server;
 }
 
-export function startWebServer(port = process.env.WEB_PORT || 3030) {
+export function startWebServer(
+  port = process.env.WEB_PORT || 3030,
+  host = process.env.WEB_HOST || "0.0.0.0"
+) {
   const server = createWebServer();
   const PORT = Number(port);
+  const HOST = host || "0.0.0.0";
 
-  server.listen(PORT, "0.0.0.0", () => {
-    console.log(`🌐 Web UI Settings aktif di: http://localhost:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    const shown = HOST === "0.0.0.0" || HOST === "::" ? "localhost" : HOST;
+    console.log(`🌐 Web UI Settings aktif di: http://${shown}:${PORT} (bind ${HOST})`);
   });
 
   server.on("error", (err) => {

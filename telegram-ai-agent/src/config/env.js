@@ -43,17 +43,11 @@ export const PROJECTS_DIR = (() => {
       } catch (_) {}
     }
   }
-  if (fs.existsSync("/home/th-agent/projects")) {
-    return "/home/th-agent/projects";
-  }
   if (fs.existsSync(path.resolve(ROOT_DIR, "../projects"))) {
     return path.resolve(ROOT_DIR, "../projects");
   }
   if (fs.existsSync(path.resolve(ROOT_DIR, "projects"))) {
     return path.resolve(ROOT_DIR, "projects");
-  }
-  if (fs.existsSync("/home/node/projects")) {
-    return "/home/node/projects";
   }
   return process.env.PROJECTS_DIR ? path.resolve(process.env.PROJECTS_DIR) : path.resolve(ROOT_DIR, "projects");
 })();
