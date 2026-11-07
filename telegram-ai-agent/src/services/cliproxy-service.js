@@ -85,6 +85,72 @@ export async function getCpaStatus() {
   };
 }
 
+export async function listCpaCredentials() {
+  const res = await request("/v8/management/credentials", { key: "mgmt" });
+  if (!res.ok) {
+    throw new Error(res.error || res.data?.error || `Gagal memuat kredensial (HTTP ${res.status})`);
+  }
+  const files = Array.isArray(res.data?.files)
+    ? res.data.files
+    : Array.isArray(res.data?.data)
+    ? res.data.data
+    : Array.isArray(res.data)
+    ? res.data
+    : [];
+
+  return files.map((c) => ({
+    name: c.name || c.id || c.file_name || "",
+    id: c.id || c.name || "",
+    email: c.email || c.account || "",
+    label: c.label || c.email || c.account || "",
+    provider: c.provider || "",
+    disabled: Boolean(c.disabled),
+    failed: Number(c.failed || 0),
+    cooling: Array.isArray(c.cooldowns) && c.cooldowns.length > 0,
+    expired: c.access_token_expires_at || c.expired || "",
+    inferenceVerified: Boolean(c.inference_verified),
+  }));
+}
+
+export async function setCpaCredentialDisabled(name, disabled) {
+  if (!name) throw new Error("Nama kredensial wajib diisi.");
+  const res = await request("/v8/management/credentials/status", {
+    method: "PATCH",
+    key: "mgmt",
+    body: { name, disabled: Boolean(disabled) },
+  });
+  if (!res.ok || (res.data && res.data.status === "error")) {
+    throw new Error(res.error || res.data?.error || `Gagal mengubah status (HTTP ${res.status})`);
+  }
+  return res.data || { status: "ok" };
+}
+
+export async function deleteCpaCredential(name) {
+  if (!name) throw new Error("Nama kredensial wajib diisi.");
+  const res = await request("/v8/management/credentials", {
+    method: "DELETE",
+    key: "mgmt",
+    body: { name },
+  });
+  if (!res.ok || (res.data && res.data.status === "error")) {
+    throw new Error(res.error || res.data?.error || `Gagal menghapus kredensial (HTTP ${res.status})`);
+  }
+  return res.data || { status: "ok" };
+}
+
+export async function refreshCpaCredentials() {
+  const res = await request("/v8/management/credentials/refresh", {
+    method: "POST",
+    key: "mgmt",
+    body: { all: true },
+    timeoutMs: 30000,
+  });
+  if (!res.ok || (res.data && res.data.status === "error")) {
+    throw new Error(res.error || res.data?.error || `Gagal refresh kredensial (HTTP ${res.status})`);
+  }
+  return res.data || { status: "ok" };
+}
+
 export async function startCpaOAuth(provider = "antigravity") {
   const allowed = ["antigravity", "claude", "codex", "kimi", "kimi-ai", "xai", "devin", "meta"];
   const p = String(provider || "").toLowerCase();

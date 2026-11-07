@@ -47,6 +47,10 @@ import {
   startCpaOAuth,
   getCpaOAuthStatus,
   submitCpaOAuthCallback,
+  listCpaCredentials,
+  setCpaCredentialDisabled,
+  deleteCpaCredential,
+  refreshCpaCredentials,
 } from "./services/cliproxy-service.js";
 import { loadWatchConfig, saveWatchConfig } from "./services/github-service.js";
 import {
@@ -396,6 +400,49 @@ export function createWebServer() {
           error: payload.error,
         });
         return sendJson(200, { ok: true, ...result });
+      } catch (err) {
+        return sendError(400, err.message);
+      }
+    }
+
+    // API: Kelola kredensial CLIProxyAPI
+    if (pathname === "/api/cliproxy/credentials" && req.method === "GET") {
+      try {
+        const credentials = await listCpaCredentials();
+        return sendJson(200, { ok: true, credentials });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    if (pathname === "/api/cliproxy/credentials/status" && req.method === "POST") {
+      try {
+        let body = "";
+        for await (const chunk of req) body += chunk;
+        const payload = JSON.parse(body || "{}");
+        await setCpaCredentialDisabled(payload.name, payload.disabled);
+        return sendJson(200, { ok: true, credentials: await listCpaCredentials() });
+      } catch (err) {
+        return sendError(400, err.message);
+      }
+    }
+
+    if (pathname === "/api/cliproxy/credentials/delete" && req.method === "POST") {
+      try {
+        let body = "";
+        for await (const chunk of req) body += chunk;
+        const payload = JSON.parse(body || "{}");
+        await deleteCpaCredential(payload.name);
+        return sendJson(200, { ok: true, credentials: await listCpaCredentials() });
+      } catch (err) {
+        return sendError(400, err.message);
+      }
+    }
+
+    if (pathname === "/api/cliproxy/credentials/refresh" && req.method === "POST") {
+      try {
+        await refreshCpaCredentials();
+        return sendJson(200, { ok: true, credentials: await listCpaCredentials() });
       } catch (err) {
         return sendError(400, err.message);
       }

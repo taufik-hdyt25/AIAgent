@@ -944,3 +944,209 @@ input:checked + .slider::before {
 .tab-content-panel {
   animation: fadeIn 0.25s ease-out;
 }
+
+/* ===== Modal: Kelola Kredensial ===== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(3, 6, 12, 0.65);
+  backdrop-filter: blur(8px);
+  animation: modalOverlayIn 0.18s ease-out;
+}
+
+.modal-overlay.hidden {
+  display: none;
+}
+
+.modal-card {
+  width: min(680px, 100%);
+  background: linear-gradient(180deg, rgba(23, 30, 46, 0.98), rgba(13, 18, 30, 0.98));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(99, 102, 241, 0.08);
+  overflow: hidden;
+  animation: modalCardIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 22px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-header h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.modal-header p {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  transition: color 0.15s ease;
+}
+
+.modal-close:hover {
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 16px 22px;
+  max-height: 58vh;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cred-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cred-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.cred-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(99, 102, 241, 0.35);
+}
+
+.cred-item.is-disabled {
+  opacity: 0.55;
+}
+
+.cred-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.cred-email {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cred-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.cred-pill {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.cred-pill.ok {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.cred-pill.off {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.cred-pill.warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.cred-pill.info {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+}
+
+.cred-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cred-btn {
+  font-size: 0.72rem;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+  transition: filter 0.15s ease, opacity 0.15s ease;
+}
+
+.cred-btn:hover {
+  filter: brightness(1.12);
+}
+
+.cred-btn.toggle {
+  background: rgba(99, 102, 241, 0.15);
+  color: #a5b4fc;
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.cred-btn.danger {
+  background: rgba(244, 63, 94, 0.12);
+  color: #fb7185;
+  border-color: rgba(244, 63, 94, 0.4);
+}
+
+.cred-empty {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 28px 0;
+}
+
+@keyframes modalOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalCardIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}

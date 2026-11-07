@@ -979,6 +979,160 @@ if (btnCpaRefresh) btnCpaRefresh.addEventListener("click", loadCpaStatus);
 if (btnCpaSubmitCallback) btnCpaSubmitCallback.addEventListener("click", submitCpaCallback);
 loadCpaStatus();
 
+// ===== Modal: Kelola Kredensial CLIProxyAPI =====
+const btnManageCredentials = document.getElementById("btnManageCredentials");
+const credModal = document.getElementById("credModal");
+const credModalClose = document.getElementById("credModalClose");
+const credList = document.getElementById("credList");
+const credRefreshBtn = document.getElementById("credRefreshBtn");
+const credLoginBtn = document.getElementById("credLoginBtn");
+
+function openCredModal() {
+  if (!credModal) return;
+  credModal.classList.remove("hidden");
+  credModal.setAttribute("aria-hidden", "false");
+  loadCredentials();
+}
+
+function closeCredModal() {
+  if (!credModal) return;
+  credModal.classList.add("hidden");
+  credModal.setAttribute("aria-hidden", "true");
+}
+
+function credPills(c) {
+  const pills = [];
+  if (c.disabled) pills.push('<span class="cred-pill off">nonaktif</span>');
+  else if (c.cooling) pills.push('<span class="cred-pill warn">cooling</span>');
+  else pills.push('<span class="cred-pill ok">aktif</span>');
+
+  if (c.failed > 0) pills.push(`<span class="cred-pill warn">failed ${c.failed}</span>`);
+  if (c.inferenceVerified) pills.push('<span class="cred-pill ok">verified</span>');
+  if (c.provider) pills.push(`<span class="cred-pill info">${escapeHtml(c.provider)}</span>`);
+  return pills.join(" ");
+}
+
+function renderCredentials(credentials) {
+  if (!credList) return;
+  credList.innerHTML = "";
+
+  const list = Array.isArray(credentials) ? credentials : [];
+  if (!list.length) {
+    credList.innerHTML = '<div class="cred-empty">Belum ada kredensial. Klik "Login Baru" untuk menambahkan akun.</div>';
+    return;
+  }
+
+  for (const c of list) {
+    const item = document.createElement("div");
+    item.className = "cred-item" + (c.disabled ? " is-disabled" : "");
+
+    const main = document.createElement("div");
+    main.className = "cred-main";
+    main.innerHTML = `
+      <div class="cred-email">${escapeHtml(c.email || c.label || c.name)}</div>
+      <div class="cred-meta">${credPills(c)}</div>`;
+    item.appendChild(main);
+
+    const actions = document.createElement("div");
+    actions.className = "cred-actions";
+
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "cred-btn toggle";
+    toggleBtn.textContent = c.disabled ? "Aktifkan" : "Nonaktifkan";
+    toggleBtn.addEventListener("click", () => toggleCredential(c.name, !c.disabled));
+    actions.appendChild(toggleBtn);
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "cred-btn danger";
+    delBtn.textContent = "Hapus";
+    delBtn.addEventListener("click", () => deleteCredential(c.name, c.email || c.label || c.name));
+    actions.appendChild(delBtn);
+
+    item.appendChild(actions);
+    credList.appendChild(item);
+  }
+}
+
+async function loadCredentials() {
+  if (!credList) return;
+  try {
+    const res = await fetch("/api/cliproxy/credentials");
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal memuat kredensial");
+    renderCredentials(data.credentials || []);
+  } catch (err) {
+    credList.innerHTML = `<div class="cred-empty" style="color:#f87171;">Gagal memuat: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+async function postCredential(path, body) {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.ok) throw new Error(data.error || "Aksi gagal");
+  if (Array.isArray(data.credentials)) renderCredentials(data.credentials);
+  return data;
+}
+
+async function toggleCredential(name, disabled) {
+  try {
+    await postCredential("/api/cliproxy/credentials/status", { name, disabled });
+    showToast(disabled ? "Kredensial dinonaktifkan." : "Kredensial diaktifkan.", "success");
+    loadCpaStatus();
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`, "error");
+  }
+}
+
+async function deleteCredential(name, label) {
+  if (!confirm(`Hapus kredensial '${label || name}'? Tindakan ini permanen.`)) return;
+  try {
+    await postCredential("/api/cliproxy/credentials/delete", { name });
+    showToast("Kredensial dihapus.", "info");
+    loadCpaStatus();
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`, "error");
+  }
+}
+
+async function refreshCredentials() {
+  if (credRefreshBtn) credRefreshBtn.disabled = true;
+  try {
+    await postCredential("/api/cliproxy/credentials/refresh", {});
+    showToast("Kredensial di-refresh.", "success");
+    loadCpaStatus();
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`, "error");
+  } finally {
+    if (credRefreshBtn) credRefreshBtn.disabled = false;
+  }
+}
+
+if (btnManageCredentials) btnManageCredentials.addEventListener("click", openCredModal);
+if (credModalClose) credModalClose.addEventListener("click", closeCredModal);
+if (credRefreshBtn) credRefreshBtn.addEventListener("click", refreshCredentials);
+if (credLoginBtn) {
+  credLoginBtn.addEventListener("click", () => {
+    closeCredModal();
+    startCpaLogin();
+  });
+}
+if (credModal) {
+  credModal.addEventListener("click", (e) => {
+    if (e.target === credModal) closeCredModal();
+  });
+}
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && credModal && !credModal.classList.contains("hidden")) {
+    closeCredModal();
+  }
+});
+
 // Handler Get Model dari Pi
 if (btnGetPiModels) {
   btnGetPiModels.addEventListener("click", async () => {

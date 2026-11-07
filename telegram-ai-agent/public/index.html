@@ -383,6 +383,9 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
               <button type="button" id="btnCpaRefresh" style="font-size: 0.82rem; padding: 7px 12px; white-space: nowrap; background: none; color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); border-radius: 6px; cursor: pointer;">
                 ⟳ Refresh
               </button>
+              <button type="button" id="btnManageCredentials" style="font-size: 0.82rem; padding: 7px 12px; white-space: nowrap; background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.4); border-radius: 6px; cursor: pointer;">
+                👥 Kredensial
+              </button>
             </div>
 
             <div id="cpaLoginBox" style="display: none; padding: 12px; background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.25); border-radius: 8px; margin-bottom: 10px;">
@@ -928,6 +931,26 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
 
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <!-- Modal: Kelola Kredensial CLIProxyAPI -->
+  <div id="credModal" class="modal-overlay hidden" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="credModalTitle">
+      <div class="modal-header">
+        <div>
+          <h3 id="credModalTitle">Kelola Kredensial CLIProxyAPI</h3>
+          <p>Akun Antigravity / Claude / Codex yang terhubung ke gateway.</p>
+        </div>
+        <button type="button" id="credModalClose" class="modal-close" aria-label="Tutup">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="credList" class="cred-list"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="credRefreshBtn" class="btn btn-secondary">⟳ Refresh</button>
+        <button type="button" id="credLoginBtn" class="btn btn-primary">🔐 Login Baru</button>
+      </div>
+    </div>
+  </div>
 
   <script src="/app.js"></script>
 </body>
