@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 
 const execAsync = promisify(exec);
 
-import { DATA_DIR, PROJECTS_DIR } from "./config/env.js";
+import { DATA_DIR, PROJECTS_DIR, PI_BIN, DEFAULT_PI_MODEL } from "./config/env.js";
 const CONFIG_FILE = path.join(DATA_DIR, "github_poller.json");
 
 let pollerInterval = null;
@@ -74,14 +74,14 @@ async function runCmd(cmd, cwd = process.cwd()) {
   });
 }
 
-// Menjalankan AI Agent (Antigravity CLI) pada repository
-async function solveIssueWithAI({ repoPath, repo, issue, engine = "agy", model = null }) {
-  const agyBin = process.env.AGY_BIN || "/home/node/.local/bin/agy";
+// Menjalankan AI Agent (Pi Coding Agent CLI) pada repository
+async function solveIssueWithAI({ repoPath, repo, issue, model = null }) {
+  const piBin = PI_BIN;
   const convId = randomUUID();
-  const activeModel = model || process.env.AGY_MODEL || "gemini-3.8-flash-high";
+  const activeModel = model || process.env.PI_MODEL || DEFAULT_PI_MODEL;
 
   const prompt = `
-Kamu adalah Antigravity AI, autonomous senior software engineer.
+Kamu adalah Pi Coding Agent AI, autonomous senior software engineer.
 Tugasmu adalah menganalisis dan menyelesaikan GitHub Issue ini secara mandiri sampai tuntas pada repository ini:
 
 REPOSITORY: ${repo}
@@ -99,15 +99,23 @@ INSTRUKSI PENGERJAAN:
 6. Di akhir proses, berikan penjelasan ringkas tentang apa yang telah kamu selesaikan.
 `.trim();
 
-  const bin = agyBin;
+  const bin = piBin;
   const args = [
-    "--conversation", convId,
-    "--model", activeModel,
+    "--session-id", convId,
     "-p", prompt,
-    "--output-format", "text",
-    "--print-timeout", "15m",
-    "--dangerously-skip-permissions",
+    "--approve",
   ];
+  if (activeModel) {
+    const isGroqModel =
+      activeModel === "openai/gpt-oss-120b" ||
+      activeModel === "llama-3.1-8b-instant" ||
+      activeModel.startsWith("groq/");
+    if (isGroqModel) {
+      args.unshift("--provider", "groq", "--model", activeModel.replace(/^groq\//, ""));
+    } else {
+      args.unshift("--provider", "local-pi", "--model", activeModel);
+    }
+  }
 
   return new Promise((resolve, reject) => {
     let stdout = "";
@@ -169,7 +177,7 @@ async function processSingleIssue({ repo, issue, notifyTelegram, config }) {
     `📌 *Issue #${issue.number}:* ${issue.title}\n` +
     `👤 *Pelapor:* @${issue.author?.login || "user"}\n` +
     `🔗 [Buka di GitHub](${issue.url})\n\n` +
-    `⏳ *Mempersiapkan workspace & mulai pengerjaan otomatis dengan Antigravity AI...*`
+    `⏳ *Mempersiapkan workspace & mulai pengerjaan otomatis dengan Pi Coding Agent AI...*`
   );
 
   const repoName = repo.split("/")[1] || repo;
@@ -203,7 +211,7 @@ async function processSingleIssue({ repo, issue, notifyTelegram, config }) {
     const branchName = `agent/issue-${issue.number}-${Date.now().toString().slice(-6)}`;
     await runCmd(`git -C "${repoPath}" checkout -b "${branchName}"`);
 
-    // 2. Jalankan Antigravity AI untuk menyelesaikan issue
+    // 2. Jalankan Pi Coding Agent AI untuk menyelesaikan issue
     console.log(`[Poller] Menjalankan AI Agent di ${repoPath}...`);
     const aiResult = await solveIssueWithAI({
       repoPath,
@@ -226,7 +234,7 @@ async function processSingleIssue({ repo, issue, notifyTelegram, config }) {
 
       // 4. Buat Pull Request via GitHub CLI
       console.log(`[Poller] Membuat Pull Request via gh CLI...`);
-      const prBody = `Automated resolution created by Antigravity AI.\n\nCloses #${issue.number}\n\n### Ringkasan Pengerjaan:\n${truncateText(aiSummary, 1500)}`;
+      const prBody = `Automated resolution created by Pi Coding Agent AI.\n\nCloses #${issue.number}\n\n### Ringkasan Pengerjaan:\n${truncateText(aiSummary, 1500)}`;
       const prTitle = `Fix #${issue.number}: ${safeTitle}`;
 
       let prUrl = "";

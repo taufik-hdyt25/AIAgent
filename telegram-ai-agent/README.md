@@ -5,18 +5,18 @@
 <h1 align="center">⚡ TH Agent</h1>
 
 <p align="center">
-  <strong>Autonomous AI Coding Assistant & Server Automation powered by Antigravity CLI, Pi CLI & Telegram</strong>
+  <strong>Autonomous AI Coding Assistant & Server Automation powered by Pi CLI, CLIProxyAPI & Telegram</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-v26-68a063?style=flat-square&logo=node.js" alt="Node.js 26" />
-  <img src="https://img.shields.io/badge/Engine-Antigravity%20%7C%20Pi%20CLI-8b5cf6?style=flat-square" alt="AI Engines" />
+  <img src="https://img.shields.io/badge/Engine-Pi%20CLI%20%7C%20CLIProxyAPI-8b5cf6?style=flat-square" alt="AI Engines" />
   <img src="https://img.shields.io/badge/Platform-Telegram%20Bot-229ED9?style=flat-square&logo=telegram" alt="Telegram" />
 </p>
 
 ---
 
-**TH Agent** adalah asisten AI coding & server automation cerdas berbasis Node.js & grammY untuk mengontrol Antigravity CLI (`agy`) dan Pi Coding Agent (`pi`), memungkinkan Anda mendelegasikan tugas coding langsung dari chat Telegram ke repository di server/VPS.
+**TH Agent** adalah asisten AI coding & server automation cerdas berbasis Node.js & grammY yang mengontrol Pi Coding Agent (`pi`) melalui endpoint CLIProxyAPI / OpenAI-compatible, memungkinkan Anda mendelegasikan tugas coding langsung dari chat Telegram ke repository di server/VPS.
 
 ---
 
@@ -26,47 +26,26 @@
 - **Otorisasi Ketat:** Hanya Telegram User ID yang terdaftar dalam `ALLOWED_TELEGRAM_IDS` yang dapat berinteraksi dengan bot.
 - **Isolasi Branch Git:** Setiap tugas coding dieksekusi di branch terpisah (`agent/task-<timestamp>`), menjaga branch utama tetap bersih.
 - **Pembersihan Lingkungan (Environment Sanitization):** Token bot Telegram dan secret tidak pernah diteruskan ke subprocess agent.
-- **Manajemen Proses Aman:** Menjalankan `agy` dengan Process Group (`detached: true`) sehingga pembatalan (`/cancel`) atau timeout mematikan seluruh pohon proses (termasuk compiler, linter, atau subprocess lainnya).
+- **Manajemen Proses Aman:** Menjalankan `pi` dengan Process Group (`detached: true`) sehingga pembatalan (`/cancel`) atau timeout mematikan seluruh pohon proses (termasuk compiler, linter, atau subprocess lainnya).
 - **Penanganan Otomatis `projects.json`:** Dibuat otomatis jika belum ada.
 
 ---
 
-## ⚠️ Temuan Penting & Konfigurasi Permission Antigravity CLI
+## ⚙️ Arsitektur Engine: Pi CLI + CLIProxyAPI
 
-Saat dijalankan dalam mode non-interaktif/headless (`-p` / `--print`), Antigravity CLI **secara default menolak izin modifikasi file (`write_file`, `replace_file_content`, command shell, dll.)** karena tidak ada terminal interaktif untuk meminta konfirmasi:
+Bot hanya memakai **Pi Coding Agent CLI (`pi`)** sebagai engine agent. Pi CLI yang melakukan tool-calling (baca/tulis file, terminal, git), lalu mengirim request model ke endpoint **OpenAI-compatible** yang ditunjuk `PI_SERVER_URL`.
 
-```text
-jetski: no output produced — a tool required the "write_file" permission that headless mode cannot prompt for, so it was auto-denied.
-```
+Rekomendasi: jalankan **CLIProxyAPI** di host (default `http://127.0.0.1:8317/v1`) sebagai gateway ke Gemini/Claude/Codex. Pi CLI otomatis ditambahkan flag `--approve` agar dapat menjalankan tool tanpa prompt interaktif.
 
-Tersedia dua opsi konfigurasi:
-
-### Opsi 1: Allowlist Spesifik (Rekomendasi untuk VPS / Produksi)
-Tambahkan izin eksplisit pada file konfigurasi `~/.gemini/antigravity-cli/settings.json` milik user Linux/VPS:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "read_file",
-      "list_dir",
-      "grep_search",
-      "write_file",
-      "replace_file_content",
-      "multi_replace_file_content",
-      "command(regex:npm (test|run lint|run build))",
-      "command(regex:git (status|diff|log))"
-    ]
-  }
-}
-```
-
-### Opsi 2: Auto-Approve Flags (Development / Sandbox Terisolasi)
-Set di file `.env`:
+Set di `.env`:
 ```dotenv
-AGY_AUTO_APPROVE_PERMISSIONS=true
+PI_SERVER_URL=http://127.0.0.1:8317/v1
+PI_SERVER_API_KEY=
+# Jika bot berjalan di Docker dan CLIProxyAPI di host:
+# PI_SERVER_URL=http://host.docker.internal:8317/v1
 ```
-Ini akan otomatis menambahkan flag `--dangerously-skip-permissions` saat memanggil binary `agy`. Gunakan opsi ini hanya jika VPS/container sudah terisolasi dan tidak menjalankan service produksi sensitif.
+
+Login provider (Gemini/Claude/Codex) dilakukan di CLIProxyAPI, bukan di bot.
 
 ---
 
@@ -93,7 +72,7 @@ Atau jika sudah melakukan git clone:
 
 ### Apa yang Dilakukan Installer Ini Secara Otomatis?
 1. Mengunduh repository ke folder `telegram-ai-agent` (jika belum di-clone).
-2. Memeriksa & memasang runtime **Node.js**, **Antigravity CLI (`agy`)**, **Pi Coding Agent CLI (`pi`)**, dan binary runner.
+2. Memeriksa & memasang runtime **Node.js**, **Pi Coding Agent CLI (`pi`)**, dan binary runner.
 3. Menyiapkan folder kerja, file `.env`, dan model AI default.
 4. **Auto-Start & Background Service:** Mengonfigurasi bot agar langsung berjalan di latar belakang dan otomatis aktif kembali saat komputer/VPS menyala (*auto-start on boot*).
 5. Di Linux VPS & Raspberry Pi: Memberikan opsi instalasi **Native PM2** (sangat ringan ~60MB RAM) atau **Docker Container**.
@@ -135,7 +114,7 @@ bash scripts/setup-pi-autostart.sh
 ### 1. Prasyarat
 - Node.js v20+ atau v22+
 - Git
-- Antigravity CLI (`agy`) terpasang dan sudah terautentikasi (`agy --version`)
+- Pi Coding Agent CLI (`pi`) terpasang (`pi --version`) dan `PI_SERVER_URL` mengarah ke endpoint CLIProxyAPI / OpenAI-compatible yang valid
 
 ### 2. Setup Project
 ```bash
@@ -153,7 +132,7 @@ Edit file `.env` dan isi token Anda:
 ```dotenv
 BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrSTUvwxyz
 ALLOWED_TELEGRAM_IDS=987654321
-AGY_BIN=/Users/intiva/.local/bin/agy  # Sesuaikan dengan `which agy`
+PI_SERVER_URL=http://127.0.0.1:8317/v1  # Endpoint CLIProxyAPI / OpenAI-compatible
 ```
 
 ### 3. Daftarkan Project
@@ -203,8 +182,7 @@ pm2 logs telegram-coding-agent
 | `/exec <cmd>` | Menjalankan perintah terminal langsung di server (misal: `/exec python3 uploads/...`) |
 | `/queue` / `/antrean` | Melihat daftar antrean instruksi AI yang sedang menunggu giliran |
 | `/clearqueue` | Mengosongkan seluruh antrean instruksi yang menunggu |
-| `/engine` / `/cli` | Memilih engine CLI yang digunakan (**Antigravity CLI** `agy` atau **Pi Coding Agent CLI** `pi`) |
-| `/model` | Membuka menu pemilihan model AI (Claude, Gemini, DeepSeek, GPT) |
+| `/model` | Membuka menu pemilihan model AI untuk Pi Coding Agent CLI |
 | `/status` | Melihat status task aktif, status antrean, engine, & model yang aktif |
 | `/reset` / `/new` | Memulai sesi obrolan baru dari awal (reset memori percakapan) |
 | `/cancel` | Menghentikan task yang sedang diproses / membatalkan antrean |
@@ -222,7 +200,7 @@ Bot mendukung penerimaan file kode, skrip, data, dan gambar secara langsung dari
   * _"eksekusi file ini dengan python3 dan cek outputnya"_
   * _"analisis file ini dan perbaiki bug di dalamnya"_
 - File otomatis diunduh dan disimpan di folder `./uploads/`.
-- Agent AI (`agy` / `pi`) akan menerima path file beserta cuplikan isinya, lalu mengeksekusi langsung di terminal server dan mengembalikan hasil outputnya ke Telegram!
+- Agent AI (`pi`) akan menerima path file beserta cuplikan isinya, lalu mengeksekusi langsung di terminal server dan mengembalikan hasil outputnya ke Telegram!
 
 ### 2. Mengirim Gambar / Screenshot Error
 - Kirim foto/screenshot terminal error, diagram alur, atau desain UI.

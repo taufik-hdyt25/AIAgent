@@ -4,14 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  AGY_BIN,
   PI_BIN,
   DEFAULT_PI_MODEL,
   TIMEOUT_MS,
   MAX_OUTPUT,
-  AUTO_APPROVE_PERMISSIONS,
   PROJECTS_DIR,
-  IS_PI,
 } from "../config/env.js";
 import {
   isPiSandboxActive,
@@ -22,17 +19,9 @@ import {
 } from "../services/sandbox-service.js";
 import {
   getUserConversationId,
-  getUserAgyConversationId,
-  setUserAgyConversationId,
-  getUserEngine,
-  setUserEngine,
-  getUserAgyModel,
-  setUserAgyModel,
   getUserPiModel,
-  setUserPiModel,
   isPiSessionStarted,
   markPiSessionStarted,
-  getUserModel,
   getUserActiveProject,
   setUserActiveProject,
 } from "../services/context-store.js";
@@ -67,7 +56,6 @@ import {
   resumeQueue,
 } from "../services/queue-service.js";
 import { ensureProjectsIndexed } from "../services/project-indexer.js";
-import { getAgySessionTokens, recordAgySessionUsage } from "../services/usage-service.js";
 import {
   searchMemories,
   formatMemoriesForPrompt,
@@ -151,7 +139,7 @@ export async function processAutonomousOutput(rawText) {
   };
 }
 
-// Fungsi inti eksekusi instruksi AI (CLI pi / agy)
+// Fungsi inti eksekusi instruksi AI (Pi Coding Agent CLI)
 export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null, targetProject = null, engineOverride = null, _fallbackAttempted = false }) {
   const userId = ctx.from?.id;
   const taskId = id || randomUUID().slice(0, 8);
@@ -226,13 +214,8 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       }
     }
 
-    const engine = engineOverride || await getUserEngine(userId);
-    const userModel = await getUserModel(userId, engine);
-    const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
-    const isOngoingSession = Boolean(
-      (engine === "agy" && agyConvId) ||
-      (engine === "pi" && (await isPiSessionStarted(convId)))
-    );
+    const userModel = await getUserPiModel(userId);
+    const isOngoingSession = await isPiSessionStarted(convId);
 
     const currentQueueLen = getQueueLength();
     const deferredList = getDeferredProjects();
@@ -409,79 +392,50 @@ ${userMessage}
     }
 
 
-    const isPi = engine === "pi";
-
     const executeCli = async (sessionFlagOverride = null) => {
-      let binToRun = AGY_BIN;
-      let cliArgs = [];
-      // Simpan model saat task dimulai untuk guard race condition saat task selesai
-      let taskStartModel = null;
-
-      if (isPi) {
-        binToRun = PI_BIN;
-        if (!fs.existsSync(binToRun)) {
+      let binToRun = PI_BIN;
+      if (!fs.existsSync(binToRun)) {
+        try {
+          const { execSync } = await import("node:child_process");
+          let w = "";
           try {
-            const { execSync } = await import("node:child_process");
-            let w = "";
-            try {
-              w = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
-            } catch (_) {}
-            if (w && fs.existsSync(w)) {
-              binToRun = w;
-            } else {
-              console.log("[Dispatcher] Pi CLI belum terpasang, menginstal otomatis...");
-              if (ctx?.reply) {
-                ctx.reply("⏳ *Menginstal binary Pi Coding Agent CLI di sistem...*\n_Mohon tunggu sebentar (hanya sekali saat pertama kali)..._", { parse_mode: "Markdown" }).catch(() => {});
-              }
-              execSync("npm install -g @earendil-works/pi-coding-agent 2>/dev/null || sudo npm install -g @earendil-works/pi-coding-agent 2>/dev/null || npm install @earendil-works/pi-coding-agent || true", { timeout: 180000 });
-              try {
-                const wAfter = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
-                if (wAfter && fs.existsSync(wAfter)) binToRun = wAfter;
-              } catch (_) {}
-            }
-          } catch (autoErr) {
-            console.warn("[Dispatcher] Gagal auto-install Pi CLI:", autoErr.message);
-          }
-        }
-        const piModel = (engine === "pi" && userModel) ? userModel : await getUserPiModel(userId);
-        taskStartModel = piModel;
-        cliArgs = [
-          "--session-id",
-          convId,
-          "-p",
-          prompt,
-          "--approve",
-        ];
-        if (piModel) {
-          const isGroqModel =
-            piModel === "openai/gpt-oss-120b" ||
-            piModel === "llama-3.1-8b-instant" ||
-            piModel.startsWith("groq/");
-
-          if (isGroqModel) {
-            cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
+            w = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
+          } catch (_) {}
+          if (w && fs.existsSync(w)) {
+            binToRun = w;
           } else {
-            cliArgs.unshift("--provider", "local-pi", "--model", piModel);
+            console.log("[Dispatcher] Pi CLI belum terpasang, menginstal otomatis...");
+            if (ctx?.reply) {
+              ctx.reply("⏳ *Menginstal binary Pi Coding Agent CLI di sistem...*\n_Mohon tunggu sebentar (hanya sekali saat pertama kali)..._", { parse_mode: "Markdown" }).catch(() => {});
+            }
+            execSync("npm install -g @earendil-works/pi-coding-agent 2>/dev/null || sudo npm install -g @earendil-works/pi-coding-agent 2>/dev/null || npm install @earendil-works/pi-coding-agent || true", { timeout: 180000 });
+            try {
+              const wAfter = execSync("which pi 2>/dev/null", { encoding: "utf8" }).trim();
+              if (wAfter && fs.existsSync(wAfter)) binToRun = wAfter;
+            } catch (_) {}
           }
+        } catch (autoErr) {
+          console.warn("[Dispatcher] Gagal auto-install Pi CLI:", autoErr.message);
         }
-      } else {
-        binToRun = AGY_BIN;
-        const agyModel = (engine === "agy" && userModel) ? userModel : await getUserAgyModel(userId);
-        taskStartModel = agyModel; // Catat model saat task mulai
-        const agyConvId = userId ? await getUserAgyConversationId(userId) : null;
-        cliArgs = [
-          "--model",
-          agyModel,
-          "-p",
-          prompt,
-          "--output-format",
-          "json",
-        ];
-        if (agyConvId) {
-          cliArgs.unshift("--conversation", agyConvId);
-        }
-        if (AUTO_APPROVE_PERMISSIONS) {
-          cliArgs.push("--dangerously-skip-permissions");
+      }
+      const piModel = userModel || await getUserPiModel(userId);
+      const cliArgs = [
+        "--session-id",
+        convId,
+        "-p",
+        prompt,
+        "--approve",
+      ];
+      if (piModel) {
+        const isGroqModel =
+          piModel === "openai/gpt-oss-120b" ||
+          piModel === "llama-3.1-8b-instant" ||
+          piModel.startsWith("groq/");
+
+        if (isGroqModel) {
+          cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
+        } else {
+          cliArgs.unshift("--provider", "local-pi", "--model", piModel);
         }
       }
 
@@ -497,9 +451,6 @@ ${userMessage}
       sanitizedEnv.HAS_PENDING_QUEUE = currentQueueLen > 0 ? "1" : "0";
       sanitizedEnv.QUEUE_STATUS_FILE = path.join(process.cwd(), "data", "queue-status.json");
 
-      if (process.env.AGY_AUTH_TYPE === "oauth") {
-        delete sanitizedEnv.GEMINI_API_KEY;
-      }
       if (process.env.GROQ_API_KEY) {
         sanitizedEnv.GROQ_API_KEY = process.env.GROQ_API_KEY;
       }
@@ -550,8 +501,6 @@ ${userMessage}
       let settled = false;
       let timer;
       let killTimer;
-      // Track jika sudah pernah fallback agar tidak loop
-      const hasFallbackAttempted = _fallbackAttempted;
 
       const finish = async (error, code, signal) => {
         if (settled) return;
@@ -559,58 +508,15 @@ ${userMessage}
         clearTimeout(timer);
         clearTimeout(killTimer);
 
-        if (isPi && code === 0) {
+        if (code === 0) {
           await markPiSessionStarted(convId, true);
         }
 
         clearInterval(typingInterval);
 
-        const engineLabel = isPi ? "Pi Coding Agent CLI" : "Antigravity";
-        let responseText = "";
+        const engineLabel = "Pi Coding Agent CLI";
+        let responseText = stdout.trim();
         let jsonError = null;
-
-        if (!isPi) {
-          const rawOutput = stdout.trim();
-          let parsed = null;
-          try {
-            parsed = JSON.parse(rawOutput);
-          } catch {
-            const jsonMatch = rawOutput.match(/\{[\s\S]*"conversation_id"[\s\S]*\}/);
-            if (jsonMatch) {
-              try {
-                parsed = JSON.parse(jsonMatch[0]);
-              } catch (_) {}
-            }
-          }
-
-          if (parsed) {
-            if (parsed.conversation_id && userId) {
-              // Guard: hanya simpan conversation ID jika model belum berubah
-              // Mencegah race condition di mana user switch model saat task masih jalan
-              const currentModel = await getUserAgyModel(userId);
-              if (!taskStartModel || currentModel === taskStartModel) {
-                await setUserAgyConversationId(userId, parsed.conversation_id);
-              } else {
-                console.log(`[Dispatcher] Model berubah saat task berjalan (${taskStartModel} → ${currentModel}). Conversation ID lama TIDAK disimpan untuk mencegah rate-limit leak.`);
-              }
-              // Catat pemakaian token sesi ke usage stats (delta tracking cerdas)
-              recordAgySessionUsage({
-                convId: parsed.conversation_id,
-                userId,
-                model: currentModel || agyModel,
-              }).catch(() => {});
-            }
-            if (parsed.status === "SUCCESS") {
-              responseText = parsed.response || "";
-            } else if (parsed.error) {
-              jsonError = parsed.error;
-            }
-          } else {
-            responseText = rawOutput;
-          }
-        } else {
-          responseText = stdout.trim();
-        }
 
         // Process autonomous tags (Memory & Skills) jika response ada
         if (responseText) {
@@ -644,103 +550,12 @@ ${userMessage}
         if (hasError) {
           let errText = jsonError || stderr.trim() || error?.message || (code !== null ? `Exit code ${code}` : "");
 
-          // ── AUTO-FALLBACK ENGINE saat quota habis ──────────────────────────
-          const isQuotaError =
-            errText.includes("Individual quota reached") ||
-            errText.includes("quota reached") ||
-            errText.includes("upgrade your subscription") ||
-            errText.includes("upgrade your plan") ||
-            errText.includes("Resets in") ||
-            errText.includes("rate limit exceeded") ||
-            errText.includes("Too Many Requests");
-
-          if (isQuotaError && userId && !hasFallbackAttempted) {
-            const currentEngine = engineOverride || await getUserEngine(userId);
-
-            // 1. Jika di agy dan model Claude habis kuota, auto-switch ke Gemini Flash dulu
-            if (currentEngine === "agy") {
-              const currentModel = await getUserAgyModel(userId);
-              if (currentModel && (currentModel.includes("claude") || currentModel.includes("opus") || currentModel.includes("sonnet"))) {
-                task._fallbackAttempted = true;
-                const fallbackModel = "gemini-3.8-flash-medium";
-                await setUserAgyModel(userId, fallbackModel);
-                const resetMatch = errText.match(/Resets in (\d+h\d+m\d+s|\d+m\d+s)/);
-                const resetInfo = resetMatch ? ` *(quota reset: ${resetMatch[1]})*` : "";
-
-                await ctx.reply(
-                  `⚠️ *Quota model ${currentModel} habis!*${resetInfo}\n\n` +
-                    `🔄 Auto-switching model ke *Gemini 3.8 Flash* dan mencoba ulang instruksi...`,
-                  { parse_mode: "Markdown" }
-                );
-
-                console.log(`[Auto-Fallback] Model agy ${currentModel} → ${fallbackModel} (quota limit terdeteksi)`);
-
-                const retryItem = {
-                  ...task,
-                  _fallbackAttempted: true,
-                };
-                setTimeout(() => {
-                  executeTaskInternal(retryItem).catch((err) =>
-                    console.error("[Auto-Fallback] Model retry error:", err.message)
-                  );
-                }, 1500);
-                return;
-              }
-            }
-
-            // 2. Chain antar-engine: pi → agy → (stop)
-            const fallbackChain = { pi: "agy" };
-            const nextEngine = fallbackChain[currentEngine];
-
-            if (nextEngine) {
-              task._fallbackAttempted = true;
-              await setUserEngine(userId, nextEngine);
-              const nextLabel =
-                nextEngine === "pi" ? "Pi Coding Agent CLI" : "Antigravity CLI";
-              const resetMatch = errText.match(/Resets in (\d+h\d+m\d+s|\d+m\d+s)/);
-              const resetInfo = resetMatch ? ` *(quota reset: ${resetMatch[1]})*` : "";
-
-              await ctx.reply(
-                `⚠️ *Quota ${engineLabel} habis!*${resetInfo}\n\n` +
-                  `🔄 Auto-switching ke *${nextLabel}* dan mencoba ulang instruksi...\n\n` +
-                  `_Gunakan /engine untuk mengatur engine secara manual._`,
-                { parse_mode: "Markdown" }
-              );
-
-              console.log(`[Auto-Fallback] ${currentEngine} → ${nextEngine} (quota limit terdeteksi)`);
-
-              // Retry task dengan engine baru
-              const retryItem = {
-                ...task,
-                engineOverride: nextEngine,
-                _fallbackAttempted: true,
-              };
-              // Delay singkat lalu eksekusi ulang
-              setTimeout(() => {
-                executeTaskInternal(retryItem).catch((err) =>
-                  console.error("[Auto-Fallback] Retry error:", err.message)
-                );
-              }, 1500);
-              return;
-            } else {
-              // Semua engine sudah dicoba
-              errText = "❌ Semua engine sudah mencapai limit quota! Tunggu quota reset atau ganti model/engine secara manual.";
-              await ctx.reply(errText, { parse_mode: "Markdown" }).catch(() => ctx.reply(errText));
-              processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
-              return;
-            }
-          }
-          // ── END AUTO-FALLBACK ──────────────────────────────────────────────
-
           if (isTimedOut) {
             errText = `⏱️ *Batas Waktu Eksekusi Terlampaui (Timeout)*\n\n${engineLabel} memerlukan waktu pemrosesan lebih lama dari batas waktu yang ditentukan. Coba persempit atau pecah instruksi menjadi langkah-langkah yang lebih terarah.`;
           } else if (errText.includes("permission that headless mode cannot prompt for") || errText.includes("permission")) {
-            errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan \`AGY_AUTO_APPROVE_PERMISSIONS=true\` diaktifkan pada .env.`;
+            errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan Pi CLI dijalankan dengan flag \`--approve\`.`;
           } else if (errText.includes("ENOENT")) {
-            const installHint = isPi
-              ? "\n\n💡 *Solusi:* Install binary Pi CLI secara global:\n`npm install -g @earendil-works/pi-coding-agent`"
-              : "";
-            errText = `❌ *Kendala Eksekusi Engine (${engineLabel})*\n\n${truncate(errText, 500)}\n\n💡 _Kemungkinan penyebab: Binary CLI atau direktori kerja proyek tidak ditemukan di server._${installHint}`;
+            errText = `❌ *Kendala Eksekusi Engine (${engineLabel})*\n\n${truncate(errText, 500)}\n\n💡 *Solusi:* Install binary Pi CLI secara global:\n\`npm install -g @earendil-works/pi-coding-agent\``;
           } else {
             errText = `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`;
           }
@@ -989,45 +804,22 @@ export async function runAgentAutonomous({
   timeoutMs = TIMEOUT_MS,
   onSpawn = null,
 }) {
-  const engine = engineOverride || (userId ? await getUserEngine(userId) : process.env.CLI_ENGINE || "agy");
   const actualConvId = convId || `auto-${randomUUID().slice(0, 8)}`;
 
+  const binToRun = PI_BIN;
 
-  // 2. Engine: CLI (pi atau agy)
-  const isPi = engine === "pi";
-  const binToRun = isPi ? PI_BIN : AGY_BIN;
+  const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
+  const cliArgs = ["--session-id", actualConvId, "-p", prompt, "--approve"];
+  if (piModel) {
+    const isGroqModel =
+      piModel === "openai/gpt-oss-120b" ||
+      piModel === "llama-3.1-8b-instant" ||
+      piModel.startsWith("groq/");
 
-  let cliArgs = [];
-  if (isPi) {
-    const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
-    cliArgs = ["--session-id", actualConvId, "-p", prompt, "--approve"];
-    if (piModel) {
-      const isGroqModel =
-        piModel === "openai/gpt-oss-120b" ||
-        piModel === "llama-3.1-8b-instant" ||
-        piModel.startsWith("groq/");
-
-      if (isGroqModel) {
-        cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
-      } else {
-        cliArgs.unshift("--provider", "local-pi", "--model", piModel);
-      }
-    }
-  } else {
-    const agyModel = userId ? await getUserAgyModel(userId) : (process.env.AGY_MODEL || "gemini-3.8-flash-medium");
-    cliArgs = [
-      "--model",
-      agyModel,
-      "-p",
-      prompt,
-      "--output-format",
-      "json",
-    ];
-    if (convId) {
-      cliArgs.unshift("--conversation", convId);
-    }
-    if (AUTO_APPROVE_PERMISSIONS) {
-      cliArgs.push("--dangerously-skip-permissions");
+    if (isGroqModel) {
+      cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
+    } else {
+      cliArgs.unshift("--provider", "local-pi", "--model", piModel);
     }
   }
 
@@ -1042,9 +834,6 @@ export async function runAgentAutonomous({
 
   if (process.env.GITHUB_TOKEN) {
     sanitizedEnv.GH_TOKEN = process.env.GITHUB_TOKEN;
-  }
-  if (process.env.AGY_AUTH_TYPE === "oauth") {
-    delete sanitizedEnv.GEMINI_API_KEY;
   }
   if (process.env.GROQ_API_KEY) {
     sanitizedEnv.GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -1072,27 +861,6 @@ export async function runAgentAutonomous({
   });
 
   if (res.code === 0 && res.stdout) {
-    if (!isPi) {
-      try {
-        let parsed = null;
-        try {
-          parsed = JSON.parse(res.stdout.trim());
-        } catch {
-          const match = res.stdout.match(/\{[\s\S]*"conversation_id"[\s\S]*\}/);
-          if (match) parsed = JSON.parse(match[0]);
-        }
-        if (parsed) {
-          if (parsed.status === "SUCCESS") {
-            return { ok: true, output: parsed.response, conversationId: parsed.conversation_id };
-          }
-          if (parsed.error) {
-            throw new Error(`Eksekusi Agent CLI gagal: ${parsed.error}`);
-          }
-        }
-      } catch (err) {
-        if (err.message.startsWith("Eksekusi Agent CLI gagal:")) throw err;
-      }
-    }
     return { ok: true, output: res.stdout };
   }
 

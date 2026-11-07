@@ -5,26 +5,13 @@ import { DATA_DIR } from "./env.js";
 
 const MODELS_FILE = path.join(DATA_DIR, "models.json");
 
-export const DEFAULT_AGY_MODELS = [
-  { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium Thinking)", badge: "Rekomendasi" },
-  { id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High Thinking)", badge: "Maksimal" },
-  { id: "gemini-3.8-flash-low", name: "Gemini 3.8 Flash (Low Thinking)", badge: "Cepat" },
-  { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)", badge: "Populer" },
-  { id: "claude-3-5-sonnet", name: "Claude 3.5 Sonnet (Coding Specialist)", badge: "Populer" },
-  { id: "claude-3-7-sonnet", name: "Claude 3.7 Sonnet (Hybrid Reasoning)", badge: "Thinking" },
-  { id: "claude-opus-4-6-thinking", name: "Claude Opus 4.6 (Thinking)", badge: "Kuat" },
-  { id: "gpt-oss-120b-medium", name: "GPT-OSS 120B (Medium)", badge: "Open" },
-];
-
 export const DEFAULT_PI_MODELS = [
   { id: "openai/gpt-oss-120b", name: "GPT-OSS 120B (Groq - Ultra Cepat)", badge: "Rekomendasi" },
   { id: "pi-deepseek-r1-7b", name: "DeepSeek R1 7B (Local Pi Server)", badge: "Lokal" },
   { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B Instant (Groq)", badge: "Cepat" },
 ];
 
-export const AVAILABLE_AGY_MODELS = DEFAULT_AGY_MODELS;
 export const AVAILABLE_PI_MODELS = DEFAULT_PI_MODELS;
-export const AVAILABLE_MODELS = AVAILABLE_AGY_MODELS;
 
 // Helper membaca model kustom jika disimpan di data/models.json
 export async function loadCustomModels() {
@@ -54,28 +41,24 @@ export async function saveCustomModels(customData) {
 // Helper mendapatkan daftar model berdasarkan engine aktif
 // Jika pengguna mengonfigurasi daftar model kustom untuk engine ini,
 // HANYA MODEL YANG DITAMBAHKAN YANG BOLEH MUNCUL!
-export async function getModelList(engine) {
+export async function getModelList() {
   const custom = await loadCustomModels();
-  const engineKey = engine === "pi" ? "piModels" : "agyModels";
 
-  if (custom && Array.isArray(custom[engineKey]) && custom[engineKey].length > 0) {
-    return custom[engineKey];
+  if (custom && Array.isArray(custom.piModels) && custom.piModels.length > 0) {
+    return custom.piModels;
   }
 
-  if (engine === "pi") {
-    const serverUrl = process.env.PI_SERVER_URL;
-    const serverKey = process.env.PI_SERVER_API_KEY || "";
-    if (serverUrl) {
-      try {
-        const remote = await fetchRemoteModels(serverUrl, serverKey);
-        if (remote.length > 0) {
-          return remote;
-        }
-      } catch {}
-    }
-    return AVAILABLE_PI_MODELS;
+  const serverUrl = process.env.PI_SERVER_URL;
+  const serverKey = process.env.PI_SERVER_API_KEY || "";
+  if (serverUrl) {
+    try {
+      const remote = await fetchRemoteModels(serverUrl, serverKey);
+      if (remote.length > 0) {
+        return remote;
+      }
+    } catch {}
   }
-  return AVAILABLE_AGY_MODELS;
+  return AVAILABLE_PI_MODELS;
 }
 
 /**

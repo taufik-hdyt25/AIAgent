@@ -4,20 +4,14 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { UPLOADS_DIR, MAX_OUTPUT, PROJECTS_DIR, IS_PI } from "../../config/env.js";
 import {
-  AVAILABLE_AGY_MODELS,
   AVAILABLE_PI_MODELS,
   fetchRemoteModels,
   normalizePiUrl,
 } from "../../config/models.js";
 import {
-  getUserEngine,
-  setUserEngine,
-  getUserAgyModel,
   getUserPiModel,
   setUserPiModel,
   resetUserConversation,
-  getUserAgyConversationId,
-  getUserModel,
   getUserActiveProject,
   setUserActiveProject,
 } from "../../services/context-store.js";
@@ -120,11 +114,9 @@ import { checkNotionTasks } from "../../services/notion-watcher.js";
 
 export async function sendUsageResponse(ctx) {
   const userId = ctx.from?.id;
-  const currentEngine = (userId ? await getUserEngine(userId) : null) || process.env.CLI_ENGINE || "agy";
-  const activeModel = (userId ? await getUserModel(userId, currentEngine) : null) || "gemini-3.8-flash-high";
-  const convId = (userId && currentEngine === "agy") ? await getUserAgyConversationId(userId) : null;
+  const activeModel = (userId ? await getUserPiModel(userId) : null) || "default";
 
-  const report = await getUsageReport({ activeEngine: currentEngine, activeModel, convId });
+  const report = await getUsageReport({ activeModel });
   await ctx.reply(report, { parse_mode: "Markdown" }).catch(() => ctx.reply(report));
 }
 
@@ -132,22 +124,11 @@ export function registerBasicCommands(bot) {
   // /start, /help
   bot.command(["start", "help", "bantuan"], async (ctx) => {
     const userId = ctx.from?.id;
-    const currentEngine = await getUserEngine(userId);
-    const isPi = currentEngine === "pi";
-    const activeEngineLabel = isPi
-      ? "Pi Coding Agent CLI (`pi`)"
-      : "Antigravity CLI (`agy`)";
+    const activeEngineLabel = "Pi Coding Agent CLI (`pi`)";
 
-    let activeModelDisplay = "";
-    if (isPi) {
-      const piModel = await getUserPiModel(userId);
-      const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
-      activeModelDisplay = `*${matched?.name || piModel}* (\`${piModel}\`)`;
-    } else {
-      const agyModel = await getUserAgyModel(userId);
-      const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);
-      activeModelDisplay = `*${matched?.name || agyModel}* (\`${agyModel}\`)`;
-    }
+    const piModel = await getUserPiModel(userId);
+    const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
+    const activeModelDisplay = `*${matched?.name || piModel}* (\`${piModel}\`)`;
 
     await ctx.reply(
       "👋 *Halo! Saya TH Agent (AI Coding Agent).*\n\n" +
@@ -187,7 +168,6 @@ export function registerBasicCommands(bot) {
         "• `/delskill <id>` - Hapus skill AI yang dipelajari\n" +
         "• `/queue` - Cek daftar antrean instruksi AI\n" +
         "• `/clearqueue` - Kosongkan seluruh antrean tugas\n" +
-        "• `/engine` - Ganti engine (Pi Coding Agent CLI / Antigravity)\n" +
         "• `/model` - Pilih atau ganti model AI\n" +
         "• `/detectmodels` - Pindai & deteksi otomatis daftar model di server\n" +
         "• `/getpi` - Ambil dan aktifkan langsung model asli dari server Pi\n" +
@@ -208,22 +188,11 @@ export function registerBasicCommands(bot) {
   // /status
   bot.command("status", async (ctx) => {
     const userId = ctx.from?.id;
-    const currentEngine = await getUserEngine(userId);
-    const isPi = currentEngine === "pi";
-    const engineLabel = isPi
-      ? "Pi Coding Agent CLI (`pi`)"
-      : "Antigravity CLI (`agy`)";
+    const engineLabel = "Pi Coding Agent CLI (`pi`)";
 
-    let activeModelDisplay = "";
-    if (isPi) {
-      const piModel = await getUserPiModel(userId);
-      const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
-      activeModelDisplay = `*${matched?.name || piModel}* (\`${piModel}\`)`;
-    } else {
-      const agyModel = await getUserAgyModel(userId);
-      const matched = AVAILABLE_AGY_MODELS.find((m) => m.id === agyModel);
-      activeModelDisplay = `*${matched?.name || agyModel}* (\`${agyModel}\`)`;
-    }
+    const piModel = await getUserPiModel(userId);
+    const matched = AVAILABLE_PI_MODELS.find((m) => m.id === piModel);
+    const activeModelDisplay = `*${matched?.name || piModel}* (\`${piModel}\`)`;
 
     const queueLen = getQueueLength();
     const queueStatus =
@@ -1510,11 +1479,7 @@ export function registerBasicCommands(bot) {
   bot.callbackQuery("menu_status", async (ctx) => {
     await ctx.answerCallbackQuery({ text: "📊 Memeriksa status..." });
     const userId = ctx.from?.id;
-    const currentEngine = await getUserEngine(userId);
-    const isPi = currentEngine === "pi";
-    const engineLabel = isPi
-      ? "Pi Coding Agent CLI (`pi`)"
-      : "Antigravity CLI (`agy`)";
+    const engineLabel = "Pi Coding Agent CLI (`pi`)";
 
     const queueLen = getQueueLength();
     const queueStatus =
@@ -1657,16 +1622,9 @@ export function registerBasicCommands(bot) {
   // Helper render Panel Pengaturan Agent
   const renderSettingsMenu = async (ctx, editMessageId = null) => {
     const userId = ctx.from?.id;
-    const currentEngine = await getUserEngine(userId);
-    const isPi = currentEngine === "pi";
-    const engineLabel = isPi ? "Pi Coding Agent" : "Antigravity";
+    const engineLabel = "Pi Coding Agent";
 
-    let activeModel = "";
-    if (isPi) {
-      activeModel = await getUserPiModel(userId);
-    } else {
-      activeModel = await getUserAgyModel(userId);
-    }
+    const activeModel = await getUserPiModel(userId);
 
     const sentryCfg = await getSentryConfig();
     const voiceCfg = await getVoiceConfig();
@@ -1696,7 +1654,6 @@ export function registerBasicCommands(bot) {
       `_Tekan tombol di bawah untuk toggle atau ubah konfigurasi langsung:_`;
 
     const keyboard = new InlineKeyboard()
-      .text("🔄 Ganti Engine", "setting_engine")
       .text("🤖 Ganti Model", "setting_model")
       .row()
       .text(isCustomScope ? "🌐 Ubah ke Role Root" : "🔒 Ubah ke Role Custom", "setting_toggle_scope")
@@ -1936,7 +1893,6 @@ export function registerBasicCommands(bot) {
       const currentUrl = process.env.PI_SERVER_URL || "";
       const hasKey = Boolean(process.env.PI_SERVER_API_KEY);
       const maskedKey = maskSecret(process.env.PI_SERVER_API_KEY);
-      const currentEngine = await getUserEngine(userId);
       const currentModel = await getUserPiModel(userId);
 
       await ctx.reply(
@@ -1944,7 +1900,6 @@ export function registerBasicCommands(bot) {
         `━━━━━━━━━━━━━━━━━━━━\n` +
         `Model Pi (Inflection 3) dapat digunakan melalui penyedia API OpenAI-compatible seperti *OpenRouter* atau endpoint kustom.\n\n` +
         `📌 *Status Saat Ini:*\n` +
-        `• Engine: \`${currentEngine}\`\n` +
         `• Model: \`${currentModel}\`\n` +
         `• Base URL: \`${currentUrl}\`\n` +
         `• API Key: ${hasKey ? "`" + maskedKey + "` ✅" : "⚠️ _Belum diatur_"}\n\n` +
@@ -2045,11 +2000,9 @@ export function registerBasicCommands(bot) {
     await updateEnvFile({
       PI_SERVER_URL: targetUrl,
       PI_SERVER_API_KEY: targetKey,
-      CLI_ENGINE: "pi",
       PI_MODEL: targetModel,
     });
 
-    await setUserEngine(userId, "pi");
     await setUserPiModel(userId, targetModel);
 
     let detectionSection = "";
@@ -2181,11 +2134,7 @@ export function registerBasicCommands(bot) {
         ? `\n_...dan ${res.allModels.length - 30} model lainnya._`
         : "";
 
-    const currentEngine = await getUserEngine(userId);
-    const engineLabel =
-      currentEngine === "pi"
-        ? "Pi Coding Agent CLI (`pi`)"
-        : "Antigravity CLI (`agy`)";
+    const engineLabel = "Pi Coding Agent CLI (`pi`)";
 
     await ctx.api
       .editMessageText(
@@ -2229,10 +2178,8 @@ export function registerBasicCommands(bot) {
 
     const finalUrl = normalizePiUrl(url);
 
-    await updateEnvFile({ PI_SERVER_URL: finalUrl, CLI_ENGINE: "pi" });
+    await updateEnvFile({ PI_SERVER_URL: finalUrl });
     process.env.PI_SERVER_URL = finalUrl;
-    process.env.CLI_ENGINE = "pi";
-    await setUserEngine(userId, "pi");
 
     // Coba langsung tarik model dari server baru
     let syncInfo = "";
@@ -2289,15 +2236,6 @@ export function registerBasicCommands(bot) {
     await toggleAutoHeal(newState);
     await ctx.answerCallbackQuery({ text: newState ? "🛠️ Auto-Heal diaktifkan" : "🛠️ Auto-Heal dinonaktifkan" });
     await renderSettingsMenu(ctx, ctx.callbackQuery.message?.message_id);
-  });
-
-  // Callback: setting_engine
-  bot.callbackQuery("setting_engine", async (ctx) => {
-    await ctx.answerCallbackQuery();
-    await ctx.reply(
-      "🔄 *Pilih Engine AI:*\n\nKetik `/engine` untuk memilih engine (Pi Coding Agent CLI / Antigravity CLI).",
-      { parse_mode: "Markdown" }
-    );
   });
 
   // Callback: setting_model

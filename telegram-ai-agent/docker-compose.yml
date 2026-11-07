@@ -12,13 +12,14 @@ services:
     environment:
       - NODE_ENV=production
       - WEB_PORT=${WEB_PORT:-3030}
-      - AGY_BIN=/home/node/.local/bin/agy
-      - CLI_ENGINE=${CLI_ENGINE:-pi}
+      - PI_BIN=/usr/local/bin/pi
       - PROJECTS_DIR=/home/node/projects
       - PROJECTS_FILE=/app/data/projects.json
       - TASK_TIMEOUT_MS=${TASK_TIMEOUT_MS:-900000}
       - MAX_TASK_OUTPUT=${MAX_TASK_OUTPUT:-12000}
-      - AGY_AUTO_APPROVE_PERMISSIONS=${AGY_AUTO_APPROVE_PERMISSIONS:-true}
+    extra_hosts:
+      # Agar container bisa menjangkau CLIProxyAPI yang berjalan di host
+      - "host.docker.internal:host-gateway"
     volumes:
       # Data konfigurasi dan status project
       - ./data:/app/data
@@ -28,8 +29,8 @@ services:
       - ../projects:/home/node/projects
       # File dan gambar yang diunggah dari chat Telegram
       - ./uploads:/app/uploads
-      # Persistensi sesi login & setting Antigravity CLI
-      - ./gemini_auth:/home/node/.gemini
+      # Persistensi konfigurasi Pi CLI (~/.pi/agent/models.json)
+      - ./pi_config:/home/node/.pi
       # Akses Docker daemon host (DooD)
       - /var/run/docker.sock:/var/run/docker.sock
       # Source code mount

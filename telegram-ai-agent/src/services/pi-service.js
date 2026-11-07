@@ -96,7 +96,6 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel =
   const envUpdates = {
     PI_SERVER_URL: targetUrl,
     PI_MODEL: chosenId,
-    CLI_ENGINE: "pi",
   };
   if (apiKey) {
     envUpdates.PI_SERVER_API_KEY = apiKey;

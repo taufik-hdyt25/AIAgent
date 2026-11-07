@@ -7,7 +7,6 @@ import { startWebServer } from "./web-server.js";
 import { sendToAgent } from "./bot/dispatcher.js";
 import { registerMiddleware } from "./bot/middleware.js";
 import { registerBasicCommands } from "./bot/handlers/commands.js";
-import { registerEngineHandlers } from "./bot/handlers/engine.js";
 import { registerModelHandlers } from "./bot/handlers/model.js";
 import { registerMessageHandlers } from "./bot/handlers/messages.js";
 import { initGithubWatcher } from "./services/github-watcher.js";
@@ -131,7 +130,6 @@ registerMiddleware(bot);
 
 // 2. Registrasi Command Handlers
 registerBasicCommands(bot);
-registerEngineHandlers(bot);
 registerModelHandlers(bot);
 
 // 3. Registrasi Message Handlers (File, Foto, Teks)
@@ -198,11 +196,10 @@ if (
         { command: "clearqueue", description: "Kosongkan seluruh antrean tugas" },
         { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
         { command: "usage", description: "Cek statistik & jumlah token AI yang terpakai" },
-        { command: "model", description: "Pilih model AI (Gemini, Claude, DeepSeek, GPT)" },
+        { command: "model", description: "Pilih model AI" },
         { command: "compact", description: "Padatkan riwayat sesi agar token hemat" },
         { command: "update", description: "Perbarui TH Agent langsung dari GitHub" },
         { command: "cekupdate", description: "Cek pembaruan baru di GitHub" },
-        { command: "engine", description: "Pilih engine (Pi CLI / Antigravity)" },
         { command: "reset", description: "Mulai sesi percakapan baru" },
         { command: "cancel", description: "Hentikan tugas aktif atau antrean" },
       ])
@@ -413,6 +410,4 @@ if (process.env.NODE_ENV !== "test" && process.env.ENABLE_WEB_UI !== "false") {
   startWebServer(process.env.WEB_PORT || 3030);
 }
 
-// Alias backward compatibility untuk tests atau file lain
-export const sendToAntigravity = sendToAgent;
 export { bot, sendToAgent };

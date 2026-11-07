@@ -1,38 +1,25 @@
 #!/usr/bin/env bash
 #
-# Helper Autentikasi / Login CLI (Antigravity)
-# Mendukung: Native macOS, Native Linux, dan Docker Container
+# Helper Autentikasi (Pi CLI + CLIProxyAPI)
+# Pi CLI tidak memerlukan login interaktif: ia memakai PI_SERVER_URL +
+# PI_SERVER_API_KEY. Login provider (Gemini/Claude/Codex) dilakukan di
+# CLIProxyAPI, bukan di bot ini.
 #
 set -e
 
-# Periksa apakah Docker container sedang berjalan
-IS_DOCKER_RUNNING=false
-if command -v docker &>/dev/null; then
-    if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "telegram-coding-agent"; then
-        IS_DOCKER_RUNNING=true
-    fi
-fi
-
-if [ "$IS_DOCKER_RUNNING" = true ]; then
-    echo "============================================="
-    echo "🔑 Autentikasi di dalam Docker Container"
-    echo "============================================="
-    echo "Menjalankan Antigravity CLI (agy) di container..."
-    docker compose run --rm telegram-coding-agent agy
-    echo "✅ Autentikasi selesai. Sesi disimpan di ./gemini_auth"
-else
-    echo "============================================="
-    echo "🔑 Autentikasi Langsung di Komputer / Host"
-    echo "============================================="
-    AGY_CMD="$(command -v agy || echo "$HOME/.local/bin/agy")"
-    if ! command -v "$AGY_CMD" &>/dev/null; then
-        echo "Antigravity CLI (agy) belum ditemukan. Menginstall..."
-        mkdir -p "$HOME/.local/bin"
-        curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d "$HOME/.local/bin"
-        export PATH="$HOME/.local/bin:$PATH"
-        AGY_CMD="$HOME/.local/bin/agy"
-    fi
-    echo "Menjalankan Antigravity CLI (agy) secara interaktif..."
-    "$AGY_CMD"
-    echo "✅ Autentikasi selesai!"
-fi
+echo "============================================="
+echo "🔑 Autentikasi TH Agent (Pi CLI)"
+echo "============================================="
+echo "Pi Coding Agent CLI terhubung ke endpoint OpenAI-compatible."
+echo "Atur variabel berikut di .env atau Web UI:"
+echo "  • PI_SERVER_URL     (default: http://127.0.0.1:8317/v1)"
+echo "  • PI_SERVER_API_KEY (opsional)"
+echo ""
+echo "Login provider dilakukan di CLIProxyAPI:"
+echo "  • Antigravity/Gemini/Claude/Codex -> login di CLIProxyAPI"
+echo "  • Lalu pastikan endpoint /v1 CLIProxyAPI dapat diakses Pi CLI"
+echo ""
+echo "Cek koneksi endpoint:"
+echo "  curl -s \"\${PI_SERVER_URL:-http://127.0.0.1:8317/v1}/models\""
+echo ""
+echo "Tidak ada langkah login interaktif yang diperlukan di host ini."

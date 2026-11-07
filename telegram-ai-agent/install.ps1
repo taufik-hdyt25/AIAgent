@@ -83,8 +83,8 @@ if (-not (Test-Path $EnvFile)) {
     $envContent = @"
 BOT_TOKEN=$($botToken.Trim())
 ALLOWED_TELEGRAM_IDS=$($allowedIds.Trim())
-CLI_ENGINE=agy
-AGY_MODEL=gemini-3.8-flash-high
+PI_SERVER_URL=http://127.0.0.1:8317/v1
+PI_MODEL=openai/gpt-oss-120b
 WEB_PORT=3030
 NODE_ENV=production
 "@

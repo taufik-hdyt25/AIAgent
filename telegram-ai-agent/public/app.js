@@ -1,6 +1,6 @@
 // State aplikasi
 let currentSettings = {};
-let availableOptions = { agyModels: [], piModels: [] };
+let availableOptions = { piModels: [] };
 let currentCustomModels = {};
 
 // DOM Elements
@@ -17,14 +17,10 @@ const botTelegramLink = document.getElementById("botTelegramLink");
 const allowedIdsInput = document.getElementById("allowedIds");
 const idChipsContainer = document.getElementById("idChipsContainer");
 
-const engineRadios = document.querySelectorAll('input[name="CLI_ENGINE"]');
 const piModelSelect = document.getElementById("piModel");
-const agyModelSelect = document.getElementById("agyModel");
 const piServerUrlInput = document.getElementById("piServerUrl");
 const btnGetPiModels = document.getElementById("btnGetPiModels");
 const groupPiModel = document.getElementById("groupPiModel");
-const groupAgyModel = document.getElementById("groupAgyModel");
-const autoApproveCheckbox = document.getElementById("autoApprove");
 const scopeRoleRootRadio = document.getElementById("scopeRoleRoot");
 const scopeRoleCustomRadio = document.getElementById("scopeRoleCustom");
 const scopeRoleBadge = document.getElementById("scopeRoleBadge");
@@ -40,17 +36,9 @@ const badgeModel = document.getElementById("badgeModel");
 const badgeToken = document.getElementById("badgeToken");
 const badgeHost = document.getElementById("badgeHost");
 
-const agyAuthRadios = document.querySelectorAll('input[name="AGY_AUTH_TYPE"]');
-const anthropicApiKeyInput = document.getElementById("anthropicApiKey");
-const geminiApiKeyInput = document.getElementById("geminiApiKey");
 const piServerApiKeyInput = document.getElementById("piServerApiKey");
-const toggleAnthropicKeyBtn = document.getElementById("toggleAnthropicKey");
-const toggleGeminiKeyBtn = document.getElementById("toggleGeminiKey");
 const togglePiServerKeyBtn = document.getElementById("togglePiServerKey");
-const eyeAnthropicIcon = document.getElementById("eyeAnthropicIcon");
-const eyeGeminiIcon = document.getElementById("eyeGeminiIcon");
 const eyePiServerIcon = document.getElementById("eyePiServerIcon");
-const badgeAgySession = document.getElementById("badgeAgySession");
 const badgePiServerKey = document.getElementById("badgePiServerKey");
 
 // Automation & GitHub Elements
@@ -144,26 +132,6 @@ toggleTokenBtn.addEventListener("click", () => {
     : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
 });
 
-if (toggleAnthropicKeyBtn && anthropicApiKeyInput) {
-  toggleAnthropicKeyBtn.addEventListener("click", () => {
-    const isPass = anthropicApiKeyInput.type === "password";
-    anthropicApiKeyInput.type = isPass ? "text" : "password";
-    eyeAnthropicIcon.innerHTML = isPass
-      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
-      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
-  });
-}
-
-if (toggleGeminiKeyBtn && geminiApiKeyInput) {
-  toggleGeminiKeyBtn.addEventListener("click", () => {
-    const isPass = geminiApiKeyInput.type === "password";
-    geminiApiKeyInput.type = isPass ? "text" : "password";
-    eyeGeminiIcon.innerHTML = isPass
-      ? `<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line>`
-      : `<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>`;
-  });
-}
-
 if (togglePiServerKeyBtn && piServerApiKeyInput) {
   togglePiServerKeyBtn.addEventListener("click", () => {
     const isPass = piServerApiKeyInput.type === "password";
@@ -184,22 +152,11 @@ if (toggleGithubKeyBtn && githubTokenInput) {
   });
 }
 
-// Helper untuk menyembunyikan/menampilkan select model sesuai engine
-function syncEngineView(engine) {
-  if (groupPiModel) groupPiModel.style.display = engine === "pi" ? "block" : "none";
-  if (groupAgyModel) groupAgyModel.style.display = engine === "agy" ? "block" : "none";
-}
-
 // Update Live Badges
 function updateBadges(settings, system) {
-  if (settings.CLI_ENGINE === "pi") {
-    badgeEngine.textContent = "Pi Coding Agent";
-    badgeModel.textContent = settings.PI_MODEL || "openai/gpt-oss-120b";
-  } else {
-    badgeEngine.textContent = "Antigravity (agy)";
-    badgeModel.textContent = settings.AGY_MODEL || "gemini-3.8-flash-medium";
-  }
-  
+  badgeEngine.textContent = "Pi Coding Agent";
+  badgeModel.textContent = settings.PI_MODEL || "openai/gpt-oss-120b";
+
   if (settings.BOT_TOKEN && settings.BOT_TOKEN.length > 20) {
     badgeToken.innerHTML = `<span style="color: #34d399;">✓ Terkonfigurasi</span>`;
   } else {
@@ -235,12 +192,6 @@ async function loadSettings() {
     allowedIdsInput.value = currentSettings.ALLOWED_TELEGRAM_IDS || "";
     renderIdChips(currentSettings.ALLOWED_TELEGRAM_IDS);
 
-    // Populate Engine Radio
-    const activeEngine = currentSettings.CLI_ENGINE || "agy";
-    for (const r of engineRadios) {
-      r.checked = r.value === activeEngine;
-    }
-    syncEngineView(activeEngine);
     renderAllowedModelsChips();
 
     // Populate Pi Models Select
@@ -255,16 +206,6 @@ async function loadSettings() {
       }
     }
 
-    // Populate AGY Models Select
-    agyModelSelect.innerHTML = "";
-    for (const m of (availableOptions.agyModels || [])) {
-      const opt = document.createElement("option");
-      opt.value = m.id;
-      opt.textContent = `${m.name} ${m.badge ? `[${m.badge}]` : ""}`;
-      opt.selected = m.id === currentSettings.AGY_MODEL;
-      agyModelSelect.appendChild(opt);
-    }
-
     // Populate Pi Server inputs
     if (piServerUrlInput) {
       piServerUrlInput.value = currentSettings.PI_SERVER_URL || "";
@@ -272,11 +213,6 @@ async function loadSettings() {
     if (piServerApiKeyInput) {
       piServerApiKeyInput.value = currentSettings.PI_SERVER_API_KEY || "";
     }
-
-    // Populate Auto Approve
-    autoApproveCheckbox.checked =
-      currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === "true" ||
-      currentSettings.AGY_AUTO_APPROVE_PERMISSIONS === true;
 
     // Populate Workspace Access Role & Scope
     if (data.sandboxConfig) {
@@ -297,27 +233,8 @@ async function loadSettings() {
       }
     }
 
-    // Populate Auth Mode & API Keys
-    const agyAuth = currentSettings.AGY_AUTH_TYPE || "oauth";
-    for (const r of agyAuthRadios) {
-      r.checked = r.value === agyAuth;
-    }
-    if (geminiApiKeyInput) {
-      geminiApiKeyInput.value = currentSettings.GEMINI_API_KEY || "";
-    }
-
     // Status Badges
     if (data.authStatus) {
-      if (badgeAgySession) {
-        if (data.authStatus.agySessionActive) {
-          badgeAgySession.className = "badge badge-primary";
-          badgeAgySession.innerHTML = "✓ Sesi Aktif";
-        } else {
-          badgeAgySession.className = "badge";
-          badgeAgySession.innerHTML = "Belum Login";
-        }
-      }
-
       if (badgePiServerKey) {
         if (data.authStatus.hasPiServerKey) {
           badgePiServerKey.className = "badge badge-primary";
@@ -523,21 +440,6 @@ document.querySelectorAll(".btn-preset").forEach((btn) => {
   });
 });
 
-// Radio change
-engineRadios.forEach((r) => {
-  r.addEventListener("change", () => {
-    syncEngineView(r.value);
-    renderAllowedModelsChips();
-    if (r.value === "pi") {
-      badgeEngine.textContent = "Pi Coding Agent";
-      badgeModel.textContent = piModelSelect ? piModelSelect.value : "openai/gpt-oss-120b";
-    } else {
-      badgeEngine.textContent = "Antigravity (agy)";
-      badgeModel.textContent = agyModelSelect.value;
-    }
-  });
-});
-
 // Allowed Models Manager Elements
 const allowedEngineLabel = document.getElementById("allowedEngineLabel");
 const btnResetDefaultModels = document.getElementById("btnResetDefaultModels");
@@ -546,9 +448,7 @@ const inputNewModelId = document.getElementById("inputNewModelId");
 const btnAddAllowedModel = document.getElementById("btnAddAllowedModel");
 
 function getActiveEngineKey() {
-  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "agy";
-  if (selectedEngine === "pi") return { engine: "pi", key: "piModels", label: "PI CODING AGENT", select: piModelSelect };
-  return { engine: "agy", key: "agyModels", label: "ANTIGRAVITY / AGY", select: agyModelSelect };
+  return { engine: "pi", key: "piModels", label: "PI CODING AGENT", select: piModelSelect };
 }
 
 function renderAllowedModelsChips() {
@@ -633,12 +533,9 @@ async function removeAllowedModel(engine, modelId) {
       availableOptions[key] = data.options;
     }
 
-    if (engine === "pi" && piModelSelect && piModelSelect.value === modelId) {
+    if (piModelSelect && piModelSelect.value === modelId) {
       piModelSelect.selectedIndex = 0;
       if (badgeModel) badgeModel.textContent = piModelSelect.value;
-    } else if (engine === "agy" && agyModelSelect && agyModelSelect.value === modelId) {
-      agyModelSelect.selectedIndex = 0;
-      if (badgeModel) badgeModel.textContent = agyModelSelect.value;
     }
 
     renderAllowedModelsChips();
@@ -703,19 +600,9 @@ if (btnResetDefaultModels) {
 
 if (piModelSelect) {
   piModelSelect.addEventListener("change", () => {
-    const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;
-    if (selectedEngine === "pi") {
-      badgeModel.textContent = piModelSelect.value;
-    }
+    badgeModel.textContent = piModelSelect.value;
   });
 }
-
-agyModelSelect.addEventListener("change", () => {
-  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value;
-  if (selectedEngine === "agy") {
-    badgeModel.textContent = agyModelSelect.value;
-  }
-});
 
 // Handler Get Model dari Pi
 if (btnGetPiModels) {
@@ -799,21 +686,12 @@ btnReload.addEventListener("click", () => {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const selectedEngine = document.querySelector('input[name="CLI_ENGINE"]:checked')?.value || "agy";
-  const selectedAgyAuth = document.querySelector('input[name="AGY_AUTH_TYPE"]:checked')?.value || "oauth";
-
   const payload = {
     BOT_TOKEN: botTokenInput.value.trim(),
     ALLOWED_TELEGRAM_IDS: allowedIdsInput.value.trim(),
-    CLI_ENGINE: selectedEngine,
     PI_MODEL: piModelSelect ? piModelSelect.value : (currentSettings.PI_MODEL || "openai/gpt-oss-120b"),
-    AGY_MODEL: agyModelSelect.value,
     PI_SERVER_API_KEY: piServerApiKeyInput ? piServerApiKeyInput.value.trim() : "",
     PI_SERVER_URL: piServerUrlInput ? piServerUrlInput.value.trim() : "",
-    AGY_AUTH_TYPE: selectedAgyAuth,
-    ANTHROPIC_API_KEY: anthropicApiKeyInput ? anthropicApiKeyInput.value.trim() : "",
-    GEMINI_API_KEY: geminiApiKeyInput ? geminiApiKeyInput.value.trim() : "",
-    AGY_AUTO_APPROVE_PERMISSIONS: autoApproveCheckbox.checked ? "true" : "false",
     scopeRole: scopeRoleCustomRadio?.checked ? "custom" : "root",
     customFolders: customFoldersInput ? customFoldersInput.value.trim() : "",
     sandboxConfig: {

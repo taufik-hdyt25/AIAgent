@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Node.js-v26-68a063?style=flat-square&logo=node.js" alt="Node.js 26" />
-  <img src="https://img.shields.io/badge/Engine-Pi%20CLI%20%7C%20Antigravity-8b5cf6?style=flat-square" alt="AI Engines" />
+  <img src="https://img.shields.io/badge/Engine-Pi%20CLI%20%7C%20CLIProxyAPI-8b5cf6?style=flat-square" alt="AI Engines" />
   <img src="https://img.shields.io/badge/Platform-Telegram%20Bot-229ED9?style=flat-square&logo=telegram" alt="Telegram" />
 </p>
 

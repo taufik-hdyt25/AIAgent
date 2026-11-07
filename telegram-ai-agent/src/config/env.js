@@ -139,16 +139,12 @@ function findDefaultBin(binName, unixDefaultRel = "") {
 }
 
 export const BOT_TOKEN = process.env.BOT_TOKEN || "";
-export const AGY_BIN = process.env.AGY_BIN || findDefaultBin("agy", ".local/bin/agy");
 export const PI_BIN = process.env.PI_BIN || findDefaultBin("pi", ".local/bin/pi");
 
-export const DEFAULT_ENGINE = process.env.CLI_ENGINE || "pi";
-export const DEFAULT_AGY_MODEL = process.env.AGY_MODEL || "gemini-3.8-flash-medium";
 export const DEFAULT_PI_MODEL = process.env.PI_MODEL || "openai/gpt-oss-120b";
 
 export const TIMEOUT_MS = Number(process.env.TASK_TIMEOUT_MS || 900000);
 export const MAX_OUTPUT = Number(process.env.MAX_TASK_OUTPUT || 12000);
-export const AUTO_APPROVE_PERMISSIONS = process.env.AGY_AUTO_APPROVE_PERMISSIONS !== "false";
 
 export const ALLOWED_IDS = new Set(
   (process.env.ALLOWED_TELEGRAM_IDS || "")

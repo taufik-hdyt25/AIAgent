@@ -28,7 +28,6 @@ function resolvePublicDir() {
 }
 
 import {
-  AVAILABLE_AGY_MODELS,
   getModelList,
   fetchRemoteModels,
   loadCustomModels,
@@ -36,7 +35,6 @@ import {
   normalizePiUrl,
 } from "./config/models.js";
 import { syncPiModelDirectly } from "./services/pi-service.js";
-import { setGlobalEngine } from "./services/context-store.js";
 import { loadWatchConfig, saveWatchConfig } from "./services/github-service.js";
 import {
   getDeployConfig,
@@ -124,7 +122,6 @@ export function createWebServer() {
     if (pathname === "/api/settings" && req.method === "GET") {
       try {
         const { parsed } = await readEnvFile();
-        const agySessionActive = await stat(path.join(os.homedir(), ".gemini")).then(() => true).catch(() => false);
         const voiceConfig = await getVoiceConfig();
         const sentryConfig = await getSentryConfig();
         const sandboxConfig = await getSandboxConfig();
@@ -136,16 +133,9 @@ export function createWebServer() {
           settings: {
             BOT_TOKEN: parsed.BOT_TOKEN || process.env.BOT_TOKEN || "",
             ALLOWED_TELEGRAM_IDS: parsed.ALLOWED_TELEGRAM_IDS || process.env.ALLOWED_TELEGRAM_IDS || "",
-            AGY_MODEL: parsed.AGY_MODEL || process.env.AGY_MODEL || "gemini-3.8-flash-medium",
             PI_MODEL: parsed.PI_MODEL || process.env.PI_MODEL || "openai/gpt-oss-120b",
-            CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "pi",
-            AGY_AUTO_APPROVE_PERMISSIONS:
-              parsed.AGY_AUTO_APPROVE_PERMISSIONS ?? process.env.AGY_AUTO_APPROVE_PERMISSIONS ?? "true",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
             WEB_PORT: parsed.WEB_PORT || process.env.WEB_PORT || "3030",
-            ANTHROPIC_API_KEY: parsed.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY || "",
-            GEMINI_API_KEY: parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY || "",
-            AGY_AUTH_TYPE: parsed.AGY_AUTH_TYPE || (parsed.GEMINI_API_KEY ? "api_key" : "oauth"),
             PI_SERVER_URL: parsed.PI_SERVER_URL || process.env.PI_SERVER_URL || "",
             PI_SERVER_API_KEY: parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY || "",
             GITHUB_TOKEN: parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
@@ -155,9 +145,6 @@ export function createWebServer() {
           },
           sandboxConfig,
           authStatus: {
-            agySessionActive,
-            hasAnthropicKey: Boolean(parsed.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY),
-            hasGeminiKey: Boolean(parsed.GEMINI_API_KEY || process.env.GEMINI_API_KEY),
             hasPiServerKey: Boolean(parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY),
             hasGithubToken: Boolean(parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN),
             hasGroqKey: Boolean(parsed.GROQ_API_KEY || process.env.GROQ_API_KEY || voiceConfig.groqApiKey),
@@ -167,12 +154,10 @@ export function createWebServer() {
           sentryConfig,
           dockerStatus,
           customModels: {
-            agyModels: customModels.agyModels || [],
             piModels: customModels.piModels || [],
           },
           options: {
-            agyModels: await getModelList("agy"),
-            piModels: await getModelList("pi"),
+            piModels: await getModelList(),
           },
           system: {
             platform: os.platform(),
@@ -204,7 +189,7 @@ export function createWebServer() {
           url.searchParams.get("baseUrl") ||
           parsed.PI_SERVER_URL ||
           process.env.PI_SERVER_URL ||
-          "http://127.0.0.1:46315/v1";
+          "http://127.0.0.1:8317/v1";
         const apiKey =
           url.searchParams.get("apiKey") !== null
             ? url.searchParams.get("apiKey")
@@ -257,7 +242,6 @@ export function createWebServer() {
         return sendJson(200, {
           ok: true,
           customModels: {
-            agyModels: custom.agyModels || [],
             piModels: custom.piModels || [],
           },
         });
@@ -272,10 +256,9 @@ export function createWebServer() {
         for await (const chunk of req) body += chunk;
         const payload = JSON.parse(body || "{}");
         const existing = (await loadCustomModels()) || {
-          agyModels: [],
           piModels: [],
         };
-        const engineKey = payload.engine === "pi" ? "piModels" : "agyModels";
+        const engineKey = "piModels";
 
         if (payload.action === "reset") {
           delete existing[engineKey];
@@ -284,7 +267,7 @@ export function createWebServer() {
             ok: true,
             message: "Daftar model berhasil direset ke default.",
             customModels: existing,
-            options: await getModelList(payload.engine || "agy"),
+            options: await getModelList(),
           });
         }
 
@@ -301,7 +284,7 @@ export function createWebServer() {
 
         if (payload.action === "add" && payload.modelId) {
           if (!Array.isArray(existing[engineKey])) {
-            const currentList = await getModelList(payload.engine || "agy");
+            const currentList = await getModelList();
             existing[engineKey] = [...currentList];
           }
           const id = payload.modelId.trim();
@@ -314,13 +297,13 @@ export function createWebServer() {
             ok: true,
             message: `Model '${id}' berhasil ditambahkan ke daftar yang diizinkan.`,
             customModels: existing,
-            options: await getModelList(payload.engine || "agy"),
+            options: await getModelList(),
           });
         }
 
         if (payload.action === "remove" && payload.modelId) {
           if (!Array.isArray(existing[engineKey])) {
-            const currentList = await getModelList(payload.engine || "agy");
+            const currentList = await getModelList();
             existing[engineKey] = [...currentList];
           }
           const targetId = payload.modelId.trim().toLowerCase();
@@ -329,35 +312,19 @@ export function createWebServer() {
           );
           await saveCustomModels(existing);
 
-          // Jika model yang dihapus sedang aktif di env, reset ke auto / model pertama yang valid
-          let envUpdated = false;
-          const updates = {};
-          if (payload.engine === "pi") {
-            const current = (process.env.PI_MODEL || "").trim().toLowerCase();
-            if (current === targetId) {
-              const nextModel = existing.piModels?.[0]?.id || "openai/gpt-oss-120b";
-              updates.PI_MODEL = nextModel;
-              process.env.PI_MODEL = nextModel;
-              envUpdated = true;
-            }
-          } else if (payload.engine === "agy" || !payload.engine) {
-            const current = (process.env.AGY_MODEL || "").trim().toLowerCase();
-            if (current === targetId) {
-              const nextModel = existing.agyModels?.[0]?.id || "gemini-3.8-flash-medium";
-              updates.AGY_MODEL = nextModel;
-              process.env.AGY_MODEL = nextModel;
-              envUpdated = true;
-            }
-          }
-          if (envUpdated) {
-            await updateEnvFile(updates);
+          // Jika model yang dihapus sedang aktif di env, reset ke model pertama yang valid
+          const current = (process.env.PI_MODEL || "").trim().toLowerCase();
+          if (current === targetId) {
+            const nextModel = existing.piModels?.[0]?.id || "openai/gpt-oss-120b";
+            await updateEnvFile({ PI_MODEL: nextModel });
+            process.env.PI_MODEL = nextModel;
           }
 
           return sendJson(200, {
             ok: true,
             message: `Model '${payload.modelId}' berhasil dihapus dari daftar.`,
             customModels: existing,
-            options: await getModelList(payload.engine || "agy"),
+            options: await getModelList(),
           });
         }
 
@@ -550,30 +517,11 @@ export function createWebServer() {
           if (payload.ALLOWED_TELEGRAM_IDS !== undefined) {
             updates.ALLOWED_TELEGRAM_IDS = String(payload.ALLOWED_TELEGRAM_IDS).trim();
           }
-          if (payload.AGY_MODEL !== undefined) {
-            updates.AGY_MODEL = String(payload.AGY_MODEL).trim();
-          }
           if (payload.PI_MODEL !== undefined) {
             updates.PI_MODEL = String(payload.PI_MODEL).trim();
           }
-          if (payload.CLI_ENGINE !== undefined) {
-            updates.CLI_ENGINE = String(payload.CLI_ENGINE).trim();
-            await setGlobalEngine(updates.CLI_ENGINE).catch(() => {});
-          }
-          if (payload.AGY_AUTO_APPROVE_PERMISSIONS !== undefined) {
-            updates.AGY_AUTO_APPROVE_PERMISSIONS = String(payload.AGY_AUTO_APPROVE_PERMISSIONS);
-          }
           if (payload.TASK_TIMEOUT_MS !== undefined) {
             updates.TASK_TIMEOUT_MS = String(payload.TASK_TIMEOUT_MS).trim();
-          }
-          if (payload.ANTHROPIC_API_KEY !== undefined) {
-            updates.ANTHROPIC_API_KEY = String(payload.ANTHROPIC_API_KEY).trim();
-          }
-          if (payload.GEMINI_API_KEY !== undefined) {
-            updates.GEMINI_API_KEY = String(payload.GEMINI_API_KEY).trim();
-          }
-          if (payload.AGY_AUTH_TYPE !== undefined) {
-            updates.AGY_AUTH_TYPE = String(payload.AGY_AUTH_TYPE).trim();
           }
           if (payload.PI_SERVER_API_KEY !== undefined) {
             updates.PI_SERVER_API_KEY = String(payload.PI_SERVER_API_KEY).trim();

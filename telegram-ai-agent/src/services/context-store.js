@@ -1,11 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import {
-  CONTEXT_FILE,
-  DEFAULT_ENGINE,
-  DEFAULT_AGY_MODEL,
-  DEFAULT_PI_MODEL,
-} from "../config/env.js";
+import { CONTEXT_FILE, DEFAULT_PI_MODEL } from "../config/env.js";
 
 export async function loadContext() {
   try {
@@ -33,20 +28,6 @@ export async function getUserConversationId(userId) {
   return context.conversations[String(userId)];
 }
 
-export async function getUserAgyConversationId(userId) {
-  if (!userId) return null;
-  const context = await loadContext();
-  return context.agyConversations?.[String(userId)] || null;
-}
-
-export async function setUserAgyConversationId(userId, agyConvId) {
-  if (!userId || !agyConvId) return;
-  const context = await loadContext();
-  if (!context.agyConversations) context.agyConversations = {};
-  context.agyConversations[String(userId)] = agyConvId;
-  await saveContext(context);
-}
-
 export async function resetUserConversation(userId) {
   if (!userId) return;
   const context = await loadContext();
@@ -54,10 +35,6 @@ export async function resetUserConversation(userId) {
   const oldConvId = context.conversations[String(userId)];
   const newConvId = randomUUID();
   context.conversations[String(userId)] = newConvId;
-
-  if (context.agyConversations && context.agyConversations[String(userId)]) {
-    delete context.agyConversations[String(userId)];
-  }
 
   if (context.piSessions && oldConvId) {
     delete context.piSessions[oldConvId];
@@ -83,44 +60,6 @@ export async function markPiSessionStarted(convId, started = true) {
   await saveContext(context);
 }
 
-export async function getUserAgyModel(userId) {
-  const envModel = process.env.AGY_MODEL;
-  if (!userId) return envModel || DEFAULT_AGY_MODEL;
-  const context = await loadContext();
-  return (
-    context.agyModels?.[String(userId)] ||
-    context.models?.[String(userId)] ||
-    envModel ||
-    DEFAULT_AGY_MODEL
-  );
-}
-
-export async function setUserAgyModel(userId, modelId) {
-  if (!userId) return;
-  const context = await loadContext();
-  if (!context.agyModels) context.agyModels = {};
-  const prevModel = context.agyModels[String(userId)];
-  context.agyModels[String(userId)] = modelId;
-  if (!context.models) context.models = {};
-  context.models[String(userId)] = modelId;
-
-  // Jika berganti model, reset SEMUA session agar model baru
-  // tidak mewarisi riwayat token / rate-limit dari model lama
-  if (prevModel && prevModel !== modelId) {
-    // Reset AGY conversation ID
-    if (context.agyConversations) {
-      delete context.agyConversations[String(userId)];
-    }
-    // Reset general conversation UUID untuk fresh session penuh
-    if (context.conversations) {
-      context.conversations[String(userId)] = randomUUID();
-    }
-    console.log(`[Context] Model switch: ${prevModel} → ${modelId} for user ${userId}. All sessions reset.`);
-  }
-
-  await saveContext(context);
-}
-
 export async function getUserPiModel(userId) {
   const envModel = process.env.PI_MODEL;
   if (!userId) return envModel || DEFAULT_PI_MODEL;
@@ -136,47 +75,12 @@ export async function setUserPiModel(userId, modelId) {
   await saveContext(context);
 }
 
-export async function getUserModel(userId, engineOverride = null) {
-  const engine = engineOverride || await getUserEngine(userId);
-  if (engine === "pi") return getUserPiModel(userId);
-  return getUserAgyModel(userId);
+export async function getUserModel(userId) {
+  return getUserPiModel(userId);
 }
 
 export async function setUserModel(userId, modelId) {
-  const engine = await getUserEngine(userId);
-  if (engine === "pi") return setUserPiModel(userId, modelId);
-  return setUserAgyModel(userId, modelId);
-}
-
-export async function getUserEngine(userId) {
-  const envEngine = process.env.CLI_ENGINE;
-  const normalize = (engine) =>
-    engine === "pi" || engine === "agy" ? engine : DEFAULT_ENGINE;
-
-  if (!userId) {
-    return normalize(envEngine || DEFAULT_ENGINE);
-  }
-  const context = await loadContext();
-  return normalize(context.engines?.[String(userId)] || envEngine || DEFAULT_ENGINE);
-}
-
-export async function setUserEngine(userId, engine) {
-  if (!userId) return;
-  const context = await loadContext();
-  if (!context.engines) context.engines = {};
-  context.engines[String(userId)] = engine;
-  await saveContext(context);
-}
-
-export async function setGlobalEngine(engine) {
-  if (!engine) return;
-  process.env.CLI_ENGINE = engine;
-  const context = await loadContext();
-  if (!context.engines) context.engines = {};
-  for (const uId of Object.keys(context.engines)) {
-    context.engines[uId] = engine;
-  }
-  await saveContext(context);
+  return setUserPiModel(userId, modelId);
 }
 
 export async function getUserActiveProject(userId) {

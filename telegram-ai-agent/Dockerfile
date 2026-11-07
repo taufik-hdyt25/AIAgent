@@ -1,6 +1,6 @@
 FROM node:26-bookworm-slim
 
-# 1. Install dependensi sistem dasar untuk Git, Antigravity CLI, dan build tools
+# 1. Install dependensi sistem dasar untuk Git dan build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -19,15 +19,16 @@ RUN mkdir -p /usr/local/lib/docker/cli-plugins /usr/local/bin \
     && chmod +x /usr/local/lib/docker/cli-plugins/docker-compose \
     && ln -s /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
 
-# 2. Gunakan user non-root 'node' (UID 1000) bawaan image Node.js
+# 2. Install Pi Coding Agent CLI secara global (sebagai root)
+RUN npm install -g @earendil-works/pi-coding-agent
+
+# 3. Gunakan user non-root 'node' (UID 1000) bawaan image Node.js
 USER node
 
 ENV HOME=/home/node
 ENV PATH="/home/node/.local/bin:${PATH}"
 
-# 3. Install Antigravity CLI (agy) untuk user node
-RUN mkdir -p /home/node/.local/bin /home/node/projects /home/node/.gemini \
-    && curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d /home/node/.local/bin
+RUN mkdir -p /home/node/.local/bin /home/node/projects /home/node/.pi
 
 WORKDIR /app
 
@@ -42,7 +43,7 @@ COPY --chown=node:node . .
 RUN mkdir -p data logs uploads /home/node/projects
 
 ENV NODE_ENV=production
-ENV AGY_BIN=/home/node/.local/bin/agy
+ENV PI_BIN=/usr/local/bin/pi
 ENV PROJECTS_FILE=/app/data/projects.json
 
 ENTRYPOINT []

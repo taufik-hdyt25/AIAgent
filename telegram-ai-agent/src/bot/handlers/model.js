@@ -1,24 +1,18 @@
 import { InlineKeyboard } from "grammy";
 import { getModelList } from "../../config/models.js";
 import {
-  getUserEngine,
-  getUserAgyModel,
-  setUserAgyModel,
   getUserPiModel,
   setUserPiModel,
 } from "../../services/context-store.js";
+
+const ENGINE_LABEL = "Pi Coding Agent CLI";
 
 export function registerModelHandlers(bot) {
   bot.command(["model", "models"], async (ctx) => {
     const arg = ctx.match?.trim();
     const userId = ctx.from?.id;
-    const currentEngine = await getUserEngine(userId);
-    const isPi = currentEngine === "pi";
-    const modelList = await getModelList(currentEngine);
-    const currentModel = isPi
-      ? await getUserPiModel(userId)
-      : await getUserAgyModel(userId);
-    const engineLabel = isPi ? "Pi Coding Agent CLI" : "Antigravity CLI";
+    const modelList = await getModelList();
+    const currentModel = await getUserPiModel(userId);
 
     if (arg) {
       const matched = modelList.find(
@@ -27,15 +21,11 @@ export function registerModelHandlers(bot) {
       // Fleksibel: Izinkan model kustom (seperti 'litellm')
       const chosenId = matched ? matched.id : arg;
 
-      if (isPi) {
-        await setUserPiModel(userId, chosenId);
-      } else {
-        await setUserAgyModel(userId, chosenId);
-      }
+      await setUserPiModel(userId, chosenId);
 
       const modelName = matched ? matched.name : chosenId;
       await ctx.reply(
-        `✅ Model untuk *${engineLabel}* berhasil diubah ke: *${modelName}*\nID: \`${chosenId}\``,
+        `✅ Model untuk *${ENGINE_LABEL}* berhasil diubah ke: *${modelName}*\nID: \`${chosenId}\``,
         { parse_mode: "Markdown" }
       );
       return;
@@ -60,10 +50,10 @@ export function registerModelHandlers(bot) {
 
     await ctx.reply(
       `🤖 *Pilihan Model AI*\n\n` +
-        `⚙️ Engine aktif: *${engineLabel}*\n` +
+        `⚙️ Engine aktif: *${ENGINE_LABEL}*\n` +
         `👉 Model aktif saat ini:\n*${activeName}* (\`${activeModelId}\`)\n` +
         moreHint +
-        `\nSilakan pilih model khusus *${engineLabel}* di bawah ini:`,
+        `\nSilakan pilih model khusus *${ENGINE_LABEL}* di bawah ini:`,
       {
         reply_markup: keyboard,
         parse_mode: "Markdown",
@@ -74,20 +64,13 @@ export function registerModelHandlers(bot) {
   bot.callbackQuery(/^set_model:(.+)$/, async (ctx) => {
     const modelId = ctx.match[1];
     const userId = ctx.from?.id;
-    const currentEngine = await getUserEngine(userId);
-    const isPi = currentEngine === "pi";
-    const modelList = await getModelList(currentEngine);
-    const engineLabel = isPi ? "Pi Coding Agent CLI" : "Antigravity CLI";
+    const modelList = await getModelList();
 
     const matched = modelList.find((m) => m.id === modelId);
     const chosenId = matched ? matched.id : modelId;
     const chosenName = matched ? matched.name : modelId;
 
-    if (isPi) {
-      await setUserPiModel(userId, chosenId);
-    } else {
-      await setUserAgyModel(userId, chosenId);
-    }
+    await setUserPiModel(userId, chosenId);
 
     await ctx.answerCallbackQuery({
       text: `Model diubah ke ${chosenName}`,
@@ -103,7 +86,7 @@ export function registerModelHandlers(bot) {
     try {
       await ctx.editMessageText(
         `🤖 *Pilihan Model AI*\n\n` +
-          `⚙️ Engine aktif: *${engineLabel}*\n` +
+          `⚙️ Engine aktif: *${ENGINE_LABEL}*\n` +
           `✅ Model aktif sekarang:\n👉 *${chosenName}* (\`${chosenId}\`)\n\n` +
           `Silakan klik tombol di bawah jika ingin mengganti ke model lain:`,
         {

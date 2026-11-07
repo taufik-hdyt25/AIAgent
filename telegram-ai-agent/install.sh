@@ -205,48 +205,17 @@ ensure_local_bin_in_path() {
 # ==============================================================================
 # 1. CHECKLIST ENGINE AI
 # ==============================================================================
-SELECTED_PI=false
-SELECTED_AGY=false
+SELECTED_PI=true
 DEFAULT_ENGINE="pi"
 
 choose_engines() {
     echo -e "\n${BLUE}======================================================${NC}"
-    echo -e "${MAGENTA}[1/3] CHECKLIST ENGINE / PROVIDER AI                  ${NC}"
+    echo -e "${MAGENTA}[1/3] ENGINE / PROVIDER AI                            ${NC}"
     echo -e "${BLUE}======================================================${NC}"
-    echo -e "Pilih AI Engine yang ingin dipasang dan diaktifkan di bot:"
-    echo -e "  ${CYAN}[1] Pi Coding Agent CLI (pi)${NC}  - Groq / Local Pi Server CLI"
-    echo -e "  ${CYAN}[2] Antigravity CLI (agy)${NC}      - Google Gemini 3.8 Flash, Thinking & Pro"
-    echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC}    - Pasang & aktifkan semua engine (Rekomendasi)"
-    echo ""
-    prompt_user "Pilihan Anda (contoh: 1,2 atau A) [default: A]: " engine_choice
-    engine_choice="${engine_choice:-A}"
-
-    case "$engine_choice" in
-        *[aA]*)
-            SELECTED_PI=true
-            SELECTED_AGY=true
-            DEFAULT_ENGINE="pi"
-            ;;
-        *)
-            if [[ "$engine_choice" == *"1"* ]]; then SELECTED_PI=true; fi
-            if [[ "$engine_choice" == *"2"* ]]; then SELECTED_AGY=true; fi
-
-            if [ "$SELECTED_PI" = true ]; then
-                DEFAULT_ENGINE="pi"
-            elif [ "$SELECTED_AGY" = true ]; then
-                DEFAULT_ENGINE="agy"
-            else
-                SELECTED_PI=true
-                SELECTED_AGY=true
-                DEFAULT_ENGINE="pi"
-            fi
-            ;;
-    esac
-
-    echo -e "${GREEN}✓ Engine aktif:${NC}"
-    [ "$SELECTED_PI" = true ] && echo -e "  • Pi Coding Agent CLI (pi)"
-    [ "$SELECTED_AGY" = true ] && echo -e "  • Antigravity CLI (agy)"
-    echo -e "  • Default Engine Awal: ${YELLOW}${DEFAULT_ENGINE}${NC}"
+    echo -e "Bot akan menggunakan ${GREEN}Pi Coding Agent CLI (pi)${NC} sebagai satu-satunya engine agent."
+    echo -e "Pi CLI terhubung ke endpoint OpenAI-compatible (CLIProxyAPI / LiteLLM / Ollama)"
+    echo -e "melalui ${YELLOW}PI_SERVER_URL${NC}. Tentukan URL-nya nanti di Web UI atau .env."
+    echo -e "${GREEN}✓ Engine aktif: Pi Coding Agent CLI (pi)${NC}"
 }
 
 # ==============================================================================
@@ -254,83 +223,26 @@ choose_engines() {
 # ==============================================================================
 choose_models() {
     echo -e "\n${BLUE}======================================================${NC}"
-    echo -e "${MAGENTA}[2/3] CHECKLIST MODEL AI                              ${NC}"
+    echo -e "${MAGENTA}[2/3] MODEL AI                                        ${NC}"
     echo -e "${BLUE}======================================================${NC}"
-    echo -e "Model AI dapat diceklis/dipilih sesuai kebutuhan Anda."
-    echo -e "Model yang tidak dipilih akan disembunyikan dari bot Telegram & Web UI."
-    echo -e "  ${GREEN}[A] Gunakan Semua Model Default (Select All - Rekomendasi)${NC}"
-    echo -e "  ${YELLOW}[C] Kustomisasi / Pilih Ceklis Sendiri${NC}"
-    prompt_user "Pilihan model [A/C, default: A]: " model_mode
-    model_mode="${model_mode:-A}"
+    echo -e "Menulis daftar model Pi default ke data/models.json."
+    echo -e "Daftar model asli akan diambil otomatis dari ${YELLOW}PI_SERVER_URL${NC} saat /getpi atau Get Model."
 
     mkdir -p data
 
-    if [[ "$model_mode" =~ ^[cC]$ ]]; then
-        # Tampilkan pilihan per engine
-        local agy_sel="A"
-
-        if [ "$SELECTED_AGY" = true ]; then
-            echo -e "\n${CYAN}--- Model Antigravity (agy) ---${NC}"
-            echo -e "  [1] Gemini 3.8 Flash Medium (gemini-3.8-flash-medium) - Rekomendasi"
-            echo -e "  [2] Gemini 3.8 Flash High   (gemini-3.8-flash-high)"
-            echo -e "  [3] Gemini 3.8 Flash Low    (gemini-3.8-flash-low)"
-            echo -e "  [4] Claude Sonnet 4.6       (claude-sonnet-4-6)"
-            echo -e "  [5] Claude Opus 4.6         (claude-opus-4-6-thinking)"
-            echo -e "  [6] GPT-OSS 120B            (gpt-oss-120b-medium)"
-            echo -e "  ${GREEN}[A] Pilih Semua (Select All)${NC} | ${RED}[H] Hapus Semua${NC}"
-            prompt_user "Pilih nomor model agy (contoh: 1,4 atau A atau H) [default: A]: " agy_sel
-            agy_sel="${agy_sel:-A}"
-        fi
-
-        # Filter dan tulis ke data/models.json menggunakan Node.js
-        node -e "
-        const fs = require('fs');
-        const path = require('path');
-
-        const allAgy = [
-          { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium Thinking)', badge: 'Rekomendasi' },
-          { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High Thinking)', badge: 'Maksimal' },
-          { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low Thinking)', badge: 'Cepat' },
-          { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Thinking)', badge: 'Populer' },
-          { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)', badge: 'Kuat' },
-          { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)', badge: 'Open' }
-        ];
-
-        function filterList(list, input) {
-          const val = (input || '').trim().toUpperCase();
-          if (val === 'H' || val === 'NONE' || val === '0') return [];
-          if (!val || val === 'A' || val === 'ALL') return list;
-          const nums = val.split(/[,\s]+/).map(n => parseInt(n, 10)).filter(n => !isNaN(n));
-          if (nums.length === 0) return list;
-          return nums.map(idx => list[idx - 1]).filter(Boolean);
-        }
-
-        const out = {
-          agyModels: filterList(allAgy, '${agy_sel}')
-        };
-
-        fs.writeFileSync(path.join('data', 'models.json'), JSON.stringify(out, null, 2));
-        console.log('✓ Model pilihan kustom berhasil disimpan ke data/models.json');
-        "
-    else
-        # Select All Default
-        node -e "
-        const fs = require('fs');
-        const path = require('path');
-        const out = {
-          agyModels: [
-            { id: 'gemini-3.8-flash-medium', name: 'Gemini 3.8 Flash (Medium Thinking)', badge: 'Rekomendasi' },
-            { id: 'gemini-3.8-flash-high', name: 'Gemini 3.8 Flash (High Thinking)', badge: 'Maksimal' },
-            { id: 'gemini-3.8-flash-low', name: 'Gemini 3.8 Flash (Low Thinking)', badge: 'Cepat' },
-            { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6 (Thinking)', badge: 'Populer' },
-            { id: 'claude-opus-4-6-thinking', name: 'Claude Opus 4.6 (Thinking)', badge: 'Kuat' },
-            { id: 'gpt-oss-120b-medium', name: 'GPT-OSS 120B (Medium)', badge: 'Open' }
-          ]
-        };
-        fs.writeFileSync(path.join('data', 'models.json'), JSON.stringify(out, null, 2));
-        "
-        echo -e "${GREEN}✓ Semua model default telah aktif (Select All).${NC}"
-    fi
+    node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const out = {
+      piModels: [
+        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B (Groq - Ultra Cepat)', badge: 'Rekomendasi' },
+        { id: 'pi-deepseek-r1-7b', name: 'DeepSeek R1 7B (Local Pi Server)', badge: 'Lokal' },
+        { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant (Groq)', badge: 'Cepat' }
+      ]
+    };
+    fs.writeFileSync(path.join('data', 'models.json'), JSON.stringify(out, null, 2));
+    "
+    echo -e "${GREEN}✓ Model Pi default telah disimpan.${NC}"
 }
 
 # ==============================================================================
@@ -452,19 +364,6 @@ setup_github_cli() {
 # ==============================================================================
 # INSTALLERS SPESIFIK
 # ==============================================================================
-install_agy_cli() {
-    echo -e "\n${BLUE}Memeriksa Antigravity CLI (agy)...${NC}"
-    ensure_local_bin_in_path
-    if ! command -v agy &>/dev/null && [ ! -f "$HOME/.local/bin/agy" ]; then
-        echo -e "${YELLOW}Antigravity CLI belum terpasang. Mengunduh installer resmi...${NC}"
-        curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d "$HOME/.local/bin"
-        export PATH="$HOME/.local/bin:$PATH"
-        echo -e "${GREEN}✓ Antigravity CLI berhasil dipasang.${NC}"
-    else
-        echo -e "${GREEN}✓ Antigravity CLI terdeteksi: $(command -v agy || echo "$HOME/.local/bin/agy")${NC}"
-    fi
-}
-
 install_pi_cli() {
     echo -e "\n${BLUE}Memeriksa Pi Coding Agent CLI...${NC}"
     if ! command -v pi &>/dev/null; then
@@ -479,7 +378,7 @@ setup_directories() {
     echo -e "\n${BLUE}Menyiapkan direktori kerja...${NC}"
     mkdir -p projects
     if [ -d "telegram-ai-agent" ]; then
-        mkdir -p telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/gemini_auth telegram-ai-agent/public
+        mkdir -p telegram-ai-agent/data telegram-ai-agent/logs telegram-ai-agent/uploads telegram-ai-agent/public
     else
         mkdir -p data logs uploads
     fi
@@ -523,27 +422,24 @@ setup_env_file() {
     fi
 
     # Deteksi path binary aktual di sistem ini
-    ACTUAL_AGY_BIN="$(command -v agy || echo "$HOME/.local/bin/agy")"
+    ACTUAL_PI_BIN="$(command -v pi || echo "$HOME/.local/bin/pi")"
 
-    # Perbarui path binary & default engine di .env jika belum diset
-    if grep -q "^AGY_BIN=" "$env_file"; then
-        if [ -n "$ACTUAL_AGY_BIN" ] && [ -x "$ACTUAL_AGY_BIN" ]; then
-            sed -i.bak "s|^AGY_BIN=.*|AGY_BIN=${ACTUAL_AGY_BIN}|" "$env_file" && rm -f "$env_file.bak"
+    # Perbarui path binary Pi di .env jika belum diset
+    if grep -q "^PI_BIN=" "$env_file"; then
+        if [ -n "$ACTUAL_PI_BIN" ] && [ -x "$ACTUAL_PI_BIN" ]; then
+            sed -i.bak "s|^PI_BIN=.*|PI_BIN=${ACTUAL_PI_BIN}|" "$env_file" && rm -f "$env_file.bak"
         fi
     else
-        echo "AGY_BIN=${ACTUAL_AGY_BIN}" >> "$env_file"
+        echo "PI_BIN=${ACTUAL_PI_BIN}" >> "$env_file"
     fi
 
-    if ! grep -q "^CLI_ENGINE=" "$env_file"; then
-        echo "CLI_ENGINE=${DEFAULT_ENGINE}" >> "$env_file"
+    # Default endpoint Pi (CLIProxyAPI default port 8317)
+    if ! grep -q "^PI_SERVER_URL=" "$env_file"; then
+        echo "PI_SERVER_URL=http://127.0.0.1:8317/v1" >> "$env_file"
     fi
 
-    if ! grep -q "^AGY_AUTO_APPROVE_PERMISSIONS=" "$env_file"; then
-        echo "AGY_AUTO_APPROVE_PERMISSIONS=true" >> "$env_file"
-    fi
-
-    if ! grep -q "^AGY_MODEL=" "$env_file"; then
-        echo "AGY_MODEL=gemini-3.8-flash-medium" >> "$env_file"
+    if ! grep -q "^PI_MODEL=" "$env_file"; then
+        echo "PI_MODEL=openai/gpt-oss-120b" >> "$env_file"
     fi
 
     # Cek apakah BOT_TOKEN dan ALLOWED_TELEGRAM_IDS sudah terisi
@@ -1059,32 +955,15 @@ choose_engines
 choose_models
 setup_github_cli
 
-# 3. Pasang CLI yang dipilih
-if [ "$SELECTED_AGY" = true ]; then
-    install_agy_cli
-fi
-if [ "$SELECTED_PI" = true ]; then
-    install_pi_cli
-fi
+# 3. Pasang Pi CLI
+install_pi_cli
 
 # 4. Direktori & .env
 setup_directories
 setup_env_file
 
-# 5. Cek Autentikasi CLI (khusus jika agy aktif)
-if [ "$SELECTED_AGY" = true ]; then
-    echo -e "\n${BLUE}Memeriksa status login Antigravity CLI...${NC}"
-    AGY_EXE="$(command -v agy || echo "$HOME/.local/bin/agy")"
-    if [ -f "$HOME/.gemini/antigravity-cli/settings.json" ] || [ -d "$HOME/.gemini" ]; then
-        echo -e "${GREEN}✓ Sesi Antigravity CLI ($HOME/.gemini) terdeteksi.${NC}"
-    else
-        echo -e "${YELLOW}Antigravity CLI belum login di sistem ini.${NC}"
-        prompt_user "Apakah ingin melakukan login Antigravity sekarang? (y/n, default: y): " do_auth
-        if [ "$do_auth" != "n" ] && [ "$do_auth" != "N" ]; then
-            "$AGY_EXE" || true
-        fi
-    fi
-fi
+# 5. Catatan konfigurasi endpoint Pi
+echo -e "\n${BLUE}Pi CLI siap. Arahkan PI_SERVER_URL ke CLIProxyAPI (default: http://127.0.0.1:8317/v1).${NC}"
 
 # 6. Kompilasi Standalone Binary Bundle & Jalankan Service 24/7
 setup_binary_bundle_and_service
