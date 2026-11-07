@@ -35,6 +35,18 @@ import {
   normalizePiUrl,
 } from "./config/models.js";
 import { syncPiModelDirectly } from "./services/pi-service.js";
+import {
+  listPiProviders,
+  savePiProvider,
+  deletePiProvider,
+  getPiProviderRaw,
+} from "./services/pi-provider-service.js";
+import {
+  getCpaStatus,
+  startCpaOAuth,
+  getCpaOAuthStatus,
+  submitCpaOAuthCallback,
+} from "./services/cliproxy-service.js";
 import { loadWatchConfig, saveWatchConfig } from "./services/github-service.js";
 import {
   getDeployConfig,
@@ -232,6 +244,137 @@ export function createWebServer() {
         });
       } catch (err) {
         return sendError(500, err.message);
+      }
+    }
+
+    // API: Kelola Provider Pi (multi-provider, ~/.pi/agent/models.json)
+    if (pathname === "/api/pi-providers" && req.method === "GET") {
+      try {
+        const providers = await listPiProviders();
+        return sendJson(200, {
+          ok: true,
+          defaultProvider: process.env.PI_PROVIDER || "local-pi",
+          providers,
+        });
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    if (pathname === "/api/pi-providers" && req.method === "POST") {
+      try {
+        let body = "";
+        for await (const chunk of req) body += chunk;
+        const payload = JSON.parse(body || "{}");
+        const action = payload.action || "save";
+
+        if (action === "delete") {
+          const removed = await deletePiProvider(payload.id);
+          if ((process.env.PI_PROVIDER || "local-pi") === removed) {
+            await updateEnvFile({ PI_PROVIDER: "local-pi" });
+            process.env.PI_PROVIDER = "local-pi";
+          }
+          return sendJson(200, {
+            ok: true,
+            message: `Provider '${removed}' dihapus.`,
+            providers: await listPiProviders(),
+            defaultProvider: process.env.PI_PROVIDER || "local-pi",
+          });
+        }
+
+        if (action === "set-default") {
+          const id = String(payload.id || "").trim();
+          const providers = await listPiProviders();
+          if (!providers.some((p) => p.id === id)) {
+            return sendError(400, `Provider '${id}' tidak ditemukan.`);
+          }
+
+          const provider = await getPiProviderRaw(id);
+          const updates = { PI_PROVIDER: id };
+
+          // Selaraskan endpoint & key bot dengan provider yang dipilih.
+          if (provider?.baseUrl) {
+            updates.PI_SERVER_URL = normalizePiUrl(provider.baseUrl);
+          }
+          if (provider?.apiKey) {
+            updates.PI_SERVER_API_KEY = provider.apiKey;
+          }
+          // Selaraskan daftar model bot dengan model provider.
+          if (provider?.models?.length) {
+            const custom = (await loadCustomModels()) || {};
+            custom.piModels = provider.models;
+            await saveCustomModels(custom);
+            updates.PI_MODEL = provider.models[0].id;
+          }
+
+          await updateEnvFile(updates);
+          Object.assign(process.env, updates);
+
+          return sendJson(200, {
+            ok: true,
+            message: `Provider default diubah ke '${id}' dan disinkronkan ke bot.`,
+            providers: await listPiProviders(),
+            defaultProvider: id,
+          });
+        }
+
+        const savedId = await savePiProvider(payload);
+        return sendJson(200, {
+          ok: true,
+          message: `Provider '${savedId}' disimpan.`,
+          providers: await listPiProviders(),
+          defaultProvider: process.env.PI_PROVIDER || "local-pi",
+        });
+      } catch (err) {
+        return sendError(400, err.message);
+      }
+    }
+
+    // API: Status CLIProxyAPI (server 8317)
+    if (pathname === "/api/cliproxy/status" && req.method === "GET") {
+      try {
+        return sendJson(200, await getCpaStatus());
+      } catch (err) {
+        return sendError(500, err.message);
+      }
+    }
+
+    // API: Mulai OAuth provider lewat CLIProxyAPI
+    if (pathname === "/api/cliproxy/oauth/start" && req.method === "GET") {
+      try {
+        const provider = url.searchParams.get("provider") || "antigravity";
+        return sendJson(200, { ok: true, ...(await startCpaOAuth(provider)) });
+      } catch (err) {
+        return sendError(400, err.message);
+      }
+    }
+
+    // API: Cek status OAuth
+    if (pathname === "/api/cliproxy/oauth/status" && req.method === "GET") {
+      try {
+        const state = url.searchParams.get("state") || "";
+        return sendJson(200, { ok: true, ...(await getCpaOAuthStatus(state)) });
+      } catch (err) {
+        return sendError(400, err.message);
+      }
+    }
+
+    // API: Kirim URL callback OAuth (untuk browser remote / loopback gagal)
+    if (pathname === "/api/cliproxy/oauth/callback" && req.method === "POST") {
+      try {
+        let body = "";
+        for await (const chunk of req) body += chunk;
+        const payload = JSON.parse(body || "{}");
+        const result = await submitCpaOAuthCallback({
+          provider: payload.provider,
+          redirectUrl: payload.redirectUrl || payload.redirect_url,
+          state: payload.state,
+          code: payload.code,
+          error: payload.error,
+        });
+        return sendJson(200, { ok: true, ...result });
+      } catch (err) {
+        return sendError(400, err.message);
       }
     }
 

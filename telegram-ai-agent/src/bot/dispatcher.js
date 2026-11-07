@@ -435,7 +435,7 @@ ${userMessage}
         if (isGroqModel) {
           cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
         } else {
-          cliArgs.unshift("--provider", "local-pi", "--model", piModel);
+          cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
         }
       }
 
@@ -819,7 +819,7 @@ export async function runAgentAutonomous({
     if (isGroqModel) {
       cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
     } else {
-      cliArgs.unshift("--provider", "local-pi", "--model", piModel);
+      cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
     }
   }
 

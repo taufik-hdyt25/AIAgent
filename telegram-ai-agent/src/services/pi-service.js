@@ -1,4 +1,4 @@
-import { writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fetchRemoteModels, normalizePiUrl, loadCustomModels, saveCustomModels } from "../config/models.js";
@@ -16,10 +16,21 @@ export async function syncPiCliConfig(baseUrl, apiKey, models) {
     "/home/th-agent/.pi/agent",
   ];
 
-  const configContent = {
-    $schema: "https://pi.dev/schemas/models.schema.json",
-    providers: {
-      "local-pi": {
+  for (const dir of piAgentDirs) {
+    try {
+      await mkdir(dir, { recursive: true });
+      const file = path.join(dir, "models.json");
+
+      // Pertahankan provider lain yang sudah dikelola lewat Web UI.
+      let providers = {};
+      try {
+        const existing = JSON.parse(await readFile(file, "utf8"));
+        if (existing && typeof existing.providers === "object" && existing.providers) {
+          providers = existing.providers;
+        }
+      } catch (_) {}
+
+      providers["local-pi"] = {
         baseUrl: baseUrl,
         api: "openai-completions",
         apiKey: apiKey || "sk-local",
@@ -27,14 +38,14 @@ export async function syncPiCliConfig(baseUrl, apiKey, models) {
           id: m.id,
           name: m.name || m.id,
         })),
-      },
-    },
-  };
+      };
 
-  for (const dir of piAgentDirs) {
-    try {
-      await mkdir(dir, { recursive: true });
-      await writeFile(path.join(dir, "models.json"), JSON.stringify(configContent, null, 2) + "\n", "utf8");
+      const configContent = {
+        $schema: "https://pi.dev/schemas/models.schema.json",
+        providers,
+      };
+
+      await writeFile(file, JSON.stringify(configContent, null, 2) + "\n", "utf8");
     } catch (_) {}
   }
 }

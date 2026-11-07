@@ -113,7 +113,7 @@ INSTRUKSI PENGERJAAN:
     if (isGroqModel) {
       args.unshift("--provider", "groq", "--model", activeModel.replace(/^groq\//, ""));
     } else {
-      args.unshift("--provider", "local-pi", "--model", activeModel);
+      args.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", activeModel);
     }
   }
 

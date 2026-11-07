@@ -286,6 +286,122 @@
           </div>
         </div>
 
+        <!-- SECTION: Provider Pi (multi-provider models.json) -->
+        <div class="card" data-section="ai">
+          <div class="card-header">
+            <div class="card-icon purple">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 6h16M4 12h16M4 18h16"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">Provider Pi (models.json)</h2>
+              <p class="card-description">Kelola provider OpenAI-compatible untuk Pi CLI (~/.pi/agent/models.json). Bisa lebih dari satu provider.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="label-row" style="margin-bottom: 0.5rem;">
+              <label class="form-label">PROVIDER TERDAFTAR</label>
+              <span class="label-hint" id="piProviderDefaultBadge">Default: local-pi</span>
+            </div>
+            <div id="piProvidersList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 1.25rem;"></div>
+
+            <div style="padding: 1rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+              <div class="label-row" style="margin-bottom: 0.5rem;">
+                <label class="form-label" style="font-weight: 600; color: #60a5fa;">TAMBAH / EDIT PROVIDER</label>
+              </div>
+
+              <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <input type="text" id="piProviderId" class="form-input font-mono" placeholder="ID provider (contoh: local-pi, cliproxy, openrouter)" style="flex: 1;">
+                <input type="text" id="piProviderName" class="form-input" placeholder="Nama tampilan (opsional)" style="flex: 1;">
+              </div>
+
+              <input type="text" id="piProviderBaseUrl" class="form-input font-mono" placeholder="Base URL (contoh: http://127.0.0.1:8317/v1)" style="width: 100%; margin-bottom: 8px;">
+
+              <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <select id="piProviderApi" class="form-select font-mono" style="flex: 1;">
+                  <option value="openai-completions">openai-completions</option>
+                  <option value="openai-responses">openai-responses</option>
+                  <option value="anthropic-messages">anthropic-messages</option>
+                </select>
+                <input type="password" id="piProviderApiKey" class="form-input font-mono" placeholder="API Key (kosongkan untuk mempertahankan)" style="flex: 2;" autocomplete="off">
+              </div>
+
+              <div class="label-row" style="margin-bottom: 4px;">
+                <label class="form-label" style="font-size: 0.78rem;">DAFTAR MODEL (satu per baris: id | Nama)</label>
+              </div>
+              <textarea id="piProviderModels" class="form-input font-mono" rows="4" placeholder="claude-sonnet-4-6 | Claude Sonnet
+gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize: vertical;"></textarea>
+
+              <div style="display: flex; gap: 8px;">
+                <button type="button" id="btnSavePiProvider" style="font-size: 0.82rem; padding: 7px 14px; background: #059669; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                  💾 Simpan Provider
+                </button>
+                <button type="button" id="btnNewPiProvider" style="font-size: 0.82rem; padding: 7px 14px; background: none; color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); border-radius: 6px; cursor: pointer;">
+                  ➕ Form Baru
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SECTION: CLIProxyAPI OAuth (Antigravity / Claude / Codex) -->
+        <div class="card" data-section="ai">
+          <div class="card-header">
+            <div class="card-icon amber">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2a10 10 0 1 0 10 10"></path>
+                <path d="M12 6v6l4 2"></path>
+              </svg>
+            </div>
+            <div>
+              <h2 class="card-title">CLIProxyAPI Login (Antigravity / OAuth)</h2>
+              <p class="card-description">Login akun subscription lewat CLIProxyAPI tanpa SSH tunnel. Cocok saat Web UI dibuka dari IP publik.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="label-row" style="margin-bottom: 0.75rem;">
+              <label class="form-label">STATUS GATEWAY</label>
+              <span class="badge" id="cpaStatusBadge">Memeriksa...</span>
+            </div>
+            <p id="cpaStatusText" style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 1rem;">-</p>
+
+            <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+              <select id="cpaProvider" class="form-select font-mono" style="flex: 1;">
+                <option value="antigravity">Antigravity</option>
+                <option value="claude">Claude Code</option>
+                <option value="codex">OpenAI Codex</option>
+              </select>
+              <button type="button" id="btnCpaLogin" style="font-size: 0.82rem; padding: 7px 14px; white-space: nowrap; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                🔐 Login via Browser
+              </button>
+              <button type="button" id="btnCpaRefresh" style="font-size: 0.82rem; padding: 7px 12px; white-space: nowrap; background: none; color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); border-radius: 6px; cursor: pointer;">
+                ⟳ Refresh
+              </button>
+            </div>
+
+            <div id="cpaLoginBox" style="display: none; padding: 12px; background: rgba(37,99,235,0.08); border: 1px solid rgba(37,99,235,0.25); border-radius: 8px; margin-bottom: 10px;">
+              <p style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 8px;">
+                1. Klik URL di bawah, login akun subscription-mu.<br>
+                2. Setelah login, browser akan diarahkan ke <code>localhost:&lt;port&gt;</code> dan mungkin gagal memuat.<br>
+                3. <strong>Copy URL lengkap dari address bar</strong> (mengandung <code>code=</code> dan <code>state=</code>), tempel di bawah, lalu kirim.
+              </p>
+              <a id="cpaAuthUrl" href="#" target="_blank" rel="noopener" style="font-size: 0.8rem; color: #60a5fa; word-break: break-all; display: block; margin-bottom: 10px;">-</a>
+
+              <div class="label-row" style="margin-bottom: 4px;">
+                <label class="form-label" style="font-size: 0.78rem;">TEMPEL URL CALLBACK</label>
+              </div>
+              <div style="display: flex; gap: 6px;">
+                <input type="text" id="cpaCallbackUrl" class="form-input font-mono" placeholder="http://localhost:xxxxx/oauth-callback?state=...&code=..." style="flex: 1; font-size: 0.8rem;">
+                <button type="button" id="btnCpaSubmitCallback" style="font-size: 0.8rem; padding: 6px 14px; white-space: nowrap; background: #059669; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
+                  Kirim Callback
+                </button>
+              </div>
+              <p id="cpaOAuthStatus" style="font-size: 0.78rem; color: #94a3b8; margin-top: 8px;">Belum ada proses login.</p>
+            </div>
+          </div>
+        </div>
+
         <!-- SECTION: Metode Autentikasi (OAuth vs API Key) -->
         <div class="card" data-section="ai">
           <div class="card-header">

@@ -193,6 +193,7 @@ async function loadSettings() {
     renderIdChips(currentSettings.ALLOWED_TELEGRAM_IDS);
 
     renderAllowedModelsChips();
+    loadPiProviders();
 
     // Populate Pi Models Select
     if (piModelSelect) {
@@ -603,6 +604,374 @@ if (piModelSelect) {
     badgeModel.textContent = piModelSelect.value;
   });
 }
+
+// ===== Provider Pi (multi-provider models.json) =====
+const piProvidersList = document.getElementById("piProvidersList");
+const piProviderDefaultBadge = document.getElementById("piProviderDefaultBadge");
+const piProviderId = document.getElementById("piProviderId");
+const piProviderName = document.getElementById("piProviderName");
+const piProviderBaseUrl = document.getElementById("piProviderBaseUrl");
+const piProviderApi = document.getElementById("piProviderApi");
+const piProviderApiKey = document.getElementById("piProviderApiKey");
+const piProviderModels = document.getElementById("piProviderModels");
+const btnSavePiProvider = document.getElementById("btnSavePiProvider");
+const btnNewPiProvider = document.getElementById("btnNewPiProvider");
+
+let piProvidersCache = [];
+
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function clearPiProviderForm() {
+  if (piProviderId) piProviderId.value = "";
+  if (piProviderName) piProviderName.value = "";
+  if (piProviderBaseUrl) piProviderBaseUrl.value = "";
+  if (piProviderApi) piProviderApi.value = "openai-completions";
+  if (piProviderApiKey) piProviderApiKey.value = "";
+  if (piProviderModels) piProviderModels.value = "";
+}
+
+function fillPiProviderForm(provider) {
+  if (!provider) return;
+  if (piProviderId) piProviderId.value = provider.id || "";
+  if (piProviderName) piProviderName.value = provider.name || "";
+  if (piProviderBaseUrl) piProviderBaseUrl.value = provider.baseUrl || "";
+  if (piProviderApi) piProviderApi.value = provider.api || "openai-completions";
+  if (piProviderApiKey) piProviderApi.value = "";
+  if (piProviderModels) {
+    piProviderModels.value = (provider.models || [])
+      .map((m) => (m.name && m.name !== m.id ? `${m.id} | ${m.name}` : m.id))
+      .join("\n");
+  }
+  piProviderId && piProviderId.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function renderPiProviders() {
+  if (!piProvidersList) return;
+  piProvidersList.innerHTML = "";
+
+  if (!piProvidersCache.length) {
+    piProvidersList.innerHTML = `<span style="font-size: 0.8rem; color: #64748b; font-style: italic;">Belum ada provider di ~/.pi/agent/models.json.</span>`;
+    return;
+  }
+
+  for (const p of piProvidersCache) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2); border-radius:8px;";
+
+    const info = document.createElement("div");
+    info.style.cssText = "min-width:0;";
+    info.innerHTML = `
+      <div style="font-family:monospace; font-size:0.85rem; color:#93c5fd;">
+        ${escapeHtml(p.id)} ${p.isDefault ? '<span style="font-size:0.65rem; background:#059669; color:#fff; padding:1px 6px; border-radius:4px; margin-left:4px;">DEFAULT</span>' : ""}
+      </div>
+      <div style="font-size:0.72rem; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+        ${escapeHtml(p.name || p.id)} · ${escapeHtml(p.baseUrl)} · ${(p.models || []).length} model · key: ${p.hasApiKey ? escapeHtml(p.apiKeyMasked || "set") : "none"}
+      </div>`;
+    row.appendChild(info);
+
+    const actions = document.createElement("div");
+    actions.style.cssText = "display:flex; gap:6px; flex-shrink:0;";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "Edit";
+    editBtn.style.cssText = "font-size:0.72rem; padding:4px 8px; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer;";
+    editBtn.addEventListener("click", () => fillPiProviderForm(p));
+    actions.appendChild(editBtn);
+
+    if (!p.isDefault) {
+      const defBtn = document.createElement("button");
+      defBtn.type = "button";
+      defBtn.textContent = "Jadikan Default";
+      defBtn.style.cssText = "font-size:0.72rem; padding:4px 8px; background:#059669; color:#fff; border:none; border-radius:4px; cursor:pointer;";
+      defBtn.addEventListener("click", () => setDefaultPiProvider(p.id));
+      actions.appendChild(defBtn);
+    }
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.textContent = "Hapus";
+    delBtn.style.cssText = "font-size:0.72rem; padding:4px 8px; background:none; color:#f87171; border:1px solid rgba(248,113,113,0.4); border-radius:4px; cursor:pointer;";
+    delBtn.addEventListener("click", () => deletePiProviderFromUi(p.id));
+    actions.appendChild(delBtn);
+
+    row.appendChild(actions);
+    piProvidersList.appendChild(row);
+  }
+}
+
+async function loadPiProviders() {
+  try {
+    const res = await fetch("/api/pi-providers");
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Gagal memuat provider");
+    piProvidersCache = data.providers || [];
+    if (piProviderDefaultBadge) {
+      piProviderDefaultBadge.textContent = `Default: ${data.defaultProvider || "local-pi"}`;
+    }
+    renderPiProviders();
+  } catch (err) {
+    if (piProvidersList) {
+      piProvidersList.innerHTML = `<span style="font-size:0.8rem; color:#f87171;">Gagal memuat provider: ${escapeHtml(err.message)}</span>`;
+    }
+  }
+}
+
+function parsePiProviderModels(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [idPart, ...rest] = line.split("|");
+      const id = idPart.trim();
+      if (!id) return null;
+      const name = rest.join("|").trim() || id;
+      return { id, name };
+    })
+    .filter(Boolean);
+}
+
+async function savePiProviderFromUi() {
+  const id = piProviderId ? piProviderId.value.trim() : "";
+  const baseUrl = piProviderBaseUrl ? piProviderBaseUrl.value.trim() : "";
+  if (!id || !baseUrl) {
+    showToast("ID provider dan Base URL wajib diisi.", "warning");
+    return;
+  }
+
+  const payload = {
+    action: "save",
+    id,
+    name: piProviderName ? piProviderName.value.trim() : "",
+    baseUrl,
+    api: piProviderApi ? piProviderApi.value : "openai-completions",
+    models: parsePiProviderModels(piProviderModels ? piProviderModels.value : ""),
+  };
+  const key = piProviderApiKey ? piProviderApiKey.value.trim() : "";
+  if (key) payload.apiKey = key;
+
+  if (btnSavePiProvider) btnSavePiProvider.disabled = true;
+  try {
+    const res = await fetch("/api/pi-providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal menyimpan provider");
+    piProvidersCache = data.providers || [];
+    if (piProviderDefaultBadge) {
+      piProviderDefaultBadge.textContent = `Default: ${data.defaultProvider || "local-pi"}`;
+    }
+    renderPiProviders();
+    showToast(data.message || "Provider disimpan!", "success");
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`, "error");
+  } finally {
+    if (btnSavePiProvider) btnSavePiProvider.disabled = false;
+  }
+}
+
+async function setDefaultPiProvider(id) {
+  try {
+    const res = await fetch("/api/pi-providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set-default", id }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal mengubah default");
+    piProvidersCache = data.providers || [];
+    if (piProviderDefaultBadge) {
+      piProviderDefaultBadge.textContent = `Default: ${data.defaultProvider || id}`;
+    }
+    renderPiProviders();
+    showToast(data.message || "Provider default diubah.", "success");
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`, "error");
+  }
+}
+
+async function deletePiProviderFromUi(id) {
+  if (!confirm(`Hapus provider '${id}' dari models.json?`)) return;
+  try {
+    const res = await fetch("/api/pi-providers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "delete", id }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal menghapus provider");
+    piProvidersCache = data.providers || [];
+    if (piProviderDefaultBadge) {
+      piProviderDefaultBadge.textContent = `Default: ${data.defaultProvider || "local-pi"}`;
+    }
+    renderPiProviders();
+    showToast(data.message || "Provider dihapus.", "info");
+  } catch (err) {
+    showToast(`Gagal: ${err.message}`, "error");
+  }
+}
+
+if (btnSavePiProvider) {
+  btnSavePiProvider.addEventListener("click", savePiProviderFromUi);
+}
+if (btnNewPiProvider) {
+  btnNewPiProvider.addEventListener("click", clearPiProviderForm);
+}
+
+// ===== CLIProxyAPI OAuth (Antigravity / Claude / Codex) =====
+const cpaStatusBadge = document.getElementById("cpaStatusBadge");
+const cpaStatusText = document.getElementById("cpaStatusText");
+const cpaProvider = document.getElementById("cpaProvider");
+const btnCpaLogin = document.getElementById("btnCpaLogin");
+const btnCpaRefresh = document.getElementById("btnCpaRefresh");
+const cpaLoginBox = document.getElementById("cpaLoginBox");
+const cpaAuthUrl = document.getElementById("cpaAuthUrl");
+const cpaCallbackUrl = document.getElementById("cpaCallbackUrl");
+const btnCpaSubmitCallback = document.getElementById("btnCpaSubmitCallback");
+const cpaOAuthStatus = document.getElementById("cpaOAuthStatus");
+
+let cpaState = "";
+let cpaPollTimer = null;
+
+function setCpaOAuthStatus(text, color) {
+  if (!cpaOAuthStatus) return;
+  cpaOAuthStatus.textContent = text;
+  cpaOAuthStatus.style.color = color || "#94a3b8";
+}
+
+async function loadCpaStatus() {
+  if (!cpaStatusBadge) return;
+  try {
+    const res = await fetch("/api/cliproxy/status");
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Gagal memuat status");
+
+    if (data.reachable) {
+      cpaStatusBadge.className = "badge badge-primary";
+      cpaStatusBadge.innerHTML = "✓ Online";
+    } else {
+      cpaStatusBadge.className = "badge";
+      cpaStatusBadge.innerHTML = "✕ Offline";
+    }
+
+    const creds = Array.isArray(data.credentials) ? data.credentials : [];
+    const credText = creds.length
+      ? creds.map((c) => `${c.provider || "?"}${c.label ? ` (${c.label})` : ""}`).join(", ")
+      : "belum ada akun";
+    cpaStatusText.textContent =
+      `${data.url} · ${data.modelCount || 0} model · akun: ${credText}` +
+      (data.errors?.management ? ` · management: ${data.errors.management}` : "");
+  } catch (err) {
+    cpaStatusBadge.className = "badge";
+    cpaStatusBadge.innerHTML = "✕ Error";
+    if (cpaStatusText) cpaStatusText.textContent = err.message;
+  }
+}
+
+function stopCpaPolling() {
+  if (cpaPollTimer) {
+    clearInterval(cpaPollTimer);
+    cpaPollTimer = null;
+  }
+}
+
+function pollCpaOAuthStatus() {
+  stopCpaPolling();
+  if (!cpaState) return;
+  cpaPollTimer = setInterval(async () => {
+    try {
+      const res = await fetch(`/api/cliproxy/oauth/status?state=${encodeURIComponent(cpaState)}`);
+      const data = await res.json();
+      if (!data.ok) {
+        setCpaOAuthStatus(`Status error: ${data.error || "unknown"}`, "#f87171");
+        return;
+      }
+      const status = data.status || "wait";
+      if (status === "ok") {
+        setCpaOAuthStatus("✅ Login berhasil, kredensial tersimpan.", "#34d399");
+        stopCpaPolling();
+        loadCpaStatus();
+      } else if (status === "error") {
+        setCpaOAuthStatus(`❌ Login gagal: ${data.error || "unknown"}`, "#f87171");
+        stopCpaPolling();
+      } else if (status === "wait") {
+        setCpaOAuthStatus("⏳ Menunggu callback / proses token...", "#facc15");
+      }
+    } catch (err) {
+      setCpaOAuthStatus(`Gagal cek status: ${err.message}`, "#f87171");
+    }
+  }, 2500);
+}
+
+async function startCpaLogin() {
+  const provider = cpaProvider ? cpaProvider.value : "antigravity";
+  if (btnCpaLogin) btnCpaLogin.disabled = true;
+  setCpaOAuthStatus("Memulai OAuth...", "#94a3b8");
+  try {
+    const res = await fetch(`/api/cliproxy/oauth/start?provider=${encodeURIComponent(provider)}`);
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal memulai OAuth");
+
+    cpaState = data.state || "";
+    if (cpaLoginBox) cpaLoginBox.style.display = "block";
+    if (cpaAuthUrl) {
+      cpaAuthUrl.href = data.url;
+      cpaAuthUrl.textContent = data.url;
+    }
+    if (cpaCallbackUrl) cpaCallbackUrl.value = "";
+    setCpaOAuthStatus("Buka URL di atas, login, lalu tempel URL callback yang gagal dimuat.", "#facc15");
+    pollCpaOAuthStatus();
+    window.open(data.url, "_blank", "noopener");
+  } catch (err) {
+    setCpaOAuthStatus(`❌ ${err.message}`, "#f87171");
+  } finally {
+    if (btnCpaLogin) btnCpaLogin.disabled = false;
+  }
+}
+
+async function submitCpaCallback() {
+  const redirectUrl = cpaCallbackUrl ? cpaCallbackUrl.value.trim() : "";
+  if (!redirectUrl) {
+    setCpaOAuthStatus("Tempel URL callback lengkap terlebih dahulu.", "#f87171");
+    return;
+  }
+  if (btnCpaSubmitCallback) btnCpaSubmitCallback.disabled = true;
+  setCpaOAuthStatus("Mengirim callback...", "#94a3b8");
+  try {
+    const res = await fetch("/api/cliproxy/oauth/callback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: cpaProvider ? cpaProvider.value : undefined,
+        redirectUrl,
+        state: cpaState || undefined,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Callback gagal");
+    setCpaOAuthStatus("Callback diterima, menunggu proses token...", "#facc15");
+    pollCpaOAuthStatus();
+  } catch (err) {
+    setCpaOAuthStatus(`❌ ${err.message}`, "#f87171");
+  } finally {
+    if (btnCpaSubmitCallback) btnCpaSubmitCallback.disabled = false;
+  }
+}
+
+if (btnCpaLogin) btnCpaLogin.addEventListener("click", startCpaLogin);
+if (btnCpaRefresh) btnCpaRefresh.addEventListener("click", loadCpaStatus);
+if (btnCpaSubmitCallback) btnCpaSubmitCallback.addEventListener("click", submitCpaCallback);
+loadCpaStatus();
 
 // Handler Get Model dari Pi
 if (btnGetPiModels) {
