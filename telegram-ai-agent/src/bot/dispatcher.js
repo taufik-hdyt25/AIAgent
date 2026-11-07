@@ -7,6 +7,7 @@ import {
   PI_BIN,
   DEFAULT_PI_MODEL,
   TIMEOUT_MS,
+  MAX_TIMEOUT_MS,
   MAX_OUTPUT,
   PROJECTS_DIR,
 } from "../config/env.js";
@@ -17,6 +18,7 @@ import {
   getAllowedFolders,
   detectProjectFromText,
 } from "../services/sandbox-service.js";
+import { createPiEventParser } from "../services/pi-event-parser.js";
 import {
   getUserConversationId,
   getUserPiModel,
@@ -138,6 +140,16 @@ export async function processAutonomousOutput(rawText) {
     savedMemories,
     savedSkills,
   };
+}
+
+function formatDurationShort(ms) {
+  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  if (totalSeconds < 60) return `${totalSeconds} detik`;
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes} menit`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours} jam ${minutes} menit` : `${hours} jam`;
 }
 
 // Fungsi inti eksekusi instruksi AI (Pi Coding Agent CLI)
@@ -429,6 +441,8 @@ ${userMessage}
         cliArgs = [
           "--session-id",
           convId,
+          "--mode",
+          "json",
           "-p",
           prompt,
           "--approve",
@@ -507,13 +521,16 @@ ${userMessage}
       let stdout = "";
       let stderr = "";
       let settled = false;
-      let timer;
+      let idleTimer;
+      let hardTimer;
       let killTimer;
+      const piParser = useCmd ? null : createPiEventParser();
 
       const finish = async (error, code, signal) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        clearTimeout(idleTimer);
+        clearTimeout(hardTimer);
         clearTimeout(killTimer);
 
         if (!useCmd && code === 0) {
@@ -530,6 +547,15 @@ ${userMessage}
           const parsed = parseCmdResult(stdout);
           responseText = parsed.text || "";
           jsonError = parsed.error;
+        } else if (piParser) {
+          const parsedText = piParser.getText();
+          jsonError = piParser.getError();
+          if (parsedText) {
+            responseText = parsedText;
+          } else if (stdout.trim().startsWith("{")) {
+            // Output JSON tanpa pesan assistant final (mis. proses terhenti)
+            responseText = "";
+          }
         }
 
         // Process autonomous tags (Memory & Skills) jika response ada
@@ -558,14 +584,27 @@ ${userMessage}
           return;
         }
 
-        const isTimedOut = signal === "SIGTERM" || signal === "SIGKILL" || stderr.includes("print timeout") || stderr.includes("timed out");
+        const isTimedOut = Boolean(task.timedOut) || signal === "SIGTERM" || signal === "SIGKILL" || stderr.includes("print timeout") || stderr.includes("timed out");
         const hasError = error || jsonError || (code !== 0 && !responseText.trim()) || (!responseText.trim() && stderr.trim());
 
         if (hasError) {
           let errText = jsonError || stderr.trim() || error?.message || (code !== null ? `Exit code ${code}` : "");
 
           if (isTimedOut) {
-            errText = `⏱️ *Batas Waktu Eksekusi Terlampaui (Timeout)*\n\n${engineLabel} memerlukan waktu pemrosesan lebih lama dari batas waktu yang ditentukan. Coba persempit atau pecah instruksi menjadi langkah-langkah yang lebih terarah.`;
+            const elapsed = formatDurationShort(Date.now() - (task.startedAt || Date.now()));
+            const partialText = piParser ? piParser.getText() : stdout.trim();
+            const lastOutput = truncate(
+              partialText.trim().split("\n").filter(Boolean).slice(-3).join("\n").replace(/```/g, "'''"),
+              400
+            );
+            if (task.timeoutReason === "max") {
+              errText = `⏱️ *Batas Maksimal Durasi Tugas Tercapai*\n\nTugas berjalan ~${elapsed} lalu dihentikan karena melewati batas maksimal (${formatDurationShort(MAX_TIMEOUT_MS)}).\n\n💡 Naikkan *Maks. Durasi Tugas* di Web UI → Izin & Batas Waktu, atau pecah instruksi menjadi beberapa langkah.`;
+            } else {
+              errText = `⏱️ *Tugas Dihentikan: Tidak Ada Aktivitas*\n\n${engineLabel} tidak mengeluarkan output selama ${formatDurationShort(TIMEOUT_MS)} (idle timeout). Total berjalan ~${elapsed}.\n\n💡 Naikkan *Idle Timeout* di Web UI → Izin & Batas Waktu jika tugas memang lama tanpa output (mis. install dependency besar).`;
+            }
+            if (lastOutput) {
+              errText += `\n\n📄 *Output terakhir:*\n\`\`\`\n${lastOutput}\n\`\`\``;
+            }
           } else if (errText.includes("permission that headless mode cannot prompt for") || errText.includes("permission")) {
             errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan Pi CLI dijalankan dengan flag \`--approve\`.`;
           } else if (errText.includes("ENOENT")) {
@@ -593,25 +632,40 @@ ${userMessage}
         processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
       };
 
-      timer = setTimeout(() => {
-        task.cancelled = true;
+      const fireTimeout = (reason) => {
+        if (settled || task.cancelled) return;
+        task.timedOut = true;
+        task.timeoutReason = reason;
         killProcessTree(child, "SIGTERM");
         killTimer = setTimeout(() => {
           if (getActiveTask()?.id === taskId) killProcessTree(child, "SIGKILL");
         }, 5000);
         killTimer.unref();
-      }, TIMEOUT_MS);
+      };
+
+      // Timer hanya di-reset saat ada output. Tugas yang masih aktif bekerja
+      // tidak akan dipotong hanya karena berjalan lama.
+      const armIdleTimeout = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => fireTimeout("idle"), TIMEOUT_MS);
+      };
+      armIdleTimeout();
+      hardTimer = setTimeout(() => fireTimeout("max"), Math.max(MAX_TIMEOUT_MS, TIMEOUT_MS));
 
       child.stdout.on("data", (chunk) => {
-        stdout += chunk.toString();
+        const text = chunk.toString();
+        stdout += text;
         if (stdout.length > MAX_OUTPUT * 2) {
           stdout = stdout.slice(-MAX_OUTPUT * 2);
         }
+        if (piParser) piParser.push(text);
+        armIdleTimeout();
       });
 
       child.stderr.on("data", (chunk) => {
         stderr += chunk.toString();
         if (stderr.length > 5000) stderr = stderr.slice(-5000);
+        armIdleTimeout();
       });
 
       child.on("error", (error) => finish(error, null, null));
@@ -833,7 +887,7 @@ export async function runAgentAutonomous({
   } else {
     binToRun = PI_BIN;
     const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
-    cliArgs = ["--session-id", actualConvId, "-p", prompt, "--approve"];
+    cliArgs = ["--session-id", actualConvId, "--mode", "json", "-p", prompt, "--approve"];
     if (piModel) {
       const isGroqModel =
         piModel === "openai/gpt-oss-120b" ||
@@ -876,6 +930,7 @@ export async function runAgentAutonomous({
     safeCwd = process.cwd();
   }
 
+  const piParser = useCmd ? null : createPiEventParser();
   const res = await runProcess({
     command: binToRun,
     args: cliArgs,
@@ -883,6 +938,7 @@ export async function runAgentAutonomous({
     timeoutMs,
     env: sanitizedEnv,
     onSpawn,
+    onStdout: piParser ? (chunk) => piParser.push(chunk) : undefined,
   });
 
   if (useCmd) {
@@ -891,6 +947,17 @@ export async function runAgentAutonomous({
     const output = parsed.text || res.stdout || "";
     if (res.code === 0 || output.length > 0) {
       return { ok: true, output, sessionId: parsed.sessionId, usage: parsed.usage || null };
+    }
+  }
+
+  if (piParser) {
+    const text = piParser.getText();
+    const parserError = piParser.getError();
+    if (text) {
+      return { ok: true, output: text };
+    }
+    if (parserError && res.code !== 0) {
+      throw new Error(parserError);
     }
   }
 

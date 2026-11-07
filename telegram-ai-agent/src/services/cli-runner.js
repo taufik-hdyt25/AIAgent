@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { appendFile } from "node:fs/promises";
 import fs from "node:fs";
 import path from "node:path";
-import { LOG_DIR, MAX_OUTPUT, TIMEOUT_MS } from "../config/env.js";
+import { LOG_DIR, MAX_OUTPUT, TIMEOUT_MS, MAX_TIMEOUT_MS } from "../config/env.js";
 import { truncate } from "./telegram-files.js";
 
 let activeTask = null;
@@ -99,6 +99,7 @@ export function runProcess({
   env = process.env,
   cwd = process.cwd(),
   timeoutMs = TIMEOUT_MS,
+  maxTimeoutMs = MAX_TIMEOUT_MS,
   maxOutput = MAX_OUTPUT,
   onStdout,
   onStderr,
@@ -142,8 +143,13 @@ export function runProcess({
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let idleTimer = null;
+    let hardTimer = null;
+    let timeoutReason = null;
 
-    const timer = setTimeout(() => {
+    const fireTimeout = (reason) => {
+      if (settled) return;
+      timeoutReason = reason;
       killProcessTree(child, "SIGTERM");
       const killTimer = setTimeout(() => {
         killProcessTree(child, "SIGKILL");
@@ -156,10 +162,19 @@ export function runProcess({
         signal: "SIGTERM",
         cancelled: true,
         timedOut: true,
+        timeoutReason,
         stdout: truncate(stdout.trim(), maxOutput),
         stderr: truncate(stderr.trim(), 2500),
       });
-    }, timeoutMs);
+    };
+
+    const armIdleTimeout = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => fireTimeout("idle"), timeoutMs);
+    };
+
+    armIdleTimeout();
+    hardTimer = setTimeout(() => fireTimeout("max"), Math.max(maxTimeoutMs, timeoutMs));
 
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString();
@@ -167,6 +182,7 @@ export function runProcess({
       if (stdout.length > maxOutput * 2) {
         stdout = stdout.slice(-maxOutput * 2);
       }
+      armIdleTimeout();
       if (typeof onStdout === "function") onStdout(text);
     });
 
@@ -176,13 +192,15 @@ export function runProcess({
       if (stderr.length > 5000) {
         stderr = stderr.slice(-5000);
       }
+      armIdleTimeout();
       if (typeof onStderr === "function") onStderr(text);
     });
 
     child.on("error", (error) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearTimeout(idleTimer);
+      clearTimeout(hardTimer);
       resolve({
         child,
         code: null,
@@ -196,7 +214,8 @@ export function runProcess({
     child.on("close", (code, signal) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      clearTimeout(idleTimer);
+      clearTimeout(hardTimer);
       resolve({
         child,
         code,

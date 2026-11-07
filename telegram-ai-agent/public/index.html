@@ -651,10 +651,10 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
               </div>
             </div>
 
-            <!-- TASK_TIMEOUT_MS -->
+            <!-- TASK_TIMEOUT_MS (idle) -->
             <div class="form-group">
               <div class="label-row">
-                <label for="timeoutMs" class="form-label">TASK TIMEOUT (MILIDETIK)</label>
+                <label for="timeoutMs" class="form-label">IDLE TIMEOUT — TIDAK ADA OUTPUT (MILIDETIK)</label>
                 <span class="label-hint" id="timeoutFormatted">15 Menit</span>
               </div>
               <input 
@@ -668,10 +668,39 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
               >
               <div class="preset-buttons">
                 <button type="button" class="btn-preset" data-ms="300000">5 Menit</button>
+                <button type="button" class="btn-preset" data-ms="600000">10 Menit</button>
                 <button type="button" class="btn-preset" data-ms="900000">15 Menit (Default)</button>
                 <button type="button" class="btn-preset" data-ms="1800000">30 Menit</button>
-                <button type="button" class="btn-preset" data-ms="3600000">1 Jam</button>
               </div>
+              <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 6px;">
+                Timer hanya berjalan saat <strong>tidak ada output</strong> dari Pi CLI. Tugas yang masih aktif bekerja tidak akan dipotong.
+              </p>
+            </div>
+
+            <!-- TASK_MAX_TIMEOUT_MS -->
+            <div class="form-group">
+              <div class="label-row">
+                <label for="maxTimeoutMs" class="form-label">MAKS. DURASI TUGAS (MILIDETIK)</label>
+                <span class="label-hint" id="maxTimeoutFormatted">4 Jam</span>
+              </div>
+              <input 
+                type="number" 
+                id="maxTimeoutMs" 
+                name="TASK_MAX_TIMEOUT_MS" 
+                class="form-input font-mono" 
+                min="900000" 
+                step="600000"
+                value="14400000"
+              >
+              <div class="preset-buttons">
+                <button type="button" class="btn-preset-max" data-ms="3600000">1 Jam</button>
+                <button type="button" class="btn-preset-max" data-ms="7200000">2 Jam</button>
+                <button type="button" class="btn-preset-max" data-ms="14400000">4 Jam (Default)</button>
+                <button type="button" class="btn-preset-max" data-ms="28800000">8 Jam</button>
+              </div>
+              <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 6px;">
+                Batas total sebagai pengaman terakhir. Setelah ini tugas tetap dihentikan meskipun masih aktif.
+              </p>
             </div>
           </div>
         </div>

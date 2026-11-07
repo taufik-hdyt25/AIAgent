@@ -48,9 +48,12 @@ export function registerModelHandlers(bot) {
         ? `\n_Menampilkan 30 dari ${modelList.length} model. Ketik /model <id> untuk memilih model lainnya._\n`
         : "";
 
+    const activeProvider = process.env.PI_PROVIDER || "local-pi";
+
     await ctx.reply(
       `🤖 *Pilihan Model AI*\n\n` +
         `⚙️ Engine aktif: *${ENGINE_LABEL}*\n` +
+        `🔌 Provider aktif: \`${activeProvider}\`\n` +
         `👉 Model aktif saat ini:\n*${activeName}* (\`${activeModelId}\`)\n` +
         moreHint +
         `\nSilakan pilih model khusus *${ENGINE_LABEL}* di bawah ini:`,
@@ -87,6 +90,7 @@ export function registerModelHandlers(bot) {
       await ctx.editMessageText(
         `🤖 *Pilihan Model AI*\n\n` +
           `⚙️ Engine aktif: *${ENGINE_LABEL}*\n` +
+          `🔌 Provider aktif: \`${process.env.PI_PROVIDER || "local-pi"}\`\n` +
           `✅ Model aktif sekarang:\n👉 *${chosenName}* (\`${chosenId}\`)\n\n` +
           `Silakan klik tombol di bawah jika ingin mengganti ke model lain:`,
         {

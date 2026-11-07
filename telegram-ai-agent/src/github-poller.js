@@ -6,7 +6,15 @@ import { randomUUID } from "node:crypto";
 
 const execAsync = promisify(exec);
 
-import { DATA_DIR, PROJECTS_DIR, PI_BIN, DEFAULT_PI_MODEL } from "./config/env.js";
+import {
+  DATA_DIR,
+  PROJECTS_DIR,
+  PI_BIN,
+  DEFAULT_PI_MODEL,
+  TIMEOUT_MS,
+  MAX_TIMEOUT_MS,
+} from "./config/env.js";
+import { createPiEventParser } from "./services/pi-event-parser.js";
 const CONFIG_FILE = path.join(DATA_DIR, "github_poller.json");
 
 let pollerInterval = null;
@@ -102,6 +110,7 @@ INSTRUKSI PENGERJAAN:
   const bin = piBin;
   const args = [
     "--session-id", convId,
+    "--mode", "json",
     "-p", prompt,
     "--approve",
   ];
@@ -133,34 +142,57 @@ INSTRUKSI PENGERJAAN:
       stdio: ["ignore", "pipe", "pipe"],
     });
 
-    const timeout = setTimeout(() => {
+    let idleTimer = null;
+    let hardTimer = null;
+    const parser = createPiEventParser();
+
+    const killChild = () => {
       try {
         process.kill(-child.pid, "SIGTERM");
       } catch (_) {
         child.kill("SIGTERM");
       }
-      reject(new Error("Timeout pengerjaan AI melebihi 15 menit."));
-    }, 900000);
+    };
+
+    const armIdleTimeout = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        killChild();
+        reject(new Error(`Timeout: agent tidak mengeluarkan output selama ${Math.round(TIMEOUT_MS / 60000)} menit.`));
+      }, TIMEOUT_MS);
+    };
+
+    armIdleTimeout();
+    hardTimer = setTimeout(() => {
+      killChild();
+      reject(new Error(`Timeout: durasi tugas melebihi ${Math.round(MAX_TIMEOUT_MS / 60000)} menit.`));
+    }, Math.max(MAX_TIMEOUT_MS, TIMEOUT_MS));
 
     child.stdout.on("data", (d) => {
-      stdout += d.toString();
+      const text = d.toString();
+      stdout += text;
+      parser.push(text);
+      armIdleTimeout();
     });
 
     child.stderr.on("data", (d) => {
       stderr += d.toString();
+      armIdleTimeout();
     });
 
     child.on("close", (code) => {
-      clearTimeout(timeout);
+      clearTimeout(idleTimer);
+      clearTimeout(hardTimer);
       resolve({
         code,
-        output: stdout.trim(),
+        output: parser.getText() || (stdout.trim().startsWith("{") ? "" : stdout.trim()),
         stderr: stderr.trim(),
       });
     });
 
     child.on("error", (err) => {
-      clearTimeout(timeout);
+      clearTimeout(idleTimer);
+      clearTimeout(hardTimer);
       reject(err);
     });
   });

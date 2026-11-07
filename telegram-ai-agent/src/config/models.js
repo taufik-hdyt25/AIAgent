@@ -2,6 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { DATA_DIR } from "./env.js";
+import { getPiProviderRaw } from "../services/pi-provider-service.js";
 
 const MODELS_FILE = path.join(DATA_DIR, "models.json");
 
@@ -41,9 +42,42 @@ export async function saveCustomModels(customData) {
 // Helper mendapatkan daftar model berdasarkan engine aktif
 // Jika pengguna mengonfigurasi daftar model kustom untuk engine ini,
 // HANYA MODEL YANG DITAMBAHKAN YANG BOLEH MUNCUL!
-export async function getModelList() {
-  const custom = await loadCustomModels();
+function normalizeModelEntry(model, badge) {
+  const id = (typeof model === "string" ? model : model?.id || "").trim();
+  if (!id) return null;
+  const name = (typeof model === "object" && model?.name ? String(model.name) : id).trim() || id;
+  return { id, name, ...(badge ? { badge } : {}) };
+}
 
+export async function getActivePiProviderModels() {
+  const providerId = process.env.PI_PROVIDER || "local-pi";
+  const provider = await getPiProviderRaw(providerId).catch(() => null);
+
+  // Daftar kustom/whitelist hanya berlaku untuk provider tempat ia dibuat.
+  // Jika provider berganti, daftar milik provider lama tidak ikut tampil.
+  const custom = await loadCustomModels();
+  if (custom && custom.piProvider === providerId && Array.isArray(custom.piModels)) {
+    return custom.piModels
+      .map((m) => normalizeModelEntry(m, m?.badge))
+      .filter(Boolean);
+  }
+
+  if (provider && Array.isArray(provider.models) && provider.models.length > 0) {
+    const badge = provider.name && provider.name !== providerId ? provider.name : providerId;
+    return provider.models.map((m) => normalizeModelEntry(m, badge)).filter(Boolean);
+  }
+
+  return [];
+}
+
+export async function getModelList() {
+  // Model selalu mengikuti provider yang sedang aktif (PI_PROVIDER).
+  const providerModels = await getActivePiProviderModels();
+  if (providerModels.length > 0) {
+    return providerModels;
+  }
+
+  const custom = await loadCustomModels();
   if (custom && Array.isArray(custom.piModels) && custom.piModels.length > 0) {
     return custom.piModels;
   }

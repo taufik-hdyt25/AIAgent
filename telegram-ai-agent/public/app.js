@@ -31,6 +31,8 @@ const piSandboxToggle = document.getElementById("piSandboxToggle");
 const piSandboxBadge = document.getElementById("piSandboxBadge");
 const timeoutInput = document.getElementById("timeoutMs");
 const timeoutFormatted = document.getElementById("timeoutFormatted");
+const maxTimeoutInput = document.getElementById("maxTimeoutMs");
+const maxTimeoutFormatted = document.getElementById("maxTimeoutFormatted");
 
 const badgeEngine = document.getElementById("badgeEngine");
 const badgeModel = document.getElementById("badgeModel");
@@ -253,9 +255,13 @@ async function loadSettings() {
       }
     }
 
-    // Populate Timeout
+    // Populate Timeout (idle & maksimal)
     timeoutInput.value = currentSettings.TASK_TIMEOUT_MS || "900000";
     timeoutFormatted.textContent = formatMs(timeoutInput.value);
+    if (maxTimeoutInput) {
+      maxTimeoutInput.value = currentSettings.TASK_MAX_TIMEOUT_MS || "14400000";
+      if (maxTimeoutFormatted) maxTimeoutFormatted.textContent = formatMs(maxTimeoutInput.value);
+    }
 
     // Populate GitHub Token & Deploy Command
     if (githubTokenInput) {
@@ -414,6 +420,12 @@ timeoutInput.addEventListener("input", (e) => {
   timeoutFormatted.textContent = formatMs(e.target.value);
 });
 
+if (maxTimeoutInput) {
+  maxTimeoutInput.addEventListener("input", (e) => {
+    if (maxTimeoutFormatted) maxTimeoutFormatted.textContent = formatMs(e.target.value);
+  });
+}
+
 function updateScopeView() {
   const isCustom = scopeRoleCustomRadio?.checked;
   if (customFoldersContainer) {
@@ -447,6 +459,15 @@ document.querySelectorAll(".btn-preset").forEach((btn) => {
   });
 });
 
+document.querySelectorAll(".btn-preset-max").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const ms = btn.getAttribute("data-ms");
+    if (!maxTimeoutInput) return;
+    maxTimeoutInput.value = ms;
+    if (maxTimeoutFormatted) maxTimeoutFormatted.textContent = formatMs(ms);
+  });
+});
+
 // Allowed Models Manager Elements
 const allowedEngineLabel = document.getElementById("allowedEngineLabel");
 const btnResetDefaultModels = document.getElementById("btnResetDefaultModels");
@@ -456,6 +477,30 @@ const btnAddAllowedModel = document.getElementById("btnAddAllowedModel");
 
 function getActiveEngineKey() {
   return { engine: "pi", key: "piModels", label: "PI CODING AGENT", select: piModelSelect };
+}
+
+function applyPiModelOptions(models, selectedId) {
+  availableOptions.piModels = Array.isArray(models) ? models : [];
+  if (currentCustomModels) currentCustomModels.piModels = availableOptions.piModels;
+
+  if (!piModelSelect) return;
+  piModelSelect.innerHTML = "";
+  for (const m of availableOptions.piModels) {
+    const opt = document.createElement("option");
+    opt.value = m.id;
+    opt.textContent = `${m.name}${m.badge ? ` [${m.badge}]` : ""}`;
+    piModelSelect.appendChild(opt);
+  }
+
+  const selected = selectedId && availableOptions.piModels.some((m) => m.id === selectedId)
+    ? selectedId
+    : availableOptions.piModels[0]?.id;
+  if (selected) {
+    piModelSelect.value = selected;
+    if (badgeModel) badgeModel.textContent = selected;
+  }
+
+  renderAllowedModelsChips();
 }
 
 function renderAllowedModelsChips() {
@@ -778,6 +823,7 @@ async function savePiProviderFromUi() {
       piProviderDefaultBadge.textContent = `Default: ${data.defaultProvider || "local-pi"}`;
     }
     renderPiProviders();
+    if (Array.isArray(data.piModels)) applyPiModelOptions(data.piModels, data.piModel);
     showToast(data.message || "Provider disimpan!", "success");
   } catch (err) {
     showToast(`Gagal: ${err.message}`, "error");
@@ -800,6 +846,7 @@ async function setDefaultPiProvider(id) {
       piProviderDefaultBadge.textContent = `Default: ${data.defaultProvider || id}`;
     }
     renderPiProviders();
+    if (Array.isArray(data.piModels)) applyPiModelOptions(data.piModels, data.piModel);
     showToast(data.message || "Provider default diubah.", "success");
   } catch (err) {
     showToast(`Gagal: ${err.message}`, "error");
@@ -821,6 +868,7 @@ async function deletePiProviderFromUi(id) {
       piProviderDefaultBadge.textContent = `Default: ${data.defaultProvider || "local-pi"}`;
     }
     renderPiProviders();
+    if (Array.isArray(data.piModels)) applyPiModelOptions(data.piModels, data.piModel);
     showToast(data.message || "Provider dihapus.", "info");
   } catch (err) {
     showToast(`Gagal: ${err.message}`, "error");
@@ -1231,6 +1279,7 @@ form.addEventListener("submit", async (e) => {
     },
     piSandbox: scopeRoleCustomRadio ? scopeRoleCustomRadio.checked : false,
     TASK_TIMEOUT_MS: timeoutInput.value.trim(),
+    TASK_MAX_TIMEOUT_MS: maxTimeoutInput ? maxTimeoutInput.value.trim() : "14400000",
     GITHUB_TOKEN: githubTokenInput ? githubTokenInput.value.trim() : "",
     DEPLOY_COMMAND: deployCommandInput ? deployCommandInput.value.trim() : "",
     GROQ_API_KEY: groqApiKeyInput ? groqApiKeyInput.value.trim() : "",

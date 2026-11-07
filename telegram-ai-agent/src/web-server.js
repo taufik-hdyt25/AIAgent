@@ -165,6 +165,12 @@ export function createWebServer() {
         const sandboxConfig = await getSandboxConfig();
         const dockerStatus = await getDockerContainers();
         const customModels = (await loadCustomModels()) || {};
+        const activeProviderId = process.env.PI_PROVIDER || "local-pi";
+        const piModelOptions = await getModelList();
+        const activeCustomPiModels =
+          customModels.piProvider === activeProviderId && Array.isArray(customModels.piModels)
+            ? customModels.piModels
+            : piModelOptions;
 
         return sendJson(200, {
           ok: true,
@@ -174,6 +180,7 @@ export function createWebServer() {
             PI_MODEL: parsed.PI_MODEL || process.env.PI_MODEL || "openai/gpt-oss-120b",
             CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "pi",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
+            TASK_MAX_TIMEOUT_MS: parsed.TASK_MAX_TIMEOUT_MS || process.env.TASK_MAX_TIMEOUT_MS || "14400000",
             WEB_PORT: parsed.WEB_PORT || process.env.WEB_PORT || "3030",
             PI_SERVER_URL: parsed.PI_SERVER_URL || process.env.PI_SERVER_URL || "",
             PI_SERVER_API_KEY: parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY || "",
@@ -193,10 +200,10 @@ export function createWebServer() {
           sentryConfig,
           dockerStatus,
           customModels: {
-            piModels: customModels.piModels || [],
+            piModels: activeCustomPiModels,
           },
           options: {
-            piModels: await getModelList(),
+            piModels: piModelOptions,
           },
           system: {
             platform: os.platform(),
@@ -301,11 +308,19 @@ export function createWebServer() {
             await updateEnvFile({ PI_PROVIDER: "local-pi" });
             process.env.PI_PROVIDER = "local-pi";
           }
+          const custom = (await loadCustomModels()) || {};
+          if (custom.piProvider === removed) {
+            delete custom.piModels;
+            delete custom.piProvider;
+            await saveCustomModels(custom);
+          }
           return sendJson(200, {
             ok: true,
             message: `Provider '${removed}' dihapus.`,
             providers: await listPiProviders(),
             defaultProvider: process.env.PI_PROVIDER || "local-pi",
+            piModels: await getModelList(),
+            piModel: process.env.PI_MODEL || "",
           });
         }
 
@@ -326,13 +341,19 @@ export function createWebServer() {
           if (provider?.apiKey) {
             updates.PI_SERVER_API_KEY = provider.apiKey;
           }
-          // Selaraskan daftar model bot dengan model provider.
+          // Selaraskan daftar model bot dengan model provider yang dipilih.
+          const custom = (await loadCustomModels()) || {};
+          custom.piProvider = id;
           if (provider?.models?.length) {
-            const custom = (await loadCustomModels()) || {};
             custom.piModels = provider.models;
-            await saveCustomModels(custom);
-            updates.PI_MODEL = provider.models[0].id;
+            const firstId = typeof provider.models[0] === "string"
+              ? provider.models[0]
+              : provider.models[0]?.id;
+            if (firstId) updates.PI_MODEL = firstId;
+          } else {
+            delete custom.piModels;
           }
+          await saveCustomModels(custom);
 
           await updateEnvFile(updates);
           Object.assign(process.env, updates);
@@ -342,15 +363,41 @@ export function createWebServer() {
             message: `Provider default diubah ke '${id}' dan disinkronkan ke bot.`,
             providers: await listPiProviders(),
             defaultProvider: id,
+            piModels: await getModelList(),
+            piModel: process.env.PI_MODEL || "",
           });
         }
 
         const savedId = await savePiProvider(payload);
+        const activeId = process.env.PI_PROVIDER || "local-pi";
+        if (savedId === activeId) {
+          const saved = await getPiProviderRaw(savedId);
+          const savedModels = Array.isArray(saved?.models) ? saved.models : [];
+          const custom = (await loadCustomModels()) || {};
+          custom.piProvider = savedId;
+          if (savedModels.length > 0) {
+            custom.piModels = savedModels;
+            const firstId = typeof savedModels[0] === "string" ? savedModels[0] : savedModels[0]?.id;
+            const currentId = process.env.PI_MODEL || "";
+            const stillExists = savedModels.some(
+              (m) => (typeof m === "string" ? m : m?.id) === currentId
+            );
+            if (firstId && !stillExists) {
+              await updateEnvFile({ PI_MODEL: firstId });
+              process.env.PI_MODEL = firstId;
+            }
+          } else {
+            delete custom.piModels;
+          }
+          await saveCustomModels(custom);
+        }
         return sendJson(200, {
           ok: true,
           message: `Provider '${savedId}' disimpan.`,
           providers: await listPiProviders(),
-          defaultProvider: process.env.PI_PROVIDER || "local-pi",
+          defaultProvider: activeId,
+          piModels: await getModelList(),
+          piModel: process.env.PI_MODEL || "",
         });
       } catch (err) {
         return sendError(400, err.message);
@@ -475,6 +522,7 @@ export function createWebServer() {
 
         if (payload.action === "reset") {
           delete existing[engineKey];
+          delete existing.piProvider;
           await saveCustomModels(existing);
           return sendJson(200, {
             ok: true,
@@ -486,6 +534,7 @@ export function createWebServer() {
 
         if (payload.action === "sync_remote" && Array.isArray(payload.models)) {
           existing[engineKey] = payload.models;
+          existing.piProvider = process.env.PI_PROVIDER || "local-pi";
           await saveCustomModels(existing);
           return sendJson(200, {
             ok: true,
@@ -496,6 +545,7 @@ export function createWebServer() {
         }
 
         if (payload.action === "add" && payload.modelId) {
+          existing.piProvider = process.env.PI_PROVIDER || "local-pi";
           if (!Array.isArray(existing[engineKey])) {
             const currentList = await getModelList();
             existing[engineKey] = [...currentList];
@@ -515,6 +565,7 @@ export function createWebServer() {
         }
 
         if (payload.action === "remove" && payload.modelId) {
+          existing.piProvider = process.env.PI_PROVIDER || "local-pi";
           if (!Array.isArray(existing[engineKey])) {
             const currentList = await getModelList();
             existing[engineKey] = [...currentList];
@@ -743,6 +794,12 @@ export function createWebServer() {
           }
           if (payload.TASK_TIMEOUT_MS !== undefined) {
             updates.TASK_TIMEOUT_MS = String(payload.TASK_TIMEOUT_MS).trim();
+          }
+          if (payload.TASK_MAX_TIMEOUT_MS !== undefined) {
+            const maxMs = Number(String(payload.TASK_MAX_TIMEOUT_MS).trim());
+            if (Number.isFinite(maxMs) && maxMs > 0) {
+              updates.TASK_MAX_TIMEOUT_MS = String(maxMs);
+            }
           }
           if (payload.PI_SERVER_API_KEY !== undefined) {
             updates.PI_SERVER_API_KEY = String(payload.PI_SERVER_API_KEY).trim();

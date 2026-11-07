@@ -137,7 +137,13 @@ export const PI_BIN = process.env.PI_BIN || findDefaultBin("pi", ".local/bin/pi"
 
 export const DEFAULT_PI_MODEL = process.env.PI_MODEL || "openai/gpt-oss-120b";
 
+// TASK_TIMEOUT_MS = batas IDLE (tidak ada output sama sekali), bukan total durasi.
+// TASK_MAX_TIMEOUT_MS = batas maksimal total durasi tugas.
 export const TIMEOUT_MS = Number(process.env.TASK_TIMEOUT_MS || 900000);
+export const MAX_TIMEOUT_MS = Math.max(
+  TIMEOUT_MS,
+  Number(process.env.TASK_MAX_TIMEOUT_MS || 14400000)
+);
 export const MAX_OUTPUT = Number(process.env.MAX_TASK_OUTPUT || 12000);
 
 export const ALLOWED_IDS = new Set(
