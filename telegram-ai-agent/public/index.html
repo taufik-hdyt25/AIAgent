@@ -219,6 +219,27 @@
               </p>
             </div>
 
+            <!-- Opsi Command Code CLI -->
+            <div class="form-group" id="groupCmdOptions">
+              <div class="label-row">
+                <label for="cmdMaxTurns" class="form-label">MAX TURNS COMMAND CODE</label>
+                <span class="label-hint">Default: 300 (auto-resume aktif)</span>
+              </div>
+              <input
+                type="number"
+                id="cmdMaxTurns"
+                name="CMD_MAX_TURNS"
+                class="form-input font-mono"
+                min="20"
+                max="5000"
+                step="10"
+                placeholder="300"
+              >
+              <p class="form-help" style="margin-top: 6px;">
+                Batas langkah tool-call per eksekusi <code>cmd -p --max-turns</code>. Jika tetap tercapai, Agent otomatis melanjutkan sesi hingga tuntas.
+              </p>
+            </div>
+
             <!-- Model Default untuk Pi CLI -->
             <div class="form-group" id="groupPiModel">
               <!-- Link Server Pi & Get Model Box -->

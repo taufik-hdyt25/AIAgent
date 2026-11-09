@@ -179,6 +179,7 @@ export function createWebServer() {
             ALLOWED_TELEGRAM_IDS: parsed.ALLOWED_TELEGRAM_IDS || process.env.ALLOWED_TELEGRAM_IDS || "",
             PI_MODEL: parsed.PI_MODEL || process.env.PI_MODEL || "openai/gpt-oss-120b",
             CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "pi",
+            CMD_MAX_TURNS: parsed.CMD_MAX_TURNS || process.env.CMD_MAX_TURNS || "300",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
             TASK_MAX_TIMEOUT_MS: parsed.TASK_MAX_TIMEOUT_MS || process.env.TASK_MAX_TIMEOUT_MS || "14400000",
             WEB_PORT: parsed.WEB_PORT || process.env.WEB_PORT || "3030",
@@ -791,6 +792,13 @@ export function createWebServer() {
               : "pi";
             updates.CLI_ENGINE = engine;
             process.env.CLI_ENGINE = engine;
+          }
+          if (payload.CMD_MAX_TURNS !== undefined) {
+            const maxTurns = Number.parseInt(String(payload.CMD_MAX_TURNS).trim(), 10);
+            if (Number.isFinite(maxTurns) && maxTurns > 0) {
+              updates.CMD_MAX_TURNS = String(maxTurns);
+              process.env.CMD_MAX_TURNS = String(maxTurns);
+            }
           }
           if (payload.TASK_TIMEOUT_MS !== undefined) {
             updates.TASK_TIMEOUT_MS = String(payload.TASK_TIMEOUT_MS).trim();

@@ -18,6 +18,7 @@ const allowedIdsInput = document.getElementById("allowedIds");
 const idChipsContainer = document.getElementById("idChipsContainer");
 
 const cliEngineSelect = document.getElementById("cliEngine");
+const cmdMaxTurnsInput = document.getElementById("cmdMaxTurns");
 const piModelSelect = document.getElementById("piModel");
 const piServerUrlInput = document.getElementById("piServerUrl");
 const btnGetPiModels = document.getElementById("btnGetPiModels");
@@ -201,6 +202,9 @@ async function loadSettings() {
     // Populate Engine Select
     if (cliEngineSelect) {
       cliEngineSelect.value = currentSettings.CLI_ENGINE === "commandcode" ? "commandcode" : "pi";
+    }
+    if (cmdMaxTurnsInput) {
+      cmdMaxTurnsInput.value = currentSettings.CMD_MAX_TURNS || "300";
     }
 
     // Populate Pi Models Select
@@ -1267,6 +1271,7 @@ form.addEventListener("submit", async (e) => {
     BOT_TOKEN: botTokenInput.value.trim(),
     ALLOWED_TELEGRAM_IDS: allowedIdsInput.value.trim(),
     CLI_ENGINE: cliEngineSelect ? cliEngineSelect.value : (currentSettings.CLI_ENGINE || "pi"),
+    CMD_MAX_TURNS: cmdMaxTurnsInput ? (cmdMaxTurnsInput.value.trim() || "300") : (currentSettings.CMD_MAX_TURNS || "300"),
     PI_MODEL: piModelSelect ? piModelSelect.value : (currentSettings.PI_MODEL || "openai/gpt-oss-120b"),
     PI_SERVER_API_KEY: piServerApiKeyInput ? piServerApiKeyInput.value.trim() : "",
     PI_SERVER_URL: piServerUrlInput ? piServerUrlInput.value.trim() : "",

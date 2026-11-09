@@ -26,6 +26,9 @@ import {
   markPiSessionStarted,
   getUserActiveProject,
   setUserActiveProject,
+  getCmdSessionId,
+  setCmdSessionId,
+  clearCmdSessionId,
 } from "../services/context-store.js";
 import {
   getActiveTask,
@@ -74,7 +77,16 @@ import {
   WORKER_PROFILES,
 } from "../services/swarm-service.js";
 import { detectTargetProject } from "../services/project-detector.js";
-import { getEngine, isCommandCodeEngine, buildCmdArgs, parseCmdResult } from "../services/engine-service.js";
+import {
+  getEngine,
+  isCommandCodeEngine,
+  resolveCmdBin,
+  buildCmdArgs,
+  createCmdEventParser,
+  parseCmdResult,
+  getCmdMaxTurns,
+  getCmdMaxContinuations,
+} from "../services/engine-service.js";
 
 /**
  * Memproses tag otonom dari output AI (Hermes-like self-learning & persistent memory):
@@ -227,8 +239,8 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       }
     }
 
+    const useCmd = isCommandCodeEngine(engineOverride || getEngine());
     const userModel = await getUserPiModel(userId);
-    const isOngoingSession = await isPiSessionStarted(convId);
 
     const currentQueueLen = getQueueLength();
     const deferredList = getDeferredProjects();
@@ -299,6 +311,31 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       : (allowedList.length > 0
           ? allowedList.map((f) => `'${f}'`).join(", ")
           : "(Belum ditentukan folder kustom - Akses dibatasi)");
+
+    let executionCwd = isProjectJail
+      ? path.resolve(PROJECTS_DIR, userActiveProject)
+      : (isCustomRole && allowedList[0]
+          ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
+          : process.cwd());
+
+    // Pastikan direktori executionCwd valid dan ada di filesystem sebelum spawn untuk mencegah ENOENT
+    try {
+      if (!fs.existsSync(executionCwd)) {
+        await mkdir(executionCwd, { recursive: true });
+      }
+    } catch (err) {
+      console.warn(`[Dispatcher] Gagal membuat executionCwd ${executionCwd}:`, err.message);
+      executionCwd = fs.existsSync(PROJECTS_DIR) ? PROJECTS_DIR : process.cwd();
+    }
+
+    if (!fs.existsSync(executionCwd)) {
+      executionCwd = process.cwd();
+    }
+
+    let existingCmdSessionId = useCmd ? await getCmdSessionId(convId, executionCwd) : null;
+    const isOngoingSession = useCmd
+      ? Boolean(existingCmdSessionId)
+      : await isPiSessionStarted(convId);
 
     let projectsSummaryPrompt = "";
     try {
@@ -405,13 +442,22 @@ ${userMessage}
     }
 
 
-    const executeCli = async (sessionFlagOverride = null) => {
-      const useCmd = isCommandCodeEngine(getEngine());
-      let binToRun = useCmd ? (process.env.CMD_BIN || "cmd") : PI_BIN;
+    const executeCli = async ({
+      promptOverride = null,
+      resumeSessionId = null,
+      continuationCount = 0,
+      freshRetryAttempted = false,
+      accumulatedText = "",
+    } = {}) => {
+      const effectivePrompt = promptOverride || prompt;
+      const activeResumeId = useCmd ? (resumeSessionId !== undefined && resumeSessionId !== null ? resumeSessionId : existingCmdSessionId) : null;
+      let binToRun = useCmd ? resolveCmdBin() : PI_BIN;
       let cliArgs = [];
 
       if (useCmd) {
-        cliArgs = buildCmdArgs(prompt);
+        cliArgs = buildCmdArgs(effectivePrompt, {
+          resumeSessionId: activeResumeId,
+        });
       } else {
         if (!fs.existsSync(binToRun)) {
           try {
@@ -444,7 +490,7 @@ ${userMessage}
           "--mode",
           "json",
           "-p",
-          prompt,
+          effectivePrompt,
           "--approve",
         ];
         if (piModel) {
@@ -477,26 +523,6 @@ ${userMessage}
         sanitizedEnv.GROQ_API_KEY = process.env.GROQ_API_KEY;
       }
 
-      let executionCwd = isProjectJail
-        ? path.resolve(PROJECTS_DIR, userActiveProject)
-        : (isCustomRole && allowedList[0]
-            ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
-            : process.cwd());
-
-      // Pastikan direktori executionCwd valid dan ada di filesystem sebelum spawn untuk mencegah ENOENT
-      try {
-        if (!fs.existsSync(executionCwd)) {
-          await mkdir(executionCwd, { recursive: true });
-        }
-      } catch (err) {
-        console.warn(`[Dispatcher] Gagal membuat executionCwd ${executionCwd}:`, err.message);
-        executionCwd = fs.existsSync(PROJECTS_DIR) ? PROJECTS_DIR : process.cwd();
-      }
-
-      if (!fs.existsSync(executionCwd)) {
-        executionCwd = process.cwd();
-      }
-
       const child = spawn(binToRun, cliArgs, {
         cwd: executionCwd,
         shell: false,
@@ -525,6 +551,7 @@ ${userMessage}
       let hardTimer;
       let killTimer;
       const piParser = useCmd ? null : createPiEventParser();
+      const cmdParser = useCmd ? createCmdEventParser() : null;
 
       const finish = async (error, code, signal) => {
         if (settled) return;
@@ -533,20 +560,19 @@ ${userMessage}
         clearTimeout(hardTimer);
         clearTimeout(killTimer);
 
-        if (!useCmd && code === 0) {
-          await markPiSessionStarted(convId, true);
-        }
-
-        clearInterval(typingInterval);
-
         const engineLabel = useCmd ? "Command Code" : "Pi Coding Agent CLI";
         let responseText = stdout.trim();
         let jsonError = null;
+        let cmdParsed = null;
 
-        if (useCmd) {
-          const parsed = parseCmdResult(stdout);
-          responseText = parsed.text || "";
-          jsonError = parsed.error;
+        if (useCmd && cmdParser) {
+          cmdParser.flush();
+          cmdParsed = cmdParser.getResult();
+          responseText = cmdParsed.text || "";
+          jsonError = cmdParsed.error;
+          if (cmdParsed.sessionId) {
+            await setCmdSessionId(convId, executionCwd, cmdParsed.sessionId).catch(() => {});
+          }
         } else if (piParser) {
           const parsedText = piParser.getText();
           jsonError = piParser.getError();
@@ -556,6 +582,71 @@ ${userMessage}
             // Output JSON tanpa pesan assistant final (mis. proses terhenti)
             responseText = "";
           }
+        }
+
+        // Jika --resume sesi lama Command Code gagal karena sesi tidak ditemukan, bersihkan dan ulangi sesi baru 1x
+        if (
+          useCmd &&
+          !task.cancelled &&
+          activeResumeId &&
+          !freshRetryAttempted &&
+          continuationCount === 0 &&
+          (jsonError || (code !== 0 && !responseText))
+        ) {
+          const combinedErr = `${jsonError || ""} ${stderr || ""}`.toLowerCase();
+          if (
+            combinedErr.includes("session") &&
+            (combinedErr.includes("not found") || combinedErr.includes("no such") || combinedErr.includes("does not exist") || combinedErr.includes("invalid") || combinedErr.includes("unknown"))
+          ) {
+            console.warn(`[Dispatcher] Session Command Code ${activeResumeId} tidak ditemukan, memulai sesi baru...`);
+            await clearCmdSessionId(convId, executionCwd).catch(() => {});
+            existingCmdSessionId = null;
+            return executeCli({
+              promptOverride: null,
+              resumeSessionId: "",
+              continuationCount: 0,
+              freshRetryAttempted: true,
+              accumulatedText,
+            });
+          }
+        }
+
+        // Auto-continue Command Code jika mencapai --max-turns (exit code 8 / subtype max_turns) dan masih punya jatah lanjutan
+        const hitMaxTurns = Boolean(
+          useCmd &&
+          !task.cancelled &&
+          !task.timedOut &&
+          (cmdParsed?.isMaxTurns || code === 8)
+        );
+        const maxContinuations = getCmdMaxContinuations();
+        if (hitMaxTurns && cmdParsed?.sessionId && continuationCount < maxContinuations) {
+          const nextCount = continuationCount + 1;
+          const partialChunk = (cmdParsed.partialText || "").trim();
+          const nextAccumulated = partialChunk
+            ? (accumulatedText ? `${accumulatedText}\n\n${partialChunk}` : partialChunk)
+            : accumulatedText;
+          console.log(
+            `[Dispatcher] Command Code mencapai max_turns (${getCmdMaxTurns()}), auto-resume sesi ${cmdParsed.sessionId} (lanjutan ${nextCount}/${maxContinuations})...`
+          );
+          return executeCli({
+            promptOverride: "Lanjutkan pengerjaan tugas yang belum selesai sampai tuntas, lalu berikan ringkasan hasil akhirnya.",
+            resumeSessionId: cmdParsed.sessionId,
+            continuationCount: nextCount,
+            freshRetryAttempted: true,
+            accumulatedText: nextAccumulated,
+          });
+        }
+
+        if (!useCmd && code === 0) {
+          await markPiSessionStarted(convId, true);
+        }
+
+        clearInterval(typingInterval);
+
+        if (accumulatedText && responseText) {
+          responseText = `${accumulatedText}\n\n${responseText}`;
+        } else if (accumulatedText && !responseText && !hitMaxTurns) {
+          responseText = accumulatedText;
         }
 
         // Process autonomous tags (Memory & Skills) jika response ada
@@ -571,7 +662,7 @@ ${userMessage}
           exitCode: code,
           signal,
           error: error?.message || jsonError || null,
-          output: truncate(responseText || stdout.trim(), MAX_OUTPUT),
+          output: truncate(responseText || cmdParsed?.partialText || stdout.trim(), MAX_OUTPUT),
           stderr: truncate(stderr.trim(), 2500),
         };
 
@@ -592,7 +683,9 @@ ${userMessage}
 
           if (isTimedOut) {
             const elapsed = formatDurationShort(Date.now() - (task.startedAt || Date.now()));
-            const partialText = piParser ? piParser.getText() : stdout.trim();
+            const partialText = cmdParser
+              ? (cmdParsed?.partialText || "")
+              : (piParser ? piParser.getText() : stdout.trim());
             const lastOutput = truncate(
               partialText.trim().split("\n").filter(Boolean).slice(-3).join("\n").replace(/```/g, "'''"),
               400
@@ -604,6 +697,19 @@ ${userMessage}
             }
             if (lastOutput) {
               errText += `\n\n📄 *Output terakhir:*\n\`\`\`\n${lastOutput}\n\`\`\``;
+            }
+          } else if (hitMaxTurns) {
+            const turnsPerRun = getCmdMaxTurns();
+            const totalRuns = continuationCount + 1;
+            const partialProgress = truncate((cmdParsed?.partialText || accumulatedText || "").trim(), 900);
+            errText =
+              `⚠️ *Batas Turn Command Code Tercapai (${turnsPerRun} turn × ${totalRuns} sesi)*\n\n` +
+              `Tugas ini membutuhkan lebih banyak langkah/tool-call dari batas \`CMD_MAX_TURNS=${turnsPerRun}\`.\n` +
+              (cmdParsed?.sessionId
+                ? `💡 Balas \`lanjutkan\` untuk meneruskan sesi yang tersimpan, atau naikkan *Max Turns Command Code* di Web UI / \`.env\` (\`CMD_MAX_TURNS\`).`
+                : `💡 Naikkan *Max Turns Command Code* di Web UI / \`.env\` (\`CMD_MAX_TURNS\`) atau pecah instruksi menjadi lebih spesifik.`);
+            if (partialProgress) {
+              errText += `\n\n📄 *Progres terakhir:*\n${partialProgress}`;
             }
           } else if (errText.includes("permission that headless mode cannot prompt for") || errText.includes("permission")) {
             errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan Pi CLI dijalankan dengan flag \`--approve\`.`;
@@ -659,6 +765,7 @@ ${userMessage}
           stdout = stdout.slice(-MAX_OUTPUT * 2);
         }
         if (piParser) piParser.push(text);
+        if (cmdParser) cmdParser.push(text);
         armIdleTimeout();
       });
 
@@ -878,30 +985,6 @@ export async function runAgentAutonomous({
   const actualConvId = convId || `auto-${randomUUID().slice(0, 8)}`;
   const useCmd = isCommandCodeEngine(engineOverride || getEngine());
 
-  let binToRun;
-  let cliArgs;
-
-  if (useCmd) {
-    binToRun = process.env.CMD_BIN || "cmd";
-    cliArgs = buildCmdArgs(prompt);
-  } else {
-    binToRun = PI_BIN;
-    const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
-    cliArgs = ["--session-id", actualConvId, "--mode", "json", "-p", prompt, "--approve"];
-    if (piModel) {
-      const isGroqModel =
-        piModel === "openai/gpt-oss-120b" ||
-        piModel === "llama-3.1-8b-instant" ||
-        piModel.startsWith("groq/");
-
-      if (isGroqModel) {
-        cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
-      } else {
-        cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
-      }
-    }
-  }
-
   const sanitizedEnv = { ...process.env };
   delete sanitizedEnv.BOT_TOKEN;
   delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
@@ -930,7 +1013,76 @@ export async function runAgentAutonomous({
     safeCwd = process.cwd();
   }
 
-  const piParser = useCmd ? null : createPiEventParser();
+  if (useCmd) {
+    const binToRun = resolveCmdBin();
+    const maxContinuations = Math.min(2, getCmdMaxContinuations());
+    let currentPrompt = prompt;
+    let resumeSessionId = null;
+    let accumulatedOutput = "";
+
+    for (let attempt = 0; attempt <= maxContinuations; attempt++) {
+      const cliArgs = buildCmdArgs(currentPrompt, { resumeSessionId });
+      const cmdParser = createCmdEventParser();
+      const res = await runProcess({
+        command: binToRun,
+        args: cliArgs,
+        cwd: safeCwd,
+        timeoutMs,
+        env: sanitizedEnv,
+        onSpawn,
+        onStdout: (chunk) => cmdParser.push(chunk),
+      });
+
+      cmdParser.flush();
+      const parsed = cmdParser.getResult();
+      const hitMaxTurns = !res.timedOut && !res.cancelled && (parsed.isMaxTurns || res.code === 8);
+
+      if (hitMaxTurns && parsed.sessionId && attempt < maxContinuations) {
+        if (parsed.partialText) {
+          accumulatedOutput = accumulatedOutput
+            ? `${accumulatedOutput}\n\n${parsed.partialText}`
+            : parsed.partialText;
+        }
+        resumeSessionId = parsed.sessionId;
+        currentPrompt = "Lanjutkan pengerjaan tugas yang belum selesai sampai tuntas, lalu berikan ringkasan hasilnya.";
+        continue;
+      }
+
+      if (parsed.error) {
+        if (hitMaxTurns) {
+          const hint = `Command Code mencapai batas ${getCmdMaxTurns()} turn (${attempt + 1} sesi). Naikkan CMD_MAX_TURNS jika tugas sangat panjang.`;
+          throw new Error(parsed.partialText ? `${hint}\n\nProgres terakhir:\n${truncate(parsed.partialText, 600)}` : hint);
+        }
+        throw new Error(parsed.error);
+      }
+
+      const finalOut = [accumulatedOutput, parsed.text || res.stdout || ""].filter(Boolean).join("\n\n").trim();
+      if (res.code === 0 || finalOut.length > 0) {
+        return { ok: true, output: finalOut, sessionId: parsed.sessionId, usage: parsed.usage || null };
+      }
+
+      const errMsg = res.stderr || res.stdout || `CLI exit code ${res.code}`;
+      throw new Error(`Eksekusi Command Code gagal: ${errMsg}`);
+    }
+  }
+
+  const binToRun = PI_BIN;
+  const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
+  const cliArgs = ["--session-id", actualConvId, "--mode", "json", "-p", prompt, "--approve"];
+  if (piModel) {
+    const isGroqModel =
+      piModel === "openai/gpt-oss-120b" ||
+      piModel === "llama-3.1-8b-instant" ||
+      piModel.startsWith("groq/");
+
+    if (isGroqModel) {
+      cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
+    } else {
+      cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
+    }
+  }
+
+  const piParser = createPiEventParser();
   const res = await runProcess({
     command: binToRun,
     args: cliArgs,
@@ -938,17 +1090,8 @@ export async function runAgentAutonomous({
     timeoutMs,
     env: sanitizedEnv,
     onSpawn,
-    onStdout: piParser ? (chunk) => piParser.push(chunk) : undefined,
+    onStdout: (chunk) => piParser.push(chunk),
   });
-
-  if (useCmd) {
-    const parsed = parseCmdResult(res.stdout || "");
-    if (parsed.error) throw new Error(parsed.error);
-    const output = parsed.text || res.stdout || "";
-    if (res.code === 0 || output.length > 0) {
-      return { ok: true, output, sessionId: parsed.sessionId, usage: parsed.usage || null };
-    }
-  }
 
   if (piParser) {
     const text = piParser.getText();

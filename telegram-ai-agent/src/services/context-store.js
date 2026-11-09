@@ -39,6 +39,39 @@ export async function resetUserConversation(userId) {
   if (context.piSessions && oldConvId) {
     delete context.piSessions[oldConvId];
   }
+  if (context.cmdSessions && oldConvId) {
+    for (const key of Object.keys(context.cmdSessions)) {
+      if (key === oldConvId || key.startsWith(`${oldConvId}:`)) {
+        delete context.cmdSessions[key];
+      }
+    }
+  }
+  await saveContext(context);
+}
+
+function cmdSessionKey(convId, cwd = "") {
+  return `${convId}:${cwd || "default"}`;
+}
+
+export async function getCmdSessionId(convId, cwd = "") {
+  if (!convId) return null;
+  const context = await loadContext();
+  return context.cmdSessions?.[cmdSessionKey(convId, cwd)] || null;
+}
+
+export async function setCmdSessionId(convId, cwd = "", sessionId) {
+  if (!convId || !sessionId) return;
+  const context = await loadContext();
+  if (!context.cmdSessions) context.cmdSessions = {};
+  context.cmdSessions[cmdSessionKey(convId, cwd)] = sessionId;
+  await saveContext(context);
+}
+
+export async function clearCmdSessionId(convId, cwd = "") {
+  if (!convId) return;
+  const context = await loadContext();
+  if (!context.cmdSessions) return;
+  delete context.cmdSessions[cmdSessionKey(convId, cwd)];
   await saveContext(context);
 }
 
