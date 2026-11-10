@@ -176,6 +176,8 @@ if (
         { command: "sentry", description: "Kesehatan container & auto-healing" },
         { command: "setwhisper", description: "Atur API Whisper untuk Voice Note" },
         { command: "projects", description: "Daftar proyek coding di ./projects" },
+        { command: "key", description: "Lihat & atur key auto-switch proyek" },
+        { command: "workspace", description: "Status / kunci workspace proyek manual (opsional)" },
         { command: "notion", description: "Cek & kelola auto-sync task Notion" },
         { command: "syncprojects", description: "Sinkronisasi peta arsitektur semua project" },
         { command: "swarm", description: "Eksekusi multi-tugas dengan Sub-Agent Swarm" },

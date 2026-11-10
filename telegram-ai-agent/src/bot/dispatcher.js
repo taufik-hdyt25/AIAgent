@@ -76,7 +76,11 @@ import {
   executeSwarm,
   WORKER_PROFILES,
 } from "../services/swarm-service.js";
-import { detectTargetProject } from "../services/project-detector.js";
+import {
+  detectTargetProject,
+  detectProjectWithReason,
+  isGlobalServerRequest,
+} from "../services/project-detector.js";
 import {
   getEngine,
   isCommandCodeEngine,
@@ -292,31 +296,58 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
 
     const sandboxCfg = await getSandboxConfig();
     const isProjectJail = sandboxCfg.role === "project";
+    const isAutoRole = sandboxCfg.role === "auto";
 
-    // Auto-detect project dari pesan pengguna jika menyebutkan nama proyek
+    // Auto-detect project langsung dari key/keyword di pesan pengguna atau file tanpa perlu /workspace
+    const detection = await detectProjectWithReason(userMessage, fileInfo);
+    const isGlobalReq = isGlobalServerRequest(userMessage);
     let userActiveProject = await getUserActiveProject(userId);
-    const detectedProject = detectProjectFromText(userMessage, availableProjectsList);
-    if (detectedProject) {
-      userActiveProject = detectedProject;
-      await setUserActiveProject(userId, detectedProject);
-    } else if (!userActiveProject || !availableProjectsList.includes(userActiveProject)) {
-      userActiveProject = sandboxCfg.activeProject || availableProjectsList[0] || "th-blog";
-      await setUserActiveProject(userId, userActiveProject);
+    let activeProjectScope = null;
+
+    if (isProjectJail) {
+      // Mode Project Jail ketat: tetap hormati deteksi proyek jika user menyebutnya, atau pakai project terkunci
+      const fallbackProject = detection.project || userActiveProject || sandboxCfg.activeProject || availableProjectsList[0] || "th-blog";
+      if (detection.project) {
+        userActiveProject = detection.project;
+        await setUserActiveProject(userId, detection.project);
+      } else if (!userActiveProject || !availableProjectsList.includes(userActiveProject)) {
+        userActiveProject = fallbackProject;
+        await setUserActiveProject(userId, userActiveProject);
+      }
+      activeProjectScope = userActiveProject;
+    } else if (isAutoRole) {
+      if (isGlobalReq || detection.isCrossProject) {
+        activeProjectScope = null;
+      } else if (detection.project && availableProjectsList.includes(detection.project)) {
+        activeProjectScope = detection.project;
+        if (detection.project !== userActiveProject) {
+          userActiveProject = detection.project;
+          await setUserActiveProject(userId, detection.project);
+          console.log(`[Auto-Key] Proyek beralih otomatis ke '${detection.project}' (key: "${detection.matchedKey}", source: ${detection.source})`);
+        }
+      } else if (userActiveProject && availableProjectsList.includes(userActiveProject)) {
+        activeProjectScope = userActiveProject;
+      } else {
+        activeProjectScope = null;
+      }
     }
 
-    const isCustomRole = isProjectJail || sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
-    const allowedList = await getAllowedFolders(userModel, userActiveProject);
+    const isCustomRole = sandboxCfg.role === "custom" || Boolean(sandboxCfg.piSandbox);
+    const effectiveProjectTarget = isProjectJail ? userActiveProject : (isAutoRole ? activeProjectScope : null);
+    const allowedList = await getAllowedFolders(userModel, effectiveProjectTarget || userActiveProject);
     const allowedDisplay = isProjectJail
-      ? `'projects/${userActiveProject}' (Workspace Sandbox Opsi 1 - Terkunci)`
-      : (allowedList.length > 0
-          ? allowedList.map((f) => `'${f}'`).join(", ")
-          : "(Belum ditentukan folder kustom - Akses dibatasi)");
+      ? `'projects/${userActiveProject}' (Workspace Sandbox - Terkunci)`
+      : (isAutoRole && effectiveProjectTarget
+          ? `'projects/${effectiveProjectTarget}' (Auto-Key Langsung${detection.matchedKey ? `: "${detection.matchedKey}"` : ""})`
+          : (allowedList.length > 0
+              ? allowedList.map((f) => `'${f}'`).join(", ")
+              : "(Semua folder di ./projects)"));
 
-    let executionCwd = isProjectJail
-      ? path.resolve(PROJECTS_DIR, userActiveProject)
+    let executionCwd = effectiveProjectTarget
+      ? path.resolve(PROJECTS_DIR, effectiveProjectTarget)
       : (isCustomRole && allowedList[0]
           ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
-          : process.cwd());
+          : (isAutoRole && fs.existsSync(PROJECTS_DIR) ? PROJECTS_DIR : process.cwd()));
 
     // Pastikan direktori executionCwd valid dan ada di filesystem sebelum spawn untuk mencegah ENOENT
     try {
@@ -332,10 +363,12 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       executionCwd = process.cwd();
     }
 
+    // Scope session per proyek agar perpindahan proyek via key tidak mencampur konteks CLI proyek sebelumnya
+    const sessionScope = effectiveProjectTarget || (isCustomRole ? "custom" : "root");
     let existingCmdSessionId = useCmd ? await getCmdSessionId(convId, executionCwd) : null;
     const isOngoingSession = useCmd
       ? Boolean(existingCmdSessionId)
-      : await isPiSessionStarted(convId);
+      : await isPiSessionStarted(convId, sessionScope);
 
     let projectsSummaryPrompt = "";
     try {
@@ -349,10 +382,12 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     let prompt = "";
     if (isOngoingSession) {
       const scopeOngoingRule = isProjectJail
-        ? `- ATURAN KETAT WORKSPACE SANDBOX (OPSI 1 - PROJECT JAIL AKTIF): Ruang lingkup kerja kamu TERKUNCI 100% HANYA di dalam folder proyek: 'projects/${userActiveProject}'. Dilarang keras membaca, memodifikasi, atau mengeksekusi file di luar proyek '${userActiveProject}'.`
-        : (isCustomRole
-          ? `- Aturan Scope Engine (Role Custom Aktif): Seluruh pengerjaan dan eksekusi coding DIBATASI HANYA di dalam folder: ${allowedDisplay}. Dilarang menyentuh atau memodifikasi file di luar folder tersebut.`
-          : "- Lingkungan Server/VPS (Akses Penuh): Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di './projects/' (seperti th-blog, wa-chat-bot, dll.).");
+        ? `- ATURAN KETAT WORKSPACE SANDBOX (PROJECT JAIL AKTIF): Ruang lingkup kerja kamu TERKUNCI 100% HANYA di dalam folder proyek: 'projects/${userActiveProject}'. Dilarang keras membaca, memodifikasi, atau mengeksekusi file di luar proyek '${userActiveProject}'.`
+        : (isAutoRole && effectiveProjectTarget
+          ? `- TARGET PROYEK AKTIF (AUTO-KEY): Kamu saat ini berada di folder proyek 'projects/${effectiveProjectTarget}'. Fokuskan pengerjaan, git, dan terminal di dalam proyek ini (kecuali pengguna menyebut key proyek lain).`
+          : (isCustomRole
+            ? `- Aturan Scope Engine (Role Custom Aktif): Seluruh pengerjaan dan eksekusi coding DIBATASI HANYA di dalam folder: ${allowedDisplay}. Dilarang menyentuh atau memodifikasi file di luar folder tersebut.`
+            : "- Lingkungan Server/VPS (Akses Penuh): Kamu memiliki akses penuh ke seluruh proyek di './projects/' (seperti th-blog, wa-chat-bot, dll.)."));
 
       // Sesi aktif berjalan: hemat token drastis tanpa mengulang puluhan baris persona boilerplate
       prompt = `
@@ -384,14 +419,18 @@ FITUR OTONOM: PERSISTENT MEMORY & AUTO-SKILL CREATION:
    Sistem akan otomatis menyimpan dan mengindeks skill tersebut ke dalam persistent storage.`;
 
       const scopeEnvironmentNotice = isProjectJail
-        ? `- Lingkungan Server/VPS (Workspace Sandbox - Opsi 1 Terkunci):
+        ? `- Lingkungan Server/VPS (Workspace Sandbox - Project Jail Terkunci):
   * ATURAN KETAT WORKSPACE SANDBOX (AKTIF): Seluruh pengerjaan tugas proyek, clone repo, modifikasi kode, dan eksekusi terminal TERKUNCI 100% HANYA di dalam folder proyek: 'projects/${userActiveProject}'.
   * DILARANG KERAS mengeksekusi atau menyentuh file di luar folder proyek '${userActiveProject}'.`
-        : (isCustomRole
-          ? `- Lingkungan Server/VPS (Scope Terbatas - Role Custom):
+        : (isAutoRole && effectiveProjectTarget
+          ? `- Target Proyek Aktif (Auto-Key Langsung):
+  * Sistem otomatis mengarahkan workspace kerja kamu ke folder proyek: 'projects/${effectiveProjectTarget}' (berdasarkan kata kunci/key dari pengguna${detection.matchedKey ? `: "${detection.matchedKey}"` : ""}).
+  * Fokuskan analisis kode, pengeditan, build, dan git di dalam 'projects/${effectiveProjectTarget}' tanpa perlu meminta pengguna menjalankan /workspace.`
+          : (isCustomRole
+            ? `- Lingkungan Server/VPS (Scope Terbatas - Role Custom):
   * ATURAN KETAT SCOPE ENGINE (AKTIF): Seluruh pengerjaan tugas proyek, clone repo, modifikasi kode, dan eksekusi proyek coding DIBATASI HANYA di dalam folder: ${allowedDisplay}.
   * DILARANG KERAS mengeksekusi atau memodifikasi proyek jika berada di luar folder yang diizinkan tersebut.`
-          : `- Lingkungan Server/VPS (Akses Penuh - Role Root): Kamu memiliki role 'root' dengan hak akses penuh dan bebas ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.). Aturan pembatasan HANYA berlaku jika mode Custom Scope diaktifkan di menu pengaturan.`);
+            : `- Lingkungan Server/VPS (Akses Penuh - Role Root / Auto): Kamu memiliki akses penuh ke seluruh proyek di dalam './projects/' (seperti th-blog, wa-chat-bot, ai-podcast-live, dll.). Langsung pilih proyek yang sesuai dengan kata kunci pesan pengguna.`));
 
       prompt = `
 Kamu adalah TH Agent, asisten software engineer cowok (pria) yang otonom dan berkomunikasi langsung dengan developer melalui chat Telegram ini.
@@ -484,9 +523,10 @@ ${userMessage}
           }
         }
         const piModel = userModel || await getUserPiModel(userId);
+        const scopedPiSessionId = sessionScope ? `${convId}-${sessionScope}` : convId;
         cliArgs = [
           "--session-id",
-          convId,
+          scopedPiSessionId,
           "--mode",
           "json",
           "-p",
@@ -638,7 +678,7 @@ ${userMessage}
         }
 
         if (!useCmd && code === 0) {
-          await markPiSessionStarted(convId, true);
+          await markPiSessionStarted(convId, true, sessionScope);
         }
 
         clearInterval(typingInterval);

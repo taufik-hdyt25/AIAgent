@@ -634,14 +634,14 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
             <div class="form-group">
               <div class="label-row">
                 <label class="form-label">WORKSPACE ACCESS SCOPE (ROLE ENGINE)</label>
-                <span class="label-hint" id="scopeRoleBadge" style="color: #34d399;">Root (Akses Penuh)</span>
+                <span class="label-hint" id="scopeRoleBadge" style="color: #34d399;">Auto-Key / Root</span>
               </div>
               <div class="engine-selector" style="margin-bottom: 0.75rem;">
                 <label class="engine-option" id="scopeRoleRootLabel">
-                  <input type="radio" name="scopeRole" value="root" id="scopeRoleRoot" checked>
+                  <input type="radio" name="scopeRole" value="auto" id="scopeRoleRoot" checked>
                   <div class="engine-info">
-                    <span class="engine-name">🌐 Root (Akses Penuh - Semua Folder)</span>
-                    <span class="engine-desc">AI bebas mengakses seluruh subfolder di dalam <code>./projects/</code> (Default).</span>
+                    <span class="engine-name">⚡ Auto-Key / Root (Otomatis Pilih Proyek via Kata Kunci)</span>
+                    <span class="engine-desc">Langsung pilih proyek di <code>./projects/</code> dari kata kunci/key di chat tanpa perlu <code>/workspace</code> (Default).</span>
                   </div>
                 </label>
                 <label class="engine-option" id="scopeRoleCustomLabel">

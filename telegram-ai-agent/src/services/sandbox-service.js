@@ -8,7 +8,8 @@ let sandboxCache = null;
 /**
  * Mendapatkan konfigurasi scope / role akses workspace engine
  * Role options:
- * - "project": Project-Level Jail (Opsi 1 - Terkunci ketat di 1 proyek aktif)
+ * - "auto": Auto-Key Langsung (Default - Deteksi proyek otomatis via key/keyword tanpa perlu /workspace)
+ * - "project": Project-Level Jail (Terkunci ketat di 1 proyek aktif)
  * - "custom": Custom Folder List (Dibatasi ke daftar folder tertentu)
  * - "root": Root Access (Akses penuh seluruh ./projects)
  */
@@ -17,19 +18,23 @@ export async function getSandboxConfig() {
   try {
     const raw = await readFile(SANDBOX_CONFIG_FILE, "utf8");
     const parsed = JSON.parse(raw);
+    const validRoles = new Set(["auto", "project", "custom", "root"]);
+    const resolvedRole = validRoles.has(parsed.role)
+      ? parsed.role
+      : (parsed.piSandbox ? "custom" : "auto");
     sandboxCache = {
-      role: parsed.role || (parsed.piSandbox ? "custom" : "project"),
+      role: resolvedRole,
       customFolders: parsed.customFolders ?? (parsed.restrictedDir || ""),
-      activeProject: parsed.activeProject || "th-blog",
-      piSandbox: parsed.role === "custom" || Boolean(parsed.piSandbox),
+      activeProject: parsed.activeProject || "",
+      piSandbox: resolvedRole === "custom" || Boolean(parsed.piSandbox),
       restrictedDir: parsed.restrictedDir || "",
       updatedAt: parsed.updatedAt || new Date().toISOString(),
     };
   } catch {
     sandboxCache = {
-      role: "project", // Default ke Opsi 1: Project-Level Jail
+      role: "auto", // Default: Auto-Key langsung tanpa perlu /workspace
       customFolders: "",
-      activeProject: "th-blog",
+      activeProject: "",
       piSandbox: false,
       restrictedDir: "",
       updatedAt: new Date().toISOString(),
@@ -47,24 +52,31 @@ export async function isCustomScopeActive(modelId = "") {
 }
 
 /**
- * Memeriksa apakah mode Project-Level Jail (Opsi 1) sedang aktif.
+ * Memeriksa apakah mode Project-Level Jail (ketat) sedang aktif.
  */
 export async function isProjectJailActive() {
   const cfg = await getSandboxConfig();
   return cfg.role === "project";
 }
 
+/**
+ * Memeriksa apakah mode Auto-Key Workspace sedang aktif.
+ */
+export async function isAutoKeyActive() {
+  const cfg = await getSandboxConfig();
+  return cfg.role === "auto";
+}
+
 // Alias untuk backwards compatibility
 export const isPiSandboxActive = isCustomScopeActive;
 
 /**
- * Deteksi nama proyek dari teks percakapan pengguna
+ * Deteksi sinkron dasar nama proyek dari teks (untuk kompatibilitas pemanggil sinkron)
  */
 export function detectProjectFromText(text = "", availableProjects = []) {
   if (!text || !availableProjects.length) return null;
   const lower = text.toLowerCase();
 
-  // 1. Direct regex match
   for (const proj of availableProjects) {
     const cleanProj = proj.toLowerCase();
     const regex = new RegExp(`(^|[^a-zA-Z0-9_-])${cleanProj}([^a-zA-Z0-9_-]|$)`, "i");
@@ -73,13 +85,11 @@ export function detectProjectFromText(text = "", availableProjects = []) {
     }
   }
 
-  // 2. Space/delimiter tolerant match (misal "th blog" -> "th-blog", "th admin" -> "th-admin-app")
   for (const proj of availableProjects) {
     const spaced = proj.replace(/[-_]/g, " ");
     if (lower.includes(spaced)) {
       return proj;
     }
-    // Alias khusus
     if (proj === "th-admin-app" && (lower.includes("th-admin") || lower.includes("th admin"))) {
       return proj;
     }
@@ -116,7 +126,14 @@ export async function getAllowedFolders(modelId = "", activeProject = "") {
  */
 export async function saveSandboxConfig(newConfig) {
   const current = await getSandboxConfig();
-  const role = newConfig.role || (newConfig.piSandbox !== undefined ? (newConfig.piSandbox ? "custom" : "root") : current.role);
+  const validRoles = new Set(["auto", "project", "custom", "root"]);
+  let role = current.role;
+  if (newConfig.role && validRoles.has(newConfig.role)) {
+    role = newConfig.role;
+  } else if (newConfig.piSandbox !== undefined) {
+    role = newConfig.piSandbox ? "custom" : "auto";
+  }
+
   const customFolders = newConfig.customFolders !== undefined ? newConfig.customFolders : current.customFolders;
 
   sandboxCache = {
@@ -133,19 +150,18 @@ export async function saveSandboxConfig(newConfig) {
 }
 
 /**
- * Mengubah role engine ('project', 'root', atau 'custom') dan daftar folder yang diizinkan
+ * Mengubah role engine ('auto', 'project', 'root', atau 'custom') dan daftar folder yang diizinkan
  */
-export async function setEngineAccessRole(role = "project", customFolders = "", activeProject = "") {
-  let cleanRole = "project";
-  if (role === "root") cleanRole = "root";
-  else if (role === "custom") cleanRole = "custom";
+export async function setEngineAccessRole(role = "auto", customFolders = "", activeProject = "") {
+  const validRoles = new Set(["auto", "project", "custom", "root"]);
+  const cleanRole = validRoles.has(role) ? role : "auto";
 
   const payload = {
     role: cleanRole,
     customFolders: typeof customFolders === "string" ? customFolders.trim() : "",
     piSandbox: cleanRole === "custom",
   };
-  if (activeProject) {
+  if (activeProject !== undefined && activeProject !== null && activeProject !== "") {
     payload.activeProject = activeProject;
   }
   return await saveSandboxConfig(payload);
@@ -157,7 +173,7 @@ export async function setEngineAccessRole(role = "project", customFolders = "", 
 export async function togglePiSandbox(enabled = null) {
   const current = await getSandboxConfig();
   const isCustom = current.role === "custom" || current.piSandbox;
-  const newRole = enabled !== null ? (enabled ? "custom" : "root") : (isCustom ? "root" : "custom");
+  const newRole = enabled !== null ? (enabled ? "custom" : "auto") : (isCustom ? "auto" : "custom");
   return await saveSandboxConfig({
     role: newRole,
     piSandbox: newRole === "custom",

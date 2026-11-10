@@ -821,7 +821,7 @@ export function createWebServer() {
           if (payload.sandboxConfig) {
             await saveSandboxConfig(payload.sandboxConfig);
           } else if (payload.scopeRole !== undefined || payload.customFolders !== undefined) {
-            await setEngineAccessRole(payload.scopeRole || "root", payload.customFolders || "");
+            await setEngineAccessRole(payload.scopeRole || "auto", payload.customFolders || "");
           } else if (payload.piSandbox !== undefined) {
             await togglePiSandbox(Boolean(payload.piSandbox));
           }

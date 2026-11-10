@@ -241,7 +241,7 @@ async function loadSettings() {
         customFoldersContainer.style.display = isCustom ? "block" : "none";
       }
       if (scopeRoleBadge) {
-        scopeRoleBadge.textContent = isCustom ? "Custom (Dibatasi)" : "Root (Akses Penuh)";
+        scopeRoleBadge.textContent = isCustom ? "Custom (Dibatasi)" : "Auto-Key (Otomatis via Key)";
         scopeRoleBadge.style.color = isCustom ? "#f59e0b" : "#34d399";
       }
     }
@@ -436,7 +436,7 @@ function updateScopeView() {
     customFoldersContainer.style.display = isCustom ? "block" : "none";
   }
   if (scopeRoleBadge) {
-    scopeRoleBadge.textContent = isCustom ? "Custom (Dibatasi)" : "Root (Akses Penuh)";
+    scopeRoleBadge.textContent = isCustom ? "Custom (Dibatasi)" : "Auto-Key (Otomatis via Key)";
     scopeRoleBadge.style.color = isCustom ? "#f59e0b" : "#34d399";
   }
 }
@@ -1275,10 +1275,10 @@ form.addEventListener("submit", async (e) => {
     PI_MODEL: piModelSelect ? piModelSelect.value : (currentSettings.PI_MODEL || "openai/gpt-oss-120b"),
     PI_SERVER_API_KEY: piServerApiKeyInput ? piServerApiKeyInput.value.trim() : "",
     PI_SERVER_URL: piServerUrlInput ? piServerUrlInput.value.trim() : "",
-    scopeRole: scopeRoleCustomRadio?.checked ? "custom" : "root",
+    scopeRole: scopeRoleCustomRadio?.checked ? "custom" : "auto",
     customFolders: customFoldersInput ? customFoldersInput.value.trim() : "",
     sandboxConfig: {
-      role: scopeRoleCustomRadio?.checked ? "custom" : "root",
+      role: scopeRoleCustomRadio?.checked ? "custom" : "auto",
       customFolders: customFoldersInput ? customFoldersInput.value.trim() : "",
       piSandbox: Boolean(scopeRoleCustomRadio?.checked),
     },

@@ -14,6 +14,7 @@ import {
   resetUserConversation,
   getUserActiveProject,
   setUserActiveProject,
+  clearUserActiveProject,
 } from "../../services/context-store.js";
 import {
   readEnvFile,
@@ -106,6 +107,12 @@ import {
   getAllowedFolders,
 } from "../../services/sandbox-service.js";
 import {
+  getAllProjectKeysSummary,
+  addCustomProjectKeys,
+  removeCustomProjectKey,
+  invalidateProjectDetectorCache,
+} from "../../services/project-detector.js";
+import {
   getNotionConfig,
   saveNotionConfig,
 } from "../../services/notion-service.js";
@@ -177,8 +184,9 @@ export function registerBasicCommands(bot) {
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
         "• `/swarm <t1> | <t2> | <t3>` - Eksekusi banyak tugas paralel dengan Sub-Agent Swarm\n" +
         "• `/projects` - Lihat daftar proyek coding di ./projects\n" +
-        "• `/workspace` - Kunci atau ganti workspace proyek aktif (Sandbox Opsi 1)\n" +
-        "• `/scope` - Pengaturan isolasi role sandbox (Project / Root / Custom)\n" +
+        "• `/key` - Lihat & atur kata kunci (key) auto-switch proyek\n" +
+        "• `/workspace` - Kunci proyek manual (opsional; default otomatis via key)\n" +
+        "• `/scope` - Pengaturan mode isolasi (Auto / Project / Root / Custom)\n" +
         "• `/memories` - Lihat daftar fakta & preferensi jangka panjang AI\n" +
         "• `/remember <teks>` - Simpan fakta/preferensi baru ke memori permanen\n" +
         "• `/forget <id>` - Hapus memori AI berdasarkan ID\n" +
@@ -1695,9 +1703,12 @@ export function registerBasicCommands(bot) {
     const sandboxCfg = await getSandboxConfig();
 
     const isCustomScope = sandboxCfg.role === "custom" || sandboxCfg.piSandbox;
-    const scopeLabel = isCustomScope
-      ? `🔒 Custom (${sandboxCfg.customFolders || "Folder Tertentu"})`
-      : "🌐 Root (Full Access Semua Folder)";
+    const isProjectJail = sandboxCfg.role === "project";
+    const scopeLabel = isProjectJail
+      ? `🔒 Project Jail (${sandboxCfg.activeProject || "th-blog"})`
+      : (isCustomScope
+          ? `🔒 Custom (${sandboxCfg.customFolders || "Folder Tertentu"})`
+          : (sandboxCfg.role === "root" ? "🌐 Root (Full Access)" : "⚡ Auto-Key (Langsung via Kata Kunci)"));
 
     const port = process.env.WEB_PORT || 3030;
     const text =
@@ -1785,15 +1796,91 @@ export function registerBasicCommands(bot) {
   bot.callbackQuery(["setting_toggle_scope", "setting_toggle_pisandbox"], async (ctx) => {
     const current = await getSandboxConfig();
     const isCustom = current.role === "custom" || current.piSandbox;
-    const newRole = isCustom ? "root" : "custom";
+    const newRole = isCustom ? "auto" : "custom";
     await setEngineAccessRole(newRole, current.customFolders || "");
     await ctx.answerCallbackQuery({
-      text: newRole === "root" ? "🌐 Role Root Aktif: Full Access Semua Folder" : "🔒 Role Custom Aktif: Dibatasi ke folder pilihan",
+      text: newRole === "auto" ? "⚡ Auto-Key Aktif: Otomatis pilih proyek lewat key" : "🔒 Role Custom Aktif: Dibatasi ke folder pilihan",
     });
     await renderSettingsMenu(ctx, ctx.callbackQuery.message?.message_id);
   });
 
-  // /workspace, /project (Opsi 1 - Project-Level Jail Management)
+  // /key, /keys, /alias (Kelola kata kunci proyek untuk auto-switch tanpa /workspace)
+  bot.command(["key", "keys", "alias"], async (ctx) => {
+    const raw = ctx.match?.trim() || "";
+    const parts = raw.split(/\s+/);
+    const sub = parts[0]?.toLowerCase();
+
+    if (!raw || sub === "list") {
+      const summaries = await getAllProjectKeysSummary();
+      if (summaries.length === 0) {
+        await ctx.reply("📁 Belum ada proyek di `./projects/`.", { parse_mode: "Markdown" });
+        return;
+      }
+      const lines = summaries.map((s) => {
+        const previewKeys = s.keys.slice(0, 6).map((k) => `\`${k}\``).join(", ");
+        const customNote = s.customKeys.length > 0 ? ` _(custom: ${s.customKeys.join(", ")})_` : "";
+        return `• *${s.project}*: ${previewKeys}${customNote}`;
+      });
+      await ctx.reply(
+        `🔑 *Daftar Key Auto-Switch Proyek*\n\n` +
+        `Cukup sebut key proyek di chat (misal: _"perbaiki tampilan blog"_, _"#dompet cek error"_, atau _"tagih: update footer"_), agent langsung pindah ke proyek tersebut tanpa \`/workspace\`.\n\n` +
+        `${lines.join("\n")}\n\n` +
+        `💡 *Tambah/Hapus Custom Key:*\n` +
+        `• \`/key add <nama-proyek> <key1,key2>\`\n` +
+        `• \`/key del <nama-proyek> <key>\``,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (sub === "add" || sub === "set") {
+      const targetProj = parts[1];
+      const keysRaw = parts.slice(2).join(" ");
+      if (!targetProj || !keysRaw) {
+        await ctx.reply("Format: `/key add <nama-proyek> <key1,key2>`", { parse_mode: "Markdown" });
+        return;
+      }
+      const summaries = await getAllProjectKeysSummary();
+      const matched = summaries.find((s) => s.project.toLowerCase() === targetProj.toLowerCase())?.project;
+      if (!matched) {
+        await ctx.reply(`❌ Proyek \`${targetProj}\` tidak ditemukan di \`./projects/\`.`, { parse_mode: "Markdown" });
+        return;
+      }
+      const updated = await addCustomProjectKeys(matched, keysRaw);
+      invalidateProjectDetectorCache();
+      await ctx.reply(`✅ Key untuk *${matched}* diperbarui:\n${updated.map((k) => `\`${k}\``).join(", ")}`, { parse_mode: "Markdown" });
+      return;
+    }
+
+    if (sub === "del" || sub === "rm" || sub === "remove") {
+      const targetProj = parts[1];
+      const keyToDel = parts.slice(2).join(" ");
+      if (!targetProj || !keyToDel) {
+        await ctx.reply("Format: `/key del <nama-proyek> <key>`", { parse_mode: "Markdown" });
+        return;
+      }
+      const summaries = await getAllProjectKeysSummary();
+      const matched = summaries.find((s) => s.project.toLowerCase() === targetProj.toLowerCase())?.project;
+      if (!matched) {
+        await ctx.reply(`❌ Proyek \`${targetProj}\` tidak ditemukan.`, { parse_mode: "Markdown" });
+        return;
+      }
+      const updated = await removeCustomProjectKey(matched, keyToDel);
+      invalidateProjectDetectorCache();
+      await ctx.reply(
+        `🗑️ Custom key \`${keyToDel}\` dihapus dari *${matched}*.\nSisa custom key: ${updated.length ? updated.map((k) => `\`${k}\``).join(", ") : "_(kosong)_"}`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    await ctx.reply(
+      "Format perintah `/key`:\n• `/key` — lihat semua key proyek\n• `/key add <proyek> <key1,key2>` — tambah key\n• `/key del <proyek> <key>` — hapus key",
+      { parse_mode: "Markdown" }
+    );
+  });
+
+  // /workspace, /project (Opsional: kunci/ganti proyek atau kembalikan ke mode auto)
   bot.command(["workspace", "project"], async (ctx) => {
     const raw = ctx.match?.trim() || "";
     const userId = ctx.from?.id;
@@ -1808,22 +1895,35 @@ export function registerBasicCommands(bot) {
 
     if (!raw) {
       const cfg = await getSandboxConfig();
-      const currentActive = (userId ? await getUserActiveProject(userId) : null) || cfg.activeProject || availableProjects[0] || "th-blog";
-      const isJail = cfg.role === "project";
+      const currentActive = (userId ? await getUserActiveProject(userId) : null) || cfg.activeProject || "-";
+      const modeText = cfg.role === "auto"
+        ? "⚡ AUTO-KEY (Otomatis pindah proyek via kata kunci — Default)"
+        : (cfg.role === "project"
+            ? "🔒 PROJECT JAIL (Terkunci ke 1 proyek)"
+            : (cfg.role === "custom" ? "🔒 CUSTOM LIST" : "🌐 ROOT (Akses Penuh)"));
 
       const listStr = availableProjects.length > 0
-        ? availableProjects.map((p) => `  • \`${p}\`${p === currentActive ? " 👈 *(Terkunci)*" : ""}`).join("\n")
+        ? availableProjects.map((p) => `  • \`${p}\`${p === currentActive ? " 👈 *(Terakhir aktif)*" : ""}`).join("\n")
         : "  _(Belum ada subfolder proyek di ./projects)_";
 
       await ctx.reply(
-        `🛡️ *Workspace Sandbox (Opsi 1 - Project-Level Jail)*\n\n` +
-        `• Status Mode: *${isJail ? "🔒 TERKUNCI PER PROYEK (Opsi 1)" : (cfg.role === "custom" ? "🔒 CUSTOM LIST" : "🌐 ROOT (Akses Penuh)")}*\n` +
-        `• Proyek Aktif: \`${currentActive}\`\n` +
-        `• Scope Direktori: \`projects/${currentActive}\`\n\n` +
+        `🛡️ *Workspace Proyek*\n\n` +
+        `• Mode Aktif: *${modeText}*\n` +
+        `• Proyek Aktif Terakhir: \`${currentActive}\`\n\n` +
         `📁 *Daftar Proyek Tersedia:*\n${listStr}\n\n` +
-        `💡 *Cara Berpindah Proyek:*\n` +
-        `• \`/workspace <nama-proyek>\` (contoh: \`/workspace th-blog\`)\n` +
-        `• Atau sebut langsung nama proyeknya di chat (misal: *"kita beralih ke th-admin-app"*).`,
+        `💡 *Tanpa perlu \`/workspace\`:* Cukup sebut key proyek di chat (cek daftar di \`/key\`).\n` +
+        `• \`/workspace auto\` — Aktifkan mode Auto-Key (default)\n` +
+        `• \`/workspace <nama-proyek>\` — Kunci manual ke 1 proyek`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (raw.toLowerCase() === "auto" || raw.toLowerCase() === "reset" || raw.toLowerCase() === "unlock") {
+      if (userId) await clearUserActiveProject(userId);
+      await setEngineAccessRole("auto", "", "");
+      await ctx.reply(
+        "⚡ *Mode Auto-Key Aktif!*\n\nTidak perlu `/workspace` lagi — cukup sebut kata kunci/key proyek di chat (misal `blog`, `dompet`, `tagih`, `#quiz`), agent otomatis memilih proyek targetnya.",
         { parse_mode: "Markdown" }
       );
       return;
@@ -1851,7 +1951,7 @@ export function registerBasicCommands(bot) {
     await ctx.reply(
       `🔒 *Workspace Sandbox Terkunci ke Proyek:* \`${matchedProject}\`\n\n` +
       `📁 Direktori Kerja: \`projects/${matchedProject}\`\n` +
-      `🛡️ *Pengamanan Aktif:* Agent tidak bisa menyentuh file sistem server atau proyek lain. Seluruh proses koding, git, dan terminal diisolasi murni di dalam proyek ini.`,
+      `💡 Untuk kembali ke pemilihan proyek otomatis via key, kirim \`/workspace auto\`.`,
       { parse_mode: "Markdown" }
     );
   });
@@ -1864,19 +1964,30 @@ export function registerBasicCommands(bot) {
 
     if (!subCmd) {
       const cfg = await getSandboxConfig();
-      const roleDisplay = cfg.role === "project"
-        ? "🔒 PROJECT JAIL (Opsi 1 - Terkunci per Proyek)"
-        : (cfg.role === "custom" || cfg.piSandbox ? "🔒 CUSTOM (Dibatasi)" : "🌐 ROOT (Akses Penuh)");
+      const roleDisplay = cfg.role === "auto"
+        ? "⚡ AUTO-KEY (Default - Otomatis pilih proyek lewat key)"
+        : (cfg.role === "project"
+            ? "🔒 PROJECT JAIL (Terkunci per Proyek)"
+            : (cfg.role === "custom" || cfg.piSandbox ? "🔒 CUSTOM (Dibatasi)" : "🌐 ROOT (Akses Penuh)"));
       await ctx.reply(
         `🛡️ *Workspace Access Scope (Role Engine)*\n\n` +
           `• Role Aktif: *${roleDisplay}*\n` +
-          `• Proyek Terkunci: \`${cfg.activeProject || "th-blog"}\`\n` +
-          `• Folder Diizinkan: \`${cfg.role === "project" ? `projects/${cfg.activeProject || "th-blog"}` : (cfg.customFolders || "(Semua folder di ./projects)")}\`\n\n` +
+          `• Proyek Terkunci: \`${cfg.activeProject || "-"}\`\n` +
+          `• Folder Diizinkan: \`${cfg.role === "project" ? `projects/${cfg.activeProject || "th-blog"}` : (cfg.customFolders || "(Otomatis sesuai key proyek di ./projects)")}\`\n\n` +
           `💡 *Cara Mengubah:*\n` +
-          `• \`/scope project\` - Kunci ketat ke 1 proyek aktif (Opsi 1 Rekomendasi ⭐)\n` +
-          `• \`/workspace <nama>\` - Ganti proyek aktif yang dikunci\n` +
-          `• \`/scope root\` - Berikan akses penuh ke seluruh folder\n` +
+          `• \`/scope auto\` - Otomatis pilih proyek langsung via key (Default ⭐)\n` +
+          `• \`/scope project [nama]\` - Kunci ketat ke 1 proyek aktif\n` +
+          `• \`/scope root\` - Akses penuh ke seluruh folder dari root\n` +
           `• \`/scope custom [folder1,folder2]\` - Batasi akses ke daftar folder kustom`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (subCmd === "auto" || subCmd === "key") {
+      await setEngineAccessRole("auto", "", "");
+      await ctx.reply(
+        "⚡ *Role Berhasil Diubah ke AUTO-KEY!*\n\nAgent langsung mendeteksi & berpindah proyek secara otomatis lewat kata kunci/key di chat tanpa perlu `/workspace`.",
         { parse_mode: "Markdown" }
       );
       return;
@@ -1887,9 +1998,9 @@ export function registerBasicCommands(bot) {
       await setEngineAccessRole("project", "", proj || undefined);
       const cfg = await getSandboxConfig();
       await ctx.reply(
-        `🔒 *Role Berhasil Diubah ke PROJECT JAIL (Opsi 1)!*\n\n` +
+        `🔒 *Role Berhasil Diubah ke PROJECT JAIL!*\n\n` +
         `📁 Proyek Terkunci: \`${cfg.activeProject || "th-blog"}\`\n` +
-        `Agent kini terisolasi di dalam folder proyek tersebut dan tidak bisa menyentuh sistem atau proyek lainnya.`,
+        `Agent kini terisolasi di dalam folder proyek tersebut.`,
         { parse_mode: "Markdown" }
       );
       return;

@@ -37,7 +37,11 @@ export async function resetUserConversation(userId) {
   context.conversations[String(userId)] = newConvId;
 
   if (context.piSessions && oldConvId) {
-    delete context.piSessions[oldConvId];
+    for (const key of Object.keys(context.piSessions)) {
+      if (key === oldConvId || key.startsWith(`${oldConvId}:`)) {
+        delete context.piSessions[key];
+      }
+    }
   }
   if (context.cmdSessions && oldConvId) {
     for (const key of Object.keys(context.cmdSessions)) {
@@ -75,20 +79,25 @@ export async function clearCmdSessionId(convId, cwd = "") {
   await saveContext(context);
 }
 
-export async function isPiSessionStarted(convId) {
-  if (!convId) return false;
-  const context = await loadContext();
-  return Boolean(context.piSessions?.[convId]);
+export function getPiSessionKey(convId, scope = "") {
+  return scope ? `${convId}:${scope}` : convId;
 }
 
-export async function markPiSessionStarted(convId, started = true) {
+export async function isPiSessionStarted(convId, scope = "") {
+  if (!convId) return false;
+  const context = await loadContext();
+  return Boolean(context.piSessions?.[getPiSessionKey(convId, scope)]);
+}
+
+export async function markPiSessionStarted(convId, started = true, scope = "") {
   if (!convId) return;
   const context = await loadContext();
   if (!context.piSessions) context.piSessions = {};
+  const key = getPiSessionKey(convId, scope);
   if (started) {
-    context.piSessions[convId] = true;
+    context.piSessions[key] = true;
   } else {
-    delete context.piSessions[convId];
+    delete context.piSessions[key];
   }
   await saveContext(context);
 }
@@ -128,4 +137,13 @@ export async function setUserActiveProject(userId, projectName) {
   if (!context.activeProjects) context.activeProjects = {};
   context.activeProjects[String(userId)] = projectName;
   await saveContext(context);
+}
+
+export async function clearUserActiveProject(userId) {
+  if (!userId) return;
+  const context = await loadContext();
+  if (context.activeProjects) {
+    delete context.activeProjects[String(userId)];
+    await saveContext(context);
+  }
 }
