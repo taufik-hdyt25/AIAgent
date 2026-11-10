@@ -2,7 +2,6 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DATA_DIR } from "../config/env.js";
 import { getActiveTask, getActiveWorkers, getLockedProjects } from "./cli-runner.js";
-import { truncate } from "./telegram-files.js";
 
 // Antrean tugas AI yang menunggu giliran eksekusi (FIFO Queue)
 const taskQueue = [];
@@ -237,25 +236,6 @@ export async function processNextQueue() {
     isProcessing = false;
     return false;
   }
-
-  // Kirim notifikasi ke Telegram bahwa antrean ini sekarang mulai dieksekusi
-  try {
-    if (nextItem.ctx?.chat?.id) {
-      const remaining = taskQueue.length;
-      const remainingText =
-        remaining > 0 ? `\n_(${remaining} instruksi lain masih menunggu di antrean)_` : "";
-
-      await nextItem.ctx
-        .reply(
-          `▶️ *Memulai Eksekusi Antrean* (ID: \`${nextItem.id}\`)${remainingText}\n\n` +
-            `💬 _"${truncate(nextItem.userMessage, 120)}"_${
-              nextItem.fileInfo ? `\n📎 *File:* \`${nextItem.fileInfo.fileName}\`` : ""
-            }`,
-          { parse_mode: "Markdown" }
-        )
-        .catch(() => {});
-    }
-  } catch (_) {}
 
   // Lepaskan flag lock sebelum memanggil executorFn agar pemanggilan berikutnya tidak terhalang
   isProcessing = false;

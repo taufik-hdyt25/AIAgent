@@ -82,22 +82,40 @@ export function smartSummaryOrSplit(text, maxPerMessage = 3800) {
 }
 
 /**
+ * Membangun opsi reply_parameters agar balasan Telegram mengutip (quote) pesan asal user.
+ */
+export function buildReplyOptions(ctx, extra = {}) {
+  const messageId = ctx?.message?.message_id;
+  if (!messageId) return { ...extra };
+  return {
+    ...extra,
+    reply_parameters: {
+      message_id: messageId,
+      allow_sending_without_reply: true,
+    },
+  };
+}
+
+/**
  * Mengirim pesan ke Telegram secara cerdas dan elegan:
  * Mencoba parse Markdown terlebih dahulu, fallback ke plain text jika ada formatting error.
  * Jika teks panjang, dikirim berurutan (maksimal 2 bagian) dengan delay 200ms.
+ * Bagian pertama otomatis me-reply pesan asli user jika message_id tersedia.
  */
 export async function sendSmartReply(ctx, text) {
   if (!text || !text.trim()) {
-    return ctx.reply("ℹ️ Tugas telah selesai diproses.");
+    return ctx.reply("ℹ️ Tugas telah selesai diproses.", buildReplyOptions(ctx));
   }
 
   const parts = smartSummaryOrSplit(text, 3800);
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
+    const mdOpts = i === 0 ? buildReplyOptions(ctx, { parse_mode: "Markdown" }) : { parse_mode: "Markdown" };
+    const plainOpts = i === 0 ? buildReplyOptions(ctx) : undefined;
     try {
-      await ctx.reply(part, { parse_mode: "Markdown" });
+      await ctx.reply(part, mdOpts);
     } catch {
-      await ctx.reply(part);
+      await (plainOpts ? ctx.reply(part, plainOpts) : ctx.reply(part));
     }
     if (i < parts.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, 200));

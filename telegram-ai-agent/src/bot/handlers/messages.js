@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { downloadTelegramFile, truncate } from "../../services/telegram-files.js";
+import { downloadTelegramFile, truncate, buildReplyOptions } from "../../services/telegram-files.js";
 import { sendToAgent } from "../dispatcher.js";
 import { transcribeAudio } from "../../services/voice-service.js";
 import { sendUsageResponse } from "./commands.js";
@@ -262,7 +262,7 @@ export function registerMessageHandlers(bot) {
     if (text.startsWith("/")) return;
 
     if (text.length > 5000) {
-      await ctx.reply("Pesan terlalu panjang (maksimal 5000 karakter).");
+      await ctx.reply("Pesan terlalu panjang (maksimal 5000 karakter).", buildReplyOptions(ctx));
       return;
     }
 
@@ -276,7 +276,7 @@ export function registerMessageHandlers(bot) {
     // Deteksi cepat jika hanya sapaan murni, ping/test, atau terima kasih (respon seketika <50ms)
     const quickReply = getQuickReply(text);
     if (quickReply) {
-      await ctx.reply(quickReply);
+      await ctx.reply(quickReply, buildReplyOptions(ctx));
       return;
     }
 

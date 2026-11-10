@@ -43,7 +43,7 @@ import {
   getLockedProjects,
   isProjectBusy,
 } from "../services/cli-runner.js";
-import { truncate, sendSmartReply, stripAnsi } from "../services/telegram-files.js";
+import { truncate, sendSmartReply, buildReplyOptions, stripAnsi } from "../services/telegram-files.js";
 import {
   GITHUB_ISSUE_REGEX,
   fetchIssueDetails,
@@ -710,7 +710,7 @@ ${userMessage}
         clearActiveTask(taskId);
 
         if (task.cancelled) {
-          await ctx.reply("⚠️ Proses dihentikan.");
+          await ctx.reply("⚠️ Proses dihentikan.", buildReplyOptions(ctx));
           processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
           return;
         }
@@ -762,7 +762,9 @@ ${userMessage}
             errText = `❌ Maaf, ${engineLabel} mengalami kendala:\n${truncate(errText, 1000)}`;
           }
 
-          await ctx.reply(errText, { parse_mode: "Markdown" }).catch(() => ctx.reply(truncate(errText, 1000)));
+          await ctx
+            .reply(errText, buildReplyOptions(ctx, { parse_mode: "Markdown" }))
+            .catch(() => ctx.reply(truncate(errText, 1000), buildReplyOptions(ctx)));
           processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
           return;
         }
@@ -823,7 +825,7 @@ ${userMessage}
   } catch (err) {
     clearInterval(typingInterval);
     clearActiveTask(taskId);
-    await ctx.reply(`❌ Terjadi error: ${err.message}`);
+    await ctx.reply(`❌ Terjadi error: ${err.message}`, buildReplyOptions(ctx));
     processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
   }
 }
@@ -939,7 +941,10 @@ ${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n`
   } catch (err) {
     clearInterval(typingTimer);
     unregisterWorker(workerId);
-    await ctx.reply(`❌ *[Subagent ${profile.name}]* Mengalami kendala pada proyek \`${targetProject}\`:\n${err.message}`);
+    await ctx.reply(
+      `❌ *[Subagent ${profile.name}]* Mengalami kendala pada proyek \`${targetProject}\`:\n${err.message}`,
+      buildReplyOptions(ctx)
+    );
     processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
   }
 }
@@ -983,29 +988,12 @@ export async function sendToAgent(userMessage, ctx, fileInfo = null) {
     return;
   }
 
-  // 3. JIKA PROYEK SAMA ATAU GLOBAL ATAU WORKER PENUH -> MASUKKAN KE ANTREAN (FIFO)
+  // 3. JIKA PROYEK SAMA ATAU GLOBAL ATAU WORKER PENUH -> MASUKKAN KE ANTREAN (FIFO) SENYAP
   const queueItem = enqueueTask({ userMessage, ctx, fileInfo, targetProject });
   const position = getQueuePosition(queueItem.id);
 
-  let reasonNotice = "";
-  if (targetProject && isTargetBusy) {
-    reasonNotice = `🔒 *Proyek \`${targetProject}\` sedang dikerjakan oleh tugas aktif.*\nUntuk mencegah konflik git & file overwriting, tugas ini diantrekan secara aman.`;
-  } else if (totalActive >= maxConcurrent) {
-    reasonNotice = `⚡ Kapasitas subagent paralel (${maxConcurrent} tugas) sedang penuh.`;
-  } else {
-    reasonNotice = `⏳ TH Agent sedang memproses tugas sebelumnya (\`${currentTask?.id || "Worker"}\`).`;
-  }
-
-  await ctx.reply(
-    `📥 *Instruksi Dimasukkan ke Antrean (Urutan #${position})*\n\n` +
-      `${reasonNotice}\n\n` +
-      `Instruksi Anda telah dicatat dan akan *otomatis dijalankan* saat gilirannya tiba.\n\n` +
-      `💬 *Instruksi:*\n_"${truncate(userMessage, 120)}"_${
-        fileInfo ? `\n📎 *File:* \`${fileInfo.fileName}\`` : ""
-      }\n` +
-      (targetProject ? `📁 *Target Proyek:* \`projects/${targetProject}\`\n` : "") +
-      `\n💡 _Ketik /queue untuk melihat daftar antrean atau /cancel untuk membatalkan._`,
-    { parse_mode: "Markdown" }
+  console.log(
+    `[Queue] Tugas ${queueItem.id} masuk antrean senyap (#${position})${targetProject ? ` [${targetProject}]` : ""}`
   );
 
   return { queued: true, id: queueItem.id, position, targetProject };
