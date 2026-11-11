@@ -113,6 +113,12 @@ import {
   invalidateProjectDetectorCache,
 } from "../../services/project-detector.js";
 import {
+  getTopicBinding,
+  setTopicBinding,
+  removeTopicBinding,
+  getGroupTopics,
+} from "../../services/topic-service.js";
+import {
   getNotionConfig,
   saveNotionConfig,
 } from "../../services/notion-service.js";
@@ -183,6 +189,7 @@ export function registerBasicCommands(bot) {
         "• `/files` - Lihat daftar file dan gambar yang telah diunggah\n" +
         "• `/exec <cmd>` - Eksekusi perintah terminal langsung di server\n" +
         "• `/swarm <t1> | <t2> | <t3>` - Eksekusi banyak tugas paralel dengan Sub-Agent Swarm\n" +
+        "• `/topic [link <proj>|root|unlink|list]` - Kunci Telegram Forum Topic ke project (Kantor AI)\n" +
         "• `/projects` - Lihat daftar proyek coding di ./projects\n" +
         "• `/key` - Lihat & atur kata kunci (key) auto-switch proyek\n" +
         "• `/workspace` - Kunci proyek manual (opsional; default otomatis via key)\n" +
@@ -1953,6 +1960,133 @@ export function registerBasicCommands(bot) {
       `📁 Direktori Kerja: \`projects/${matchedProject}\`\n` +
       `💡 Untuk kembali ke pemilihan proyek otomatis via key, kirim \`/workspace auto\`.`,
       { parse_mode: "Markdown" }
+    );
+  });
+
+  // /topic (Kelola kuncian project per Telegram Forum Topic)
+  bot.command(["topic", "thread"], async (ctx) => {
+    const threadId = ctx.message?.message_thread_id;
+    const chatId = ctx.chat?.id;
+    const raw = ctx.match?.trim() || "";
+    const parts = raw.split(/\s+/).filter(Boolean);
+    const subCmd = parts[0]?.toLowerCase() || "";
+    const target = parts[1]?.toLowerCase() || "";
+
+    let availableProjects = [];
+    try {
+      const entries = await readdir(PROJECTS_DIR, { withFileTypes: true });
+      availableProjects = entries
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .map((e) => e.name);
+    } catch (_) {}
+
+    // 1. Tampilkan daftar topic terhubung di grup ini jika dipanggil /topic list
+    if (subCmd === "list" || subCmd === "all") {
+      const groupList = await getGroupTopics(chatId);
+      if (groupList.length === 0) {
+        await ctx.reply(
+          "ℹ️ Belum ada topic di grup ini yang dikunci ke project.\n\n" +
+          "Gunakan `/topic link <nama-project>` di dalam topic untuk mengunci.",
+          buildReplyOptions(ctx, { parse_mode: "Markdown" })
+        );
+        return;
+      }
+
+      const rows = groupList.map((t) => {
+        const titleStr = t.title ? ` (${t.title})` : "";
+        const projStr = t.role === "root" ? "🌐 ROOT (Semua Proyek)" : `📁 \`${t.project}\``;
+        return `• Topic ID \`${t.threadId}\`${titleStr} ➔ ${projStr}`;
+      });
+
+      await ctx.reply(
+        `🏢 *Kantor AI: Daftar Topic Terhubung*\n\n${rows.join("\n")}\n\n` +
+        `💡 Masuk ke salah satu topic dan kirim instruksi langsung sesuai projectnya!`,
+        buildReplyOptions(ctx, { parse_mode: "Markdown" })
+      );
+      return;
+    }
+
+    // Jika dipanggil di luar topic (chat personal atau General thread non-topic)
+    if (!threadId) {
+      await ctx.reply(
+        "⚠️ Perintah ini harus dijalankan di dalam sebuah **Forum Topic** Telegram!\n\n" +
+        "• Buka topic di grup kamu (misal `#th-blog` atau `#general`)\n" +
+        "• Ketik `/topic link <nama-project>` atau `/topic root`",
+        buildReplyOptions(ctx, { parse_mode: "Markdown" })
+      );
+      return;
+    }
+
+    const currentBinding = await getTopicBinding(chatId, threadId);
+
+    // 2. Jika tanpa argumen, tampilkan status topic saat ini
+    if (!subCmd) {
+      const statusText = currentBinding
+        ? (currentBinding.role === "root"
+            ? "🌐 *ROOT ACCESS (Akses Penuh Server & Semua Proyek)*"
+            : `🔒 *Terkunci ke Proyek:* \`projects/${currentBinding.project}\``)
+        : "⚡ *Auto-Key / Bebas (Belum dikunci ke project spesifik)*";
+
+      await ctx.reply(
+        `🏢 *Status Topic Telegram (ID: \`${threadId}\`)*\n\n` +
+        `• Status: ${statusText}\n\n` +
+        `💡 *Perintah Kunci Topic:*\n` +
+        `• \`/topic link <nama-project>\` — Kunci permanen topic ini ke 1 project\n` +
+        `• \`/topic root\` — Set topic ini untuk task global / buat project baru\n` +
+        `• \`/topic unlink\` — Lepas kuncian topic\n` +
+        `• \`/topic list\` — Lihat semua topic yang terhubung di grup`,
+        buildReplyOptions(ctx, { parse_mode: "Markdown" })
+      );
+      return;
+    }
+
+    // 3. Unlink / Reset
+    if (subCmd === "unlink" || subCmd === "clear" || subCmd === "reset") {
+      await removeTopicBinding(chatId, threadId);
+      await ctx.reply(
+        `⚡ *Kuncian Topic ID \`${threadId}\` Dilepas!*\n\n` +
+        `Topic ini sekarang kembali ke mode auto-detect via kata kunci.`,
+        buildReplyOptions(ctx, { parse_mode: "Markdown" })
+      );
+      return;
+    }
+
+    // 4. Kunci ke ROOT (Untuk General / Buat Project Baru / DevOps)
+    if (subCmd === "root" || (subCmd === "link" && (target === "root" || target === "all"))) {
+      await setTopicBinding(chatId, threadId, "root", { title: "Root Workspace" });
+      await ctx.reply(
+        `🌐 *Topic ID \`${threadId}\` Terkunci ke ROOT!*\n\n` +
+        `• Scope: Akses penuh ke seluruh folder \`./projects/\`\n` +
+        `• Fungsi: Cocok untuk membuat project baru (\`mkdir\`), docker, dan devops server.`,
+        buildReplyOptions(ctx, { parse_mode: "Markdown" })
+      );
+      return;
+    }
+
+    // 5. Kunci ke project spesifik (/topic link <nama> atau /topic set <nama> atau /topic <nama>)
+    const targetProjectName = (subCmd === "link" || subCmd === "set") ? target : subCmd;
+    const cleanTarget = targetProjectName.replace(/^projects\//, "").replace(/^\.\//, "").trim();
+
+    const matchedProject = availableProjects.find((p) => p.toLowerCase() === cleanTarget) ||
+      availableProjects.find((p) => p.toLowerCase().includes(cleanTarget));
+
+    if (!matchedProject) {
+      await ctx.reply(
+        `❌ Proyek \`${cleanTarget}\` tidak ditemukan di folder \`./projects/\`.\n\n` +
+        `Daftar proyek yang ada:\n${availableProjects.map((p) => `• \`${p}\``).join("\n")}\n\n` +
+        `_Atau gunakan \`/topic root\` jika ingin akses root._`,
+        buildReplyOptions(ctx, { parse_mode: "Markdown" })
+      );
+      return;
+    }
+
+    await setTopicBinding(chatId, threadId, matchedProject, { title: matchedProject });
+    await ctx.reply(
+      `🔒 *Kantor AI: Topic ID \`${threadId}\` Resmi Terhubung!*\n\n` +
+      `📁 Proyek: \`${matchedProject}\`\n` +
+      `🎯 Direktori Kerja: \`projects/${matchedProject}\`\n\n` +
+      `Seluruh percakapan dan eksekusi Pi di topic ini 100% terisolasi ke project tersebut.`,
+      buildReplyOptions(ctx, { parse_mode: "Markdown" })
     );
   });
 

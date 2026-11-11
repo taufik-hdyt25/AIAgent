@@ -31,6 +31,7 @@ import {
   setCmdSessionId,
   clearCmdSessionId,
 } from "../services/context-store.js";
+import { getTopicBinding } from "../services/topic-service.js";
 import {
   getActiveTask,
   setActiveTask,
@@ -199,7 +200,9 @@ export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, i
   const typingInterval = setInterval(sendTyping, 4000);
 
   try {
-    const convId = await getUserConversationId(userId);
+    const threadId = ctx.message?.message_thread_id || null;
+    const baseConvId = await getUserConversationId(userId);
+    const convId = threadId ? `${baseConvId}-thread-${threadId}` : baseConvId;
 
     let fileInfoPrompt = "";
     if (fileInfo) {
@@ -296,8 +299,12 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     } catch (_) {}
 
     const sandboxCfg = await getSandboxConfig();
-    const isProjectJail = sandboxCfg.role === "project";
-    const isAutoRole = sandboxCfg.role === "auto";
+    const topicBinding = (ctx.chat?.id && threadId)
+      ? await getTopicBinding(ctx.chat.id, threadId)
+      : null;
+
+    let isProjectJail = sandboxCfg.role === "project";
+    let isAutoRole = sandboxCfg.role === "auto";
 
     // Auto-detect project langsung dari key/keyword di pesan pengguna atau file tanpa perlu /workspace
     const detection = await detectProjectWithReason(userMessage, fileInfo);
@@ -305,7 +312,20 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     let userActiveProject = await getUserActiveProject(userId);
     let activeProjectScope = null;
 
-    if (isProjectJail) {
+    // JIKA CHAT BERASAL DARI TELEGRAM FORUM TOPIC YANG TERHUBUNG:
+    if (topicBinding) {
+      if (topicBinding.role === "root" || topicBinding.project === "root") {
+        isProjectJail = false;
+        isAutoRole = false;
+        activeProjectScope = null;
+        userActiveProject = null;
+      } else if (topicBinding.project) {
+        isProjectJail = true;
+        isAutoRole = false;
+        userActiveProject = topicBinding.project;
+        activeProjectScope = topicBinding.project;
+      }
+    } else if (isProjectJail) {
       // Mode Project Jail ketat: tetap hormati deteksi proyek jika user menyebutnya, atau pakai project terkunci
       const fallbackProject = detection.project || userActiveProject || sandboxCfg.activeProject || availableProjectsList[0] || "th-blog";
       if (detection.project) {

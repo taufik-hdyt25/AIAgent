@@ -82,18 +82,26 @@ export function smartSummaryOrSplit(text, maxPerMessage = 3800) {
 }
 
 /**
- * Membangun opsi reply_parameters agar balasan Telegram mengutip (quote) pesan asal user.
+ * Membangun opsi reply_parameters agar balasan Telegram mengutip (quote) pesan asal user
+ * dan meneruskan message_thread_id jika chat berada di Telegram Forum Topic.
  */
 export function buildReplyOptions(ctx, extra = {}) {
   const messageId = ctx?.message?.message_id;
-  if (!messageId) return { ...extra };
-  return {
-    ...extra,
-    reply_parameters: {
+  const threadId = ctx?.message?.message_thread_id;
+  const opts = { ...extra };
+
+  if (threadId && !opts.message_thread_id) {
+    opts.message_thread_id = threadId;
+  }
+
+  if (messageId && !opts.reply_parameters) {
+    opts.reply_parameters = {
       message_id: messageId,
       allow_sending_without_reply: true,
-    },
-  };
+    };
+  }
+
+  return opts;
 }
 
 /**
