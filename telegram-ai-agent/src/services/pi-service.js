@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, rename } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fetchRemoteModels, normalizePiUrl, loadCustomModels, saveCustomModels } from "../config/models.js";
@@ -48,6 +48,106 @@ export async function syncPiCliConfig(baseUrl, apiKey, models) {
       await writeFile(file, JSON.stringify(configContent, null, 2) + "\n", "utf8");
     } catch (_) {}
   }
+}
+
+/**
+ * Folder penyimpanan sesi Pi untuk sebuah working directory.
+ * Contoh: /home/ubuntu/.th-agent -> --home-ubuntu-.th-agent--
+ */
+function getPiSessionDir(cwd) {
+  const normalized = path.resolve(cwd).replace(/^[/\\]+/, "").replace(/[/\\]/g, "-");
+  return path.join(os.homedir(), ".pi", "agent", "sessions", `--${normalized}--`);
+}
+
+function isEmptyAssistantEntry(entry) {
+  if (!entry || entry.type !== "message" || entry.message?.role !== "assistant") return false;
+  const content = entry.message.content;
+  if (typeof content === "string") return !content.trim();
+  if (!Array.isArray(content)) return true;
+  const hasText = content.some((part) => part?.type === "text" && String(part?.text || "").trim());
+  const hasToolCall = content.some((part) => part?.type === "toolCall" || part?.type === "tool_call");
+  return !hasText && !hasToolCall;
+}
+
+/**
+ * Membersihkan balasan assistant kosong dari file sesi Pi.
+ * Balasan kosong yang tersimpan membuat model mengembalikan jawaban kosong
+ * terus-menerus pada giliran berikutnya, sehingga rantai parentId perlu disambung ulang.
+ */
+export async function repairPiSession(cwd, sessionId) {
+  if (!cwd || !sessionId) return { repaired: 0, file: null };
+
+  const sessionDir = getPiSessionDir(cwd);
+  let files = [];
+  try {
+    files = await readdir(sessionDir);
+  } catch {
+    return { repaired: 0, file: null };
+  }
+
+  const fileName = files.find((name) => name.endsWith(`_${sessionId}.jsonl`));
+  if (!fileName) return { repaired: 0, file: null };
+
+  const file = path.join(sessionDir, fileName);
+  let raw = "";
+  try {
+    raw = await readFile(file, "utf8");
+  } catch {
+    return { repaired: 0, file: null };
+  }
+
+  const lines = raw.split("\n");
+  const entries = lines.map((line) => {
+    if (!line.trim()) return { line, entry: null };
+    try {
+      return { line, entry: JSON.parse(line) };
+    } catch {
+      return { line, entry: null };
+    }
+  });
+
+  const removed = new Map();
+  for (const { entry } of entries) {
+    if (isEmptyAssistantEntry(entry) && entry.id) {
+      removed.set(entry.id, entry.parentId ?? null);
+    }
+  }
+  if (removed.size === 0) return { repaired: 0, file };
+
+  const resolveParent = (parentId) => {
+    let current = parentId;
+    const seen = new Set();
+    while (current && removed.has(current) && !seen.has(current)) {
+      seen.add(current);
+      current = removed.get(current);
+    }
+    return current ?? null;
+  };
+
+  const output = [];
+  for (const { line, entry } of entries) {
+    if (entry) {
+      if (removed.has(entry.id)) continue;
+      if (Object.prototype.hasOwnProperty.call(entry, "parentId")) {
+        const nextParent = resolveParent(entry.parentId);
+        if (nextParent !== entry.parentId) entry.parentId = nextParent;
+      }
+      output.push(JSON.stringify(entry));
+    } else {
+      output.push(line);
+    }
+  }
+
+  try {
+    const tempFile = `${file}.tmp-${process.pid}`;
+    await writeFile(tempFile, output.join("\n"), "utf8");
+    await rename(tempFile, file);
+  } catch (err) {
+    console.warn("[PiService] Gagal memperbaiki sesi Pi:", err.message);
+    return { repaired: 0, file };
+  }
+
+  return { repaired: removed.size, file };
 }
 
 /**

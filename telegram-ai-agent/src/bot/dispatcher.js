@@ -19,6 +19,7 @@ import {
   detectProjectFromText,
 } from "../services/sandbox-service.js";
 import { createPiEventParser } from "../services/pi-event-parser.js";
+import { repairPiSession } from "../services/pi-service.js";
 import {
   getUserConversationId,
   getUserPiModel,
@@ -486,10 +487,12 @@ ${userMessage}
       resumeSessionId = null,
       continuationCount = 0,
       freshRetryAttempted = false,
+      emptyRetryAttempted = false,
       accumulatedText = "",
     } = {}) => {
       const effectivePrompt = promptOverride || prompt;
       const activeResumeId = useCmd ? (resumeSessionId !== undefined && resumeSessionId !== null ? resumeSessionId : existingCmdSessionId) : null;
+      const scopedPiSessionId = sessionScope ? `${convId}-${sessionScope}` : convId;
       let binToRun = useCmd ? resolveCmdBin() : PI_BIN;
       let cliArgs = [];
 
@@ -523,7 +526,6 @@ ${userMessage}
           }
         }
         const piModel = userModel || await getUserPiModel(userId);
-        const scopedPiSessionId = sessionScope ? `${convId}-${sessionScope}` : convId;
         cliArgs = [
           "--session-id",
           scopedPiSessionId,
@@ -561,6 +563,13 @@ ${userMessage}
 
       if (process.env.GROQ_API_KEY) {
         sanitizedEnv.GROQ_API_KEY = process.env.GROQ_API_KEY;
+      }
+
+      if (!useCmd) {
+        const repaired = await repairPiSession(executionCwd, scopedPiSessionId).catch(() => ({ repaired: 0 }));
+        if (repaired.repaired > 0) {
+          console.warn(`[Dispatcher] Membersihkan ${repaired.repaired} balasan kosong dari sesi Pi sebelum eksekusi.`);
+        }
       }
 
       const child = spawn(binToRun, cliArgs, {
@@ -693,6 +702,31 @@ ${userMessage}
         if (responseText) {
           const { cleanedText } = await processAutonomousOutput(responseText);
           responseText = cleanedText;
+        }
+
+        const isEmptyPiResponse =
+          !useCmd &&
+          !task.cancelled &&
+          !task.timedOut &&
+          !error &&
+          !jsonError &&
+          code === 0 &&
+          !responseText.trim();
+
+        if (isEmptyPiResponse && !emptyRetryAttempted) {
+          const repaired = await repairPiSession(executionCwd, scopedPiSessionId).catch(() => ({ repaired: 0 }));
+          if (repaired.repaired > 0) {
+            console.warn(
+              `[Dispatcher] Pi membalas kosong. Membersihkan ${repaired.repaired} entri sesi lalu mengulang permintaan...`
+            );
+            return executeCli({
+              promptOverride: "Lanjutkan dan jawab permintaan terakhir pengguna secara lengkap.",
+              continuationCount,
+              freshRetryAttempted,
+              accumulatedText,
+              emptyRetryAttempted: true,
+            });
+          }
         }
 
         const result = {
@@ -1096,30 +1130,57 @@ export async function runAgentAutonomous({
 
   const binToRun = PI_BIN;
   const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
-  const cliArgs = ["--session-id", actualConvId, "--mode", "json", "-p", prompt, "--approve"];
-  if (piModel) {
-    const isGroqModel =
-      piModel === "openai/gpt-oss-120b" ||
-      piModel === "llama-3.1-8b-instant" ||
-      piModel.startsWith("groq/");
+  const buildPiArgs = (promptText) => {
+    const args = ["--session-id", actualConvId, "--mode", "json", "-p", promptText, "--approve"];
+    if (piModel) {
+      const isGroqModel =
+        piModel === "openai/gpt-oss-120b" ||
+        piModel === "llama-3.1-8b-instant" ||
+        piModel.startsWith("groq/");
 
-    if (isGroqModel) {
-      cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
-    } else {
-      cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
+      if (isGroqModel) {
+        args.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
+      } else {
+        args.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
+      }
     }
-  }
+    return args;
+  };
 
-  const piParser = createPiEventParser();
-  const res = await runProcess({
+  await repairPiSession(safeCwd, actualConvId).catch(() => {});
+
+  let piParser = createPiEventParser();
+  let res = await runProcess({
     command: binToRun,
-    args: cliArgs,
+    args: buildPiArgs(prompt),
     cwd: safeCwd,
     timeoutMs,
     env: sanitizedEnv,
     onSpawn,
     onStdout: (chunk) => piParser.push(chunk),
   });
+
+  const isEmptyPiOutput = () =>
+    res.code === 0 && !res.timedOut && !res.cancelled && !piParser.getText() && !piParser.getError();
+
+  if (isEmptyPiOutput()) {
+    const repaired = await repairPiSession(safeCwd, actualConvId).catch(() => ({ repaired: 0 }));
+    if (repaired.repaired > 0) {
+      console.warn(
+        `[Dispatcher] Subagent Pi membalas kosong. Membersihkan ${repaired.repaired} entri sesi lalu mengulang permintaan...`
+      );
+      piParser = createPiEventParser();
+      res = await runProcess({
+        command: binToRun,
+        args: buildPiArgs("Lanjutkan dan jawab permintaan terakhir pengguna secara lengkap."),
+        cwd: safeCwd,
+        timeoutMs,
+        env: sanitizedEnv,
+        onSpawn,
+        onStdout: (chunk) => piParser.push(chunk),
+      });
+    }
+  }
 
   if (piParser) {
     const text = piParser.getText();
