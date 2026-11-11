@@ -488,6 +488,8 @@ ${userMessage}
       continuationCount = 0,
       freshRetryAttempted = false,
       emptyRetryAttempted = false,
+      fallbackAttempted = false,
+      modelOverride = null,
       accumulatedText = "",
     } = {}) => {
       const effectivePrompt = promptOverride || prompt;
@@ -525,7 +527,7 @@ ${userMessage}
             console.warn("[Dispatcher] Gagal auto-install Pi CLI:", autoErr.message);
           }
         }
-        const piModel = userModel || await getUserPiModel(userId);
+        const piModel = modelOverride || userModel || await getUserPiModel(userId);
         cliArgs = [
           "--session-id",
           scopedPiSessionId,
@@ -566,9 +568,11 @@ ${userMessage}
       }
 
       if (!useCmd) {
-        const repaired = await repairPiSession(executionCwd, scopedPiSessionId).catch(() => ({ repaired: 0 }));
-        if (repaired.repaired > 0) {
-          console.warn(`[Dispatcher] Membersihkan ${repaired.repaired} balasan kosong dari sesi Pi sebelum eksekusi.`);
+        const repaired = await repairPiSession(executionCwd, scopedPiSessionId).catch(() => ({ repaired: 0, truncated: 0 }));
+        if (repaired.repaired > 0 || repaired.truncated > 0) {
+          console.warn(
+            `[Dispatcher] Membersihkan sesi Pi sebelum eksekusi (kosong: ${repaired.repaired}, giliran gagal: ${repaired.truncated}).`
+          );
         }
       }
 
@@ -713,19 +717,42 @@ ${userMessage}
           code === 0 &&
           !responseText.trim();
 
-        if (isEmptyPiResponse && !emptyRetryAttempted) {
-          const repaired = await repairPiSession(executionCwd, scopedPiSessionId).catch(() => ({ repaired: 0 }));
-          if (repaired.repaired > 0) {
-            console.warn(
-              `[Dispatcher] Pi membalas kosong. Membersihkan ${repaired.repaired} entri sesi lalu mengulang permintaan...`
-            );
-            return executeCli({
-              promptOverride: "Lanjutkan dan jawab permintaan terakhir pengguna secara lengkap.",
-              continuationCount,
-              freshRetryAttempted,
-              accumulatedText,
-              emptyRetryAttempted: true,
-            });
+        if (isEmptyPiResponse) {
+          if (!emptyRetryAttempted) {
+            const repaired = await repairPiSession(executionCwd, scopedPiSessionId).catch(() => ({ repaired: 0, truncated: 0 }));
+            if (repaired.repaired > 0 || repaired.truncated > 0) {
+              console.warn(
+                `[Dispatcher] Pi membalas kosong. Membersihkan sesi (kosong: ${repaired.repaired}, giliran gagal: ${repaired.truncated}) lalu mengulang permintaan...`
+              );
+              return executeCli({
+                continuationCount,
+                freshRetryAttempted,
+                accumulatedText,
+                emptyRetryAttempted: true,
+              });
+            }
+          }
+
+          if (!fallbackAttempted) {
+            const activeModel = modelOverride || userModel || process.env.PI_MODEL || DEFAULT_PI_MODEL;
+            const isGroqModel =
+              activeModel.startsWith("groq/") ||
+              activeModel === "openai/gpt-oss-120b" ||
+              activeModel === "llama-3.1-8b-instant";
+            const fallbackModel = process.env.PI_FALLBACK_MODEL || "gemini-3.8-flash-tiered";
+            if (!isGroqModel && fallbackModel && fallbackModel !== activeModel) {
+              console.warn(
+                `[Dispatcher] Model ${activeModel} terus membalas kosong. Beralih ke fallback ${fallbackModel}...`
+              );
+              return executeCli({
+                continuationCount,
+                freshRetryAttempted,
+                accumulatedText,
+                emptyRetryAttempted: true,
+                fallbackAttempted: true,
+                modelOverride: fallbackModel,
+              });
+            }
           }
         }
 
@@ -1130,18 +1157,18 @@ export async function runAgentAutonomous({
 
   const binToRun = PI_BIN;
   const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
-  const buildPiArgs = (promptText) => {
+  const buildPiArgs = (promptText, modelId = piModel) => {
     const args = ["--session-id", actualConvId, "--mode", "json", "-p", promptText, "--approve"];
-    if (piModel) {
+    if (modelId) {
       const isGroqModel =
-        piModel === "openai/gpt-oss-120b" ||
-        piModel === "llama-3.1-8b-instant" ||
-        piModel.startsWith("groq/");
+        modelId === "openai/gpt-oss-120b" ||
+        modelId === "llama-3.1-8b-instant" ||
+        modelId.startsWith("groq/");
 
       if (isGroqModel) {
-        args.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
+        args.unshift("--provider", "groq", "--model", modelId.replace(/^groq\//, ""));
       } else {
-        args.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
+        args.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", modelId);
       }
     }
     return args;
@@ -1164,15 +1191,32 @@ export async function runAgentAutonomous({
     res.code === 0 && !res.timedOut && !res.cancelled && !piParser.getText() && !piParser.getError();
 
   if (isEmptyPiOutput()) {
-    const repaired = await repairPiSession(safeCwd, actualConvId).catch(() => ({ repaired: 0 }));
-    if (repaired.repaired > 0) {
+    const repaired = await repairPiSession(safeCwd, actualConvId).catch(() => ({ repaired: 0, truncated: 0 }));
+    if (repaired.repaired > 0 || repaired.truncated > 0) {
       console.warn(
-        `[Dispatcher] Subagent Pi membalas kosong. Membersihkan ${repaired.repaired} entri sesi lalu mengulang permintaan...`
+        `[Dispatcher] Subagent Pi membalas kosong. Membersihkan sesi (kosong: ${repaired.repaired}, giliran gagal: ${repaired.truncated}) lalu mengulang permintaan...`
       );
       piParser = createPiEventParser();
       res = await runProcess({
         command: binToRun,
-        args: buildPiArgs("Lanjutkan dan jawab permintaan terakhir pengguna secara lengkap."),
+        args: buildPiArgs(prompt),
+        cwd: safeCwd,
+        timeoutMs,
+        env: sanitizedEnv,
+        onSpawn,
+        onStdout: (chunk) => piParser.push(chunk),
+      });
+    }
+  }
+
+  if (isEmptyPiOutput() && piModel && !piModel.startsWith("groq/")) {
+    const fallbackModel = process.env.PI_FALLBACK_MODEL || "gemini-3.8-flash-tiered";
+    if (fallbackModel && fallbackModel !== piModel) {
+      console.warn(`[Dispatcher] Subagent Pi terus membalas kosong. Beralih ke fallback ${fallbackModel}...`);
+      piParser = createPiEventParser();
+      res = await runProcess({
+        command: binToRun,
+        args: buildPiArgs(prompt, fallbackModel),
         cwd: safeCwd,
         timeoutMs,
         env: sanitizedEnv,

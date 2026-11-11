@@ -69,31 +69,37 @@ function isEmptyAssistantEntry(entry) {
   return !hasText && !hasToolCall;
 }
 
+function hasTextContent(content) {
+  if (typeof content === "string") return Boolean(content.trim());
+  if (!Array.isArray(content)) return false;
+  return content.some((part) => part?.type === "text" && String(part?.text || "").trim());
+}
+
 /**
- * Membersihkan balasan assistant kosong dari file sesi Pi.
- * Balasan kosong yang tersimpan membuat model mengembalikan jawaban kosong
- * terus-menerus pada giliran berikutnya, sehingga rantai parentId perlu disambung ulang.
+ * Membersihkan sesi Pi dari dua kondisi yang membuat model terus membalas kosong:
+ * 1. Entri assistant dengan content kosong (rantai parentId disambung ulang).
+ * 2. Giliran user yang tidak pernah mendapat jawaban setelah balasan terakhir.
  */
 export async function repairPiSession(cwd, sessionId) {
-  if (!cwd || !sessionId) return { repaired: 0, file: null };
+  if (!cwd || !sessionId) return { repaired: 0, truncated: 0, file: null };
 
   const sessionDir = getPiSessionDir(cwd);
   let files = [];
   try {
     files = await readdir(sessionDir);
   } catch {
-    return { repaired: 0, file: null };
+    return { repaired: 0, truncated: 0, file: null };
   }
 
   const fileName = files.find((name) => name.endsWith(`_${sessionId}.jsonl`));
-  if (!fileName) return { repaired: 0, file: null };
+  if (!fileName) return { repaired: 0, truncated: 0, file: null };
 
   const file = path.join(sessionDir, fileName);
   let raw = "";
   try {
     raw = await readFile(file, "utf8");
   } catch {
-    return { repaired: 0, file: null };
+    return { repaired: 0, truncated: 0, file: null };
   }
 
   const lines = raw.split("\n");
@@ -112,7 +118,6 @@ export async function repairPiSession(cwd, sessionId) {
       removed.set(entry.id, entry.parentId ?? null);
     }
   }
-  if (removed.size === 0) return { repaired: 0, file };
 
   const resolveParent = (parentId) => {
     let current = parentId;
@@ -124,30 +129,65 @@ export async function repairPiSession(cwd, sessionId) {
     return current ?? null;
   };
 
-  const output = [];
-  for (const { line, entry } of entries) {
+  const kept = [];
+  for (const item of entries) {
+    const { entry } = item;
     if (entry) {
       if (removed.has(entry.id)) continue;
       if (Object.prototype.hasOwnProperty.call(entry, "parentId")) {
         const nextParent = resolveParent(entry.parentId);
         if (nextParent !== entry.parentId) entry.parentId = nextParent;
       }
-      output.push(JSON.stringify(entry));
-    } else {
-      output.push(line);
+    }
+    kept.push(item);
+  }
+
+  let lastAnswerIndex = -1;
+  for (let i = kept.length - 1; i >= 0; i--) {
+    const entry = kept[i].entry;
+    if (
+      entry &&
+      entry.type === "message" &&
+      entry.message?.role === "assistant" &&
+      hasTextContent(entry.message.content)
+    ) {
+      lastAnswerIndex = i;
+      break;
     }
   }
 
+  let truncated = 0;
+  if (lastAnswerIndex !== -1) {
+    const tail = kept.slice(lastAnswerIndex + 1);
+    const hasUserTurn = tail.some(
+      ({ entry }) => entry && entry.type === "message" && entry.message?.role === "user"
+    );
+    const hasToolResult = tail.some(
+      ({ entry }) => entry && entry.type === "message" && entry.message?.role === "toolResult"
+    );
+    if (hasUserTurn && !hasToolResult) {
+      truncated = tail.filter(({ entry }) => entry).length;
+      kept.length = lastAnswerIndex + 1;
+    }
+  }
+
+  if (removed.size === 0 && truncated === 0) {
+    return { repaired: 0, truncated: 0, file };
+  }
+
+  const output = kept.map(({ line, entry }) => (entry ? JSON.stringify(entry) : line));
+  const content = `${output.join("\n").replace(/\n+$/, "")}\n`;
+
   try {
     const tempFile = `${file}.tmp-${process.pid}`;
-    await writeFile(tempFile, output.join("\n"), "utf8");
+    await writeFile(tempFile, content, "utf8");
     await rename(tempFile, file);
   } catch (err) {
     console.warn("[PiService] Gagal memperbaiki sesi Pi:", err.message);
-    return { repaired: 0, file };
+    return { repaired: 0, truncated: 0, file };
   }
 
-  return { repaired: removed.size, file };
+  return { repaired: removed.size, truncated, file };
 }
 
 /**
