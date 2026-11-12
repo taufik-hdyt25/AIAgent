@@ -15,7 +15,8 @@ const DEPLOY_CONFIG_FILE = path.join(DATA_DIR, "deploy-config.json");
 
 // Default command deploy
 const DEFAULT_DEPLOY_COMMAND =
-  process.env.DEPLOY_COMMAND || "git pull && npm install && pm2 reload all || pm2 reload ecosystem.config.cjs || echo 'Deploy selesai'";
+  process.env.DEPLOY_COMMAND ||
+  "git pull && npm install && (launchctl kickstart -k gui/$(id -u)/com.taufik.th-agent 2>/dev/null || systemctl --user restart th-agent 2>/dev/null) || echo 'Deploy selesai'";
 
 export async function getDeployConfig() {
   try {

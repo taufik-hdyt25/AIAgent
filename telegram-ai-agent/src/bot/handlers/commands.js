@@ -997,7 +997,7 @@ export function registerBasicCommands(bot) {
         `Perintah saat ini:\n\`${config.defaultCommand}\`\n\n` +
         `Untuk mengubahnya, ketik:\n\`/setdeploy <perintah_shell>\`\n\n` +
         `*Contoh:*\n` +
-        `• \`/setdeploy git pull && npm install && pm2 reload all\`\n` +
+        `• \`/setdeploy git pull && npm install && launchctl kickstart -k gui/$(id -u)/com.taufik.th-agent\`\n` +
         `• \`/setdeploy docker compose pull && docker compose up -d\`\n` +
         `• \`/setdeploy ./deploy.sh\``,
         { parse_mode: "Markdown" }

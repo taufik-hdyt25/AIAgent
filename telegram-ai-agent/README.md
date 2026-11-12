@@ -75,7 +75,7 @@ Atau jika sudah melakukan git clone:
 2. Memeriksa & memasang runtime **Node.js**, **Pi Coding Agent CLI (`pi`)**, dan binary runner.
 3. Menyiapkan folder kerja, file `.env`, dan model AI default.
 4. **Auto-Start & Background Service:** Mengonfigurasi bot agar langsung berjalan di latar belakang dan otomatis aktif kembali saat komputer/VPS menyala (*auto-start on boot*).
-5. Di Linux VPS & Raspberry Pi: Memberikan opsi instalasi **Native PM2** (sangat ringan ~60MB RAM) atau **Docker Container**.
+5. Di Linux VPS & Raspberry Pi: Memberikan opsi instalasi **systemd service** (sangat ringan ~60MB RAM) atau **Docker Container**.
 6. Mengaktifkan **Web UI Control Panel** di `http://localhost:3030` (atau IP server Anda).
 
 ### Autentikasi / Login CLI:
@@ -163,15 +163,18 @@ Saat dijalankan, Web UI Control Panel otomatis dapat diakses di browser: `http:/
 npm run ui
 ```
 
-#### Mode Produksi dengan PM2:
-```bash
-# Install PM2 jika belum terpasang
-npm install -g pm2
+#### Mode Produksi (Service Manager):
+macOS memakai **launchd** (`com.taufik.th-agent`), Linux VPS memakai **systemd** (`th-agent`). Keduanya dikonfigurasi otomatis oleh `install.sh`.
 
-# Jalankan via ecosystem
-pm2 start ecosystem.config.cjs
-pm2 save
-pm2 logs telegram-coding-agent
+```bash
+# macOS
+launchctl load ~/Library/LaunchAgents/com.taufik.th-agent.plist
+launchctl kickstart -k gui/$(id -u)/com.taufik.th-agent   # restart
+tail -f ~/.th-agent/logs/bot.log
+
+# Linux
+systemctl --user restart th-agent
+journalctl --user -u th-agent -f
 ```
 
 ---
@@ -241,7 +244,7 @@ TH Agent kini mendukung otomasi penuh end-to-end tanpa perlu membuka terminal at
 4. **Review & Merge:** Anda menerima tautan Draft PR langsung di Telegram. Tinggal klik tautan untuk memeriksa diff kode di GitHub dan klik tombol **Merge Pull Request**.
 5. **Deploy ke Server via Chat Telegram:**
    - Cukup ketik `/deploy` di chat Telegram atau klik tombol inline `🚀 Deploy ke Server`.
-   - Bot akan menjalankan perintah deployment yang telah dikonfigurasi (misal: `git pull && npm install && pm2 reload all` atau `docker compose up -d`), lalu mengirimkan laporan status dan durasi deploy ke Telegram.
+   - Bot akan menjalankan perintah deployment yang telah dikonfigurasi (misal: `git pull && npm install && launchctl kickstart -k gui/$(id -u)/com.taufik.th-agent` atau `docker compose up -d`), lalu mengirimkan laporan status dan durasi deploy ke Telegram.
 
 ### Perintah Terkait Otomasi:
 - `/watched` - Cek status repositori dan fitur otomasi aktif

@@ -186,7 +186,7 @@ export function createWebServer() {
             PI_SERVER_URL: parsed.PI_SERVER_URL || process.env.PI_SERVER_URL || "",
             PI_SERVER_API_KEY: parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY || "",
             GITHUB_TOKEN: parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN || "",
-            DEPLOY_COMMAND: parsed.DEPLOY_COMMAND || process.env.DEPLOY_COMMAND || "git pull && npm install && pm2 reload all || pm2 reload ecosystem.config.cjs",
+            DEPLOY_COMMAND: parsed.DEPLOY_COMMAND || process.env.DEPLOY_COMMAND || "git pull && npm install && (launchctl kickstart -k gui/$(id -u)/com.taufik.th-agent 2>/dev/null || systemctl --user restart th-agent 2>/dev/null)",
             GROQ_API_KEY: parsed.GROQ_API_KEY || process.env.GROQ_API_KEY || voiceConfig.groqApiKey || "",
             OPENAI_API_KEY: parsed.OPENAI_API_KEY || process.env.OPENAI_API_KEY || voiceConfig.openaiApiKey || "",
           },
