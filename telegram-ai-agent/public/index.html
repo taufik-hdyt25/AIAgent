@@ -196,8 +196,8 @@
               </svg>
             </div>
             <div>
-              <h2 class="card-title">Engine & Model AI</h2>
-              <p class="card-description">Pilih CLI engine utama dan model AI default saat bot merespons instruksi koding.</p>
+              <h2 class="card-title">1. Engine &amp; Model AI</h2>
+              <p class="card-description">Alur: pilih engine → aktifkan profil provider → ambil dan pilih model. Simpan pilihan model melalui tombol Simpan Pengaturan.</p>
             </div>
           </div>
 
@@ -242,11 +242,12 @@
 
             <!-- Model Default untuk Pi CLI -->
             <div class="form-group" id="groupPiModel">
+              <p class="form-help" style="margin-bottom: 10px;">Provider Pi aktif: <strong id="piActiveProviderSummary">memuat...</strong>. <a href="#piProviderSection">Kelola provider</a> · <a href="#cpaSection">Login akun CLIProxy</a></p>
               <!-- Link Server Pi & Get Model Box -->
               <div style="background: rgba(16, 185, 129, 0.07); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
                 <div class="label-row" style="margin-bottom: 6px;">
                   <label for="piServerUrl" class="form-label" style="color: #34d399; font-weight: 600; font-size: 0.82rem; margin-bottom: 0;">
-                    🔗 LINK / URL SERVER PI
+                    🔗 URL ENDPOINT PROVIDER AKTIF
                   </label>
                   <span class="label-hint" style="color: #10b981;">Endpoint Pi / LiteLLM / Ollama</span>
                 </div>
@@ -268,7 +269,7 @@
                 </div>
                 <div style="margin-top: 6px;">
                   <span style="font-size: 0.74rem; color: #94a3b8;">
-                    💡 Masukkan link dari Pi lalu klik <strong>Get Model</strong> untuk mengambil daftar model aktif.
+                    <strong>Get Model</strong> langsung menyinkronkan URL dan daftar model ke provider Pi aktif, serta dapat mengganti model default. Pastikan URL dan API key benar.
                   </span>
                 </div>
               </div>
@@ -293,7 +294,7 @@
                 </button>
               </div>
               <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.75rem;">
-                Hanya model di daftar ini yang akan muncul di dropdown Web &amp; Telegram (<code style="color: #38bdf8;">/model</code>). Hapus model yang tidak diinginkan atau tambahkan model baru.
+                Daftar ini mengatur pilihan di dropdown Web &amp; Telegram (<code style="color: #38bdf8;">/model</code>); bukan pembatas keamanan. Get Model dapat mengganti daftar ini.
               </p>
               
               <!-- Chips Container -->
@@ -313,7 +314,7 @@
         </div>
 
         <!-- SECTION: Provider Pi (multi-provider models.json) -->
-        <div class="card" data-section="ai">
+        <div class="card" data-section="ai" id="piProviderSection">
           <div class="card-header">
             <div class="card-icon purple">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -321,18 +322,20 @@
               </svg>
             </div>
             <div>
-              <h2 class="card-title">Provider Pi (models.json)</h2>
-              <p class="card-description">Kelola provider OpenAI-compatible untuk Pi CLI (~/.pi/agent/models.json). Bisa lebih dari satu provider.</p>
+              <h2 class="card-title">2. Profil Provider Pi</h2>
+              <p class="card-description">Provider adalah profil koneksi, bukan model. Hanya satu profil aktif untuk engine Pi; memilihnya berlaku langsung dan dapat mengganti model default.</p>
             </div>
           </div>
           <div class="card-body">
+            <p class="form-help" style="margin-bottom: 12px;"><strong>cliproxy</strong> biasanya mengarah ke CLIProxyAPI; <strong>local-pi</strong> adalah nama profil umum, tidak selalu server lokal. Periksa URL masing-masing. Akun Antigravity/Codex dikelola di bagian CLIProxy.</p>
             <div class="label-row" style="margin-bottom: 0.5rem;">
-              <label class="form-label">PROVIDER TERDAFTAR</label>
+              <label class="form-label">PROFIL TERDAFTAR</label>
               <span class="label-hint" id="piProviderDefaultBadge">Default: local-pi</span>
             </div>
             <div id="piProvidersList" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 1.25rem;"></div>
 
-            <div style="padding: 1rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+            <details id="piProviderEditor" style="padding: 1rem; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+              <summary style="cursor:pointer; color:#60a5fa; font-weight:600; margin-bottom: 0.5rem;">Pengaturan lanjutan: tambah / edit profil</summary>
               <div class="label-row" style="margin-bottom: 0.5rem;">
                 <label class="form-label" style="font-weight: 600; color: #60a5fa;">TAMBAH / EDIT PROVIDER</label>
               </div>
@@ -367,12 +370,12 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
                   ➕ Form Baru
                 </button>
               </div>
-            </div>
+            </details>
           </div>
         </div>
 
         <!-- SECTION: CLIProxyAPI OAuth (Antigravity / Claude / Codex) -->
-        <div class="card" data-section="ai">
+        <div class="card" data-section="ai" id="cpaSection">
           <div class="card-header">
             <div class="card-icon amber">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -381,8 +384,8 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
               </svg>
             </div>
             <div>
-              <h2 class="card-title">CLIProxyAPI Login (Antigravity / OAuth)</h2>
-              <p class="card-description">Login akun subscription lewat CLIProxyAPI tanpa SSH tunnel. Cocok saat Web UI dibuka dari IP publik.</p>
+              <h2 class="card-title">3. Akun CLIProxyAPI</h2>
+              <p class="card-description">Login Antigravity atau Codex di gateway. Ini akun di balik CLIProxy, bukan profil provider Pi. Aktifkan profil yang mengarah ke CLIProxy lalu ambil model.</p>
             </div>
           </div>
           <div class="card-body">
@@ -440,8 +443,8 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
               </svg>
             </div>
             <div>
-              <h2 class="card-title">Konfigurasi Server Pi (CLIProxyAPI / OpenAI-compatible)</h2>
-              <p class="card-description">Arahkan Pi CLI ke endpoint OpenAI-compatible seperti CLIProxyAPI, LiteLLM, atau Ollama.</p>
+              <h2 class="card-title">4. API Key Endpoint Pi</h2>
+              <p class="card-description">Key untuk mengakses endpoint model aktif; berbeda dari login akun Antigravity/Codex di CLIProxy.</p>
             </div>
           </div>
 

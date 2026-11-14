@@ -698,18 +698,23 @@ function fillPiProviderForm(provider) {
   if (piProviderName) piProviderName.value = provider.name || "";
   if (piProviderBaseUrl) piProviderBaseUrl.value = provider.baseUrl || "";
   if (piProviderApi) piProviderApi.value = provider.api || "openai-completions";
-  if (piProviderApiKey) piProviderApi.value = "";
+  if (piProviderApiKey) piProviderApiKey.value = "";
   if (piProviderModels) {
     piProviderModels.value = (provider.models || [])
       .map((m) => (m.name && m.name !== m.id ? `${m.id} | ${m.name}` : m.id))
       .join("\n");
   }
+  const editor = document.getElementById("piProviderEditor");
+  if (editor) editor.open = true;
   piProviderId && piProviderId.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function renderPiProviders() {
   if (!piProvidersList) return;
   piProvidersList.innerHTML = "";
+  const active = piProvidersCache.find((p) => p.isDefault);
+  const summary = document.getElementById("piActiveProviderSummary");
+  if (summary) summary.textContent = active ? `${active.id} (${active.baseUrl || "URL belum diatur"})` : "belum ditemukan";
 
   if (!piProvidersCache.length) {
     piProvidersList.innerHTML = `<span style="font-size: 0.8rem; color: #64748b; font-style: italic;">Belum ada provider di ~/.pi/agent/models.json.</span>`;
@@ -724,7 +729,7 @@ function renderPiProviders() {
     info.style.cssText = "min-width:0;";
     info.innerHTML = `
       <div style="font-family:monospace; font-size:0.85rem; color:#93c5fd;">
-        ${escapeHtml(p.id)} ${p.isDefault ? '<span style="font-size:0.65rem; background:#059669; color:#fff; padding:1px 6px; border-radius:4px; margin-left:4px;">DEFAULT</span>' : ""}
+        ${escapeHtml(p.id)} ${p.isDefault ? '<span style="font-size:0.65rem; background:#059669; color:#fff; padding:1px 6px; border-radius:4px; margin-left:4px;">AKTIF</span>' : '<span style="font-size:0.65rem; color:#94a3b8; margin-left:4px;">TIDAK AKTIF</span>'}
       </div>
       <div style="font-size:0.72rem; color:#94a3b8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
         ${escapeHtml(p.name || p.id)} · ${escapeHtml(p.baseUrl)} · ${(p.models || []).length} model · key: ${p.hasApiKey ? escapeHtml(p.apiKeyMasked || "set") : "none"}
@@ -744,7 +749,7 @@ function renderPiProviders() {
     if (!p.isDefault) {
       const defBtn = document.createElement("button");
       defBtn.type = "button";
-      defBtn.textContent = "Jadikan Default";
+      defBtn.textContent = "Aktifkan";
       defBtn.style.cssText = "font-size:0.72rem; padding:4px 8px; background:#059669; color:#fff; border:none; border-radius:4px; cursor:pointer;";
       defBtn.addEventListener("click", () => setDefaultPiProvider(p.id));
       actions.appendChild(defBtn);
@@ -837,6 +842,7 @@ async function savePiProviderFromUi() {
 }
 
 async function setDefaultPiProvider(id) {
+  if (!confirm(`Aktifkan profil '${id}'? Endpoint dan model default dapat berubah langsung, termasuk pilihan model per pengguna.`)) return;
   try {
     const res = await fetch("/api/pi-providers", {
       method: "POST",
@@ -851,6 +857,8 @@ async function setDefaultPiProvider(id) {
     }
     renderPiProviders();
     if (Array.isArray(data.piModels)) applyPiModelOptions(data.piModels, data.piModel);
+    const activeProvider = piProvidersCache.find((p) => p.id === id);
+    if (piServerUrlInput && activeProvider?.baseUrl) piServerUrlInput.value = activeProvider.baseUrl;
     showToast(data.message || "Provider default diubah.", "success");
   } catch (err) {
     showToast(`Gagal: ${err.message}`, "error");
