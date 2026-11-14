@@ -41,7 +41,7 @@ import {
   resumeQueue,
   processNextQueue,
 } from "../../services/queue-service.js";
-import { formatBytes, truncate } from "../../services/telegram-files.js";
+import { formatBytes, truncate, buildReplyOptions } from "../../services/telegram-files.js";
 import { sendToAgent } from "../dispatcher.js";
 import { InlineKeyboard } from "grammy";
 import {
@@ -2056,8 +2056,7 @@ export function registerBasicCommands(bot) {
       await setTopicBinding(chatId, threadId, "root", { title: "Root Workspace" });
       await ctx.reply(
         `🌐 *Topic ID \`${threadId}\` Terkunci ke ROOT!*\n\n` +
-        `• Scope: Akses penuh ke seluruh folder \`./projects/\`\n` +
-        `• Fungsi: Cocok untuk membuat project baru (\`mkdir\`), docker, dan devops server.`,
+        `• Topic ditandai sebagai umum. Pembatasan scope global tetap berlaku.`,
         buildReplyOptions(ctx, { parse_mode: "Markdown" })
       );
       return;
@@ -2067,8 +2066,7 @@ export function registerBasicCommands(bot) {
     const targetProjectName = (subCmd === "link" || subCmd === "set") ? target : subCmd;
     const cleanTarget = targetProjectName.replace(/^projects\//, "").replace(/^\.\//, "").trim();
 
-    const matchedProject = availableProjects.find((p) => p.toLowerCase() === cleanTarget) ||
-      availableProjects.find((p) => p.toLowerCase().includes(cleanTarget));
+    const matchedProject = cleanTarget && availableProjects.find((p) => p.toLowerCase() === cleanTarget);
 
     if (!matchedProject) {
       await ctx.reply(
@@ -2085,7 +2083,7 @@ export function registerBasicCommands(bot) {
       `🔒 *Kantor AI: Topic ID \`${threadId}\` Resmi Terhubung!*\n\n` +
       `📁 Proyek: \`${matchedProject}\`\n` +
       `🎯 Direktori Kerja: \`projects/${matchedProject}\`\n\n` +
-      `Seluruh percakapan dan eksekusi Pi di topic ini 100% terisolasi ke project tersebut.`,
+      `Topic ini memilih proyek dan sesi sendiri. Ini bukan sandbox keamanan; scope global tetap berlaku.`,
       buildReplyOptions(ctx, { parse_mode: "Markdown" })
     );
   });

@@ -36,6 +36,10 @@ export async function saveTopicMappings(mappings) {
   return topicCache;
 }
 
+export function buildTopicConversationId(baseId, chatId, threadId) {
+  return chatId && threadId ? `${baseId}-chat-${chatId}-thread-${threadId}` : baseId;
+}
+
 export function buildTopicKey(chatId, threadId) {
   if (!chatId || !threadId) return null;
   return `${chatId}:${threadId}`;

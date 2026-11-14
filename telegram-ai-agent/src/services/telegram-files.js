@@ -118,8 +118,9 @@ export async function sendSmartReply(ctx, text) {
   const parts = smartSummaryOrSplit(text, 3800);
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
-    const mdOpts = i === 0 ? buildReplyOptions(ctx, { parse_mode: "Markdown" }) : { parse_mode: "Markdown" };
-    const plainOpts = i === 0 ? buildReplyOptions(ctx) : undefined;
+    const threadOptions = ctx?.message?.message_thread_id ? { message_thread_id: ctx.message.message_thread_id } : {};
+    const mdOpts = i === 0 ? buildReplyOptions(ctx, { parse_mode: "Markdown" }) : { ...threadOptions, parse_mode: "Markdown" };
+    const plainOpts = i === 0 ? buildReplyOptions(ctx) : threadOptions;
     try {
       await ctx.reply(part, mdOpts);
     } catch {

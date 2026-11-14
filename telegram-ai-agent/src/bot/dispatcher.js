@@ -31,7 +31,7 @@ import {
   setCmdSessionId,
   clearCmdSessionId,
 } from "../services/context-store.js";
-import { getTopicBinding } from "../services/topic-service.js";
+import { getTopicBinding, buildTopicConversationId } from "../services/topic-service.js";
 import {
   getActiveTask,
   setActiveTask,
@@ -202,7 +202,7 @@ export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, i
   try {
     const threadId = ctx.message?.message_thread_id || null;
     const baseConvId = await getUserConversationId(userId);
-    const convId = threadId ? `${baseConvId}-thread-${threadId}` : baseConvId;
+    const convId = buildTopicConversationId(baseConvId, ctx.chat?.id, threadId);
 
     let fileInfoPrompt = "";
     if (fileInfo) {
@@ -312,19 +312,31 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     let userActiveProject = await getUserActiveProject(userId);
     let activeProjectScope = null;
 
-    // JIKA CHAT BERASAL DARI TELEGRAM FORUM TOPIC YANG TERHUBUNG:
-    if (topicBinding) {
-      if (topicBinding.role === "root" || topicBinding.project === "root") {
-        isProjectJail = false;
-        isAutoRole = false;
-        activeProjectScope = null;
-        userActiveProject = null;
-      } else if (topicBinding.project) {
-        isProjectJail = true;
-        isAutoRole = false;
-        userActiveProject = topicBinding.project;
-        activeProjectScope = topicBinding.project;
+    // Topic memilih proyek, tetapi tidak boleh memperluas scope konfigurasi global.
+    if (topicBinding && topicBinding.role !== "root") {
+      if (!availableProjectsList.includes(topicBinding.project)) {
+        throw new Error("Proyek topic tidak ditemukan. Hubungkan ulang dengan /topic link.");
       }
+      if (sandboxCfg.role === "project" && sandboxCfg.activeProject && sandboxCfg.activeProject !== topicBinding.project) {
+        throw new Error("Proyek topic tidak sesuai dengan workspace global yang terkunci.");
+      }
+      if (sandboxCfg.role === "custom" || sandboxCfg.piSandbox) {
+        const allowed = await getAllowedFolders(userModel, topicBinding.project);
+        if (!allowed.includes(`projects/${topicBinding.project}`)) {
+          throw new Error("Proyek topic tidak termasuk folder yang diizinkan oleh scope global.");
+        }
+      }
+      isProjectJail = true;
+      isAutoRole = false;
+      userActiveProject = topicBinding.project;
+      activeProjectScope = topicBinding.project;
+    } else if (topicBinding && topicBinding.role === "root") {
+      if (sandboxCfg.role !== "root" || sandboxCfg.piSandbox) {
+        throw new Error("Topic root tidak dapat memperluas scope global. Sesuaikan scope melalui pengaturan bot.");
+      }
+      isProjectJail = false;
+      isAutoRole = false;
+      userActiveProject = null;
     } else if (isProjectJail) {
       // Mode Project Jail ketat: tetap hormati deteksi proyek jika user menyebutnya, atau pakai project terkunci
       const fallbackProject = detection.project || userActiveProject || sandboxCfg.activeProject || availableProjectsList[0] || "th-blog";
@@ -353,7 +365,7 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       }
     }
 
-    const isCustomRole = sandboxCfg.role === "custom" || Boolean(sandboxCfg.piSandbox);
+    const isCustomRole = !isProjectJail && (sandboxCfg.role === "custom" || Boolean(sandboxCfg.piSandbox));
     const effectiveProjectTarget = isProjectJail ? userActiveProject : (isAutoRole ? activeProjectScope : null);
     const allowedList = await getAllowedFolders(userModel, effectiveProjectTarget || userActiveProject);
     const allowedDisplay = isProjectJail
@@ -370,6 +382,10 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
           ? path.resolve(PROJECTS_DIR, allowedList[0].replace(/^projects\//, ""))
           : (isAutoRole && fs.existsSync(PROJECTS_DIR) ? PROJECTS_DIR : process.cwd()));
 
+    // Never silently widen the scope when a bound project's directory disappears.
+    if (topicBinding?.role === "project" && !fs.existsSync(executionCwd)) {
+      throw new Error("Direktori proyek topic tidak tersedia; eksekusi dibatalkan.");
+    }
     // Pastikan direktori executionCwd valid dan ada di filesystem sebelum spawn untuk mencegah ENOENT
     try {
       if (!fs.existsSync(executionCwd)) {
