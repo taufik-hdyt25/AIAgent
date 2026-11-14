@@ -86,7 +86,9 @@ export function decomposeTasks(rawText) {
 }
 
 /**
- * Mengecek apakah input pengguna merupakan permintaan multi-task / swarm
+ * Mengecek apakah input pengguna secara EKSPLISIT meminta swarm / multi-agent.
+ * Daftar bernomor atau bullet pada instruksi biasa TIDAK dianggap swarm:
+ * satu agent utama sudah cukup memecah dan mengerjakan semuanya berurutan.
  */
 export function isMultiTaskRequest(rawText) {
   if (!rawText || typeof rawText !== "string") return false;
@@ -96,12 +98,7 @@ export function isMultiTaskRequest(rawText) {
     return true;
   }
 
-  if (/^(kerjakan secara paralel|jalankan bersamaan|bagi tugas ke sub-agent|multi task):/i.test(trimmed)) {
-    return true;
-  }
-
-  const tasks = decomposeTasks(rawText);
-  return Boolean(tasks && tasks.length >= 2);
+  return /^(kerjakan secara paralel|jalankan bersamaan|bagi tugas ke sub-agent|multi task)\s*:/i.test(trimmed);
 }
 
 /**

@@ -93,6 +93,10 @@ import {
   getCmdMaxTurns,
   getCmdMaxContinuations,
 } from "../services/engine-service.js";
+import {
+  getAutonomyConfig,
+  buildAutonomyDirective,
+} from "../services/autonomy-service.js";
 
 /**
  * Memproses tag otonom dari output AI (Hermes-like self-learning & persistent memory):
@@ -416,6 +420,9 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
 2. Jika ada proyek baru yang dibuat, di-clone, atau belum ada di ringkasan di atas, telusuri secara ringkas lalu WAJIB perbarui file './projects/PROJECTS_SUMMARY.md' agar sesi berikutnya langsung tahu tanpa perlu read dari awal lagi.`;
     } catch (_) {}
 
+    const autonomy = await getAutonomyConfig();
+    const autonomyDirective = buildAutonomyDirective(autonomy.mode);
+
     let prompt = "";
     if (isOngoingSession) {
       const scopeOngoingRule = isProjectJail
@@ -431,9 +438,11 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
 [Pesan dari Pengguna]:
 ${userMessage}
 ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}${queueStatusPrompt ? `\n${queueStatusPrompt}\n` : ""}${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}
+${autonomyDirective}
+
 [Panduan Eksekusi Lanjutan]:
 - Fokus HANYA pada maksud pesan pengguna di atas. Jangan mengulang, meng-commit, atau men-deploy pekerjaan lama dari sesi sebelumnya jika tidak diminta.
-- Lanjutkan tugas secara otonom & langsung eksekusi tanpa meminta konfirmasi (Zero-Confirmation) HANYA jika pesan pengguna memang meminta tindakan coding/eksekusi.
+- Jika pesan pengguna berisi instruksi/permintaan kerja: langsung kerjakan sampai tuntas tanpa bertanya balik.
 ${scopeOngoingRule}
 - Simpan fakta/preferensi baru jika ada: :::memory:add {"content": "...", "category": "preference|architecture|workflow|solution", "tags": [...]}:::
 - Simpan SOP/skill berulang jika baru dipelajari: :::skill:add {"id": "nama-skill", "name": "...", "description": "...", "triggers": [...], "instructions": "..."}:::
@@ -483,19 +492,11 @@ ${scopeEnvironmentNotice}
 - Folder './uploads' adalah tempat menyimpan file, dokumen, script, dan gambar yang diunggah pengguna via chat Telegram.
 - Kamu memiliki AKSES PENUH & LANGSUNG ke tools mandiri di server: menjalankan perintah terminal shell, membuat/mengedit/menghapus file, git, compile, install dependencies, dan memeriksa file.${projectsSummaryPrompt}
 
-PRINSIP UTAMA: AKSES PENUH & ZERO-CONFIRMATION (EKSEKUSI LANGSUNG TANPA TANYA):
+PRINSIP UTAMA: AKSES PENUH & EKSEKUSI LANGSUNG:
 1. KAMU MEMILIKI HAK AKSES DAN IZIN PENUH 100% di server ini. Developer sudah memberikan mandat penuh kepadamu untuk mengeksekusi apa pun yang diminta.
-2. DILARANG KERAS BERTANYA BALIK UNTUK MEMINTA IZIN ATAU KONFIRMASI:
-   - JANGAN PERNAH bertanya hal seperti: "Apakah ingin saya buatkan filenya sekarang?", "Boleh saya perbaiki kodenya?", "Apakah Anda yakin ingin menjalankan ini?", "Mau saya push ke GitHub?", "Konfirmasi dulu ya bro".
-   - Pertanyaan izin/konfirmasi semacam ini SANGAT MEMPERLAMA PROSES EKSEKUSI dan TIDAK DIINGINKAN oleh developer.
-3. PRINSIP "JUST DO IT" (EKSEKUSI NYATA SEKETIKA):
-   - Jika developer memberi instruksi, meminta membuat fitur, memperbaiki bug, menjalankan perintah terminal, mengedit file, atau mengeksekusi file/script dari Telegram: LANGSUNG LAKUKAN tindakan nyata tersebut saat itu juga menggunakan tools (terminal/file) yang kamu miliki!
-   - JANGAN HANYA MEMBERIKAN KODE SEBAGAI TEKS DI CHAT tanpa benar-benar menerapkannya di server. Buat file aslinya, edit kodenya, dan jalankan perintahnya di server secara langsung.
-4. OTONOM & PROAKTIF:
-   - Ambil keputusan teknis terbaik secara mandiri tanpa membebani developer dengan pertanyaan-pertanyaan kecil.
-   - Kerjakan seluruh alur kerja sampai tuntas: baca kode/file -> buat/edit file -> jalankan / test -> perbaiki sendiri jika ada error -> laporkan hasil akhirnya yang sudah jadi dan berhasil.
-5. HANYA BERTANYA JIKA ADA KEBUTUHAN KRUSIAL YANG BENAR-BENAR TIDAK DAPAT DITEMUKAN:
-   - Kamu HANYA boleh bertanya jika ada kredensial/secret pihak ketiga (seperti token API berbayar yang belum ada di server) yang mutlak dibutuhkan dan tidak bisa dibuat/disimulasikan sendiri.
+2. JANGAN HANYA MEMBERIKAN KODE SEBAGAI TEKS DI CHAT tanpa benar-benar menerapkannya di server. Buat file aslinya, edit kodenya, dan jalankan perintahnya di server secara langsung.
+3. Ambil keputusan teknis terbaik secara mandiri tanpa membebani developer dengan pertanyaan-pertanyaan kecil.
+${autonomyDirective}
 ${memorySkillInstructions}
 
 PANDUAN INTERAKSI:
@@ -1100,6 +1101,17 @@ export async function runAgentAutonomous({
 }) {
   const actualConvId = convId || `auto-${randomUUID().slice(0, 8)}`;
   const useCmd = isCommandCodeEngine(engineOverride || getEngine());
+
+  // Engine CLI tidak punya flag system prompt terpisah, jadi identitas sub-agent
+  // dan aturan otonomi disatukan ke dalam prompt yang dikirim.
+  const autonomy = await getAutonomyConfig();
+  prompt = [
+    systemPrompt ? systemPrompt.trim() : "",
+    buildAutonomyDirective(autonomy.mode),
+    prompt,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const sanitizedEnv = { ...process.env };
   delete sanitizedEnv.BOT_TOKEN;

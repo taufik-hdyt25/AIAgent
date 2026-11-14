@@ -34,6 +34,10 @@ const timeoutInput = document.getElementById("timeoutMs");
 const timeoutFormatted = document.getElementById("timeoutFormatted");
 const maxTimeoutInput = document.getElementById("maxTimeoutMs");
 const maxTimeoutFormatted = document.getElementById("maxTimeoutFormatted");
+const autonomyModeOrchestrator = document.getElementById("autonomyModeOrchestrator");
+const autonomyModeBalanced = document.getElementById("autonomyModeBalanced");
+const autonomyModeStrict = document.getElementById("autonomyModeStrict");
+const autonomyBadge = document.getElementById("autonomyBadge");
 
 const badgeEngine = document.getElementById("badgeEngine");
 const badgeModel = document.getElementById("badgeModel");
@@ -256,6 +260,19 @@ async function loadSettings() {
           badgePiServerKey.className = "badge";
           badgePiServerKey.innerHTML = "Belum Diisi";
         }
+      }
+    }
+
+    // Populate Autonomy Mode
+    if (data.autonomyConfig) {
+      const mode = data.autonomyConfig.mode || "orchestrator";
+      if (autonomyModeOrchestrator) autonomyModeOrchestrator.checked = mode === "orchestrator";
+      if (autonomyModeBalanced) autonomyModeBalanced.checked = mode === "balanced";
+      if (autonomyModeStrict) autonomyModeStrict.checked = mode === "strict";
+      if (autonomyBadge) {
+        autonomyBadge.textContent =
+          mode === "strict" ? "Ketat" : (mode === "balanced" ? "Seimbang" : "Orkestrator");
+        autonomyBadge.style.color = mode === "strict" ? "#f59e0b" : "#34d399";
       }
     }
 
@@ -1305,6 +1322,9 @@ form.addEventListener("submit", async (e) => {
     piSandbox: scopeRoleCustomRadio ? scopeRoleCustomRadio.checked : false,
     TASK_TIMEOUT_MS: timeoutInput.value.trim(),
     TASK_MAX_TIMEOUT_MS: maxTimeoutInput ? maxTimeoutInput.value.trim() : "14400000",
+    autonomyConfig: {
+      mode: autonomyModeStrict?.checked ? "strict" : (autonomyModeBalanced?.checked ? "balanced" : "orchestrator"),
+    },
     GITHUB_TOKEN: githubTokenInput ? githubTokenInput.value.trim() : "",
     DEPLOY_COMMAND: deployCommandInput ? deployCommandInput.value.trim() : "",
     GROQ_API_KEY: groqApiKeyInput ? groqApiKeyInput.value.trim() : "",

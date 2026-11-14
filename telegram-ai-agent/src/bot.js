@@ -197,6 +197,7 @@ if (
         { command: "queue", description: "Cek antrean instruksi AI" },
         { command: "clearqueue", description: "Kosongkan seluruh antrean tugas" },
         { command: "status", description: "Cek status tugas, antrean, engine & model aktif" },
+        { command: "mode", description: "Atur mode otonomi agent (orkestrator/seimbang/ketat)" },
         { command: "usage", description: "Cek statistik & jumlah token AI yang terpakai" },
         { command: "model", description: "Pilih model AI" },
         { command: "engine", description: "Pilih engine (Pi CLI / Command Code)" },

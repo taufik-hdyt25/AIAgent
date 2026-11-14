@@ -633,6 +633,40 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
           </div>
 
           <div class="card-body">
+            <!-- Autonomy Mode -->
+            <div class="form-group">
+              <div class="label-row">
+                <label class="form-label">MODE OTONOMI AGENT</label>
+                <span class="label-hint" id="autonomyBadge" style="color: #34d399;">Orkestrator</span>
+              </div>
+              <div class="engine-selector" style="margin-bottom: 0.75rem;">
+                <label class="engine-option">
+                  <input type="radio" name="autonomyMode" value="orchestrator" id="autonomyModeOrchestrator" checked>
+                  <div class="engine-info">
+                    <span class="engine-name">🚀 Orkestrator (Eksekusi Langsung)</span>
+                    <span class="engine-desc">Kamu memberi tujuan, agent memecah langkah dan mengerjakan sampai tuntas tanpa tanya izin. (Default)</span>
+                  </div>
+                </label>
+                <label class="engine-option">
+                  <input type="radio" name="autonomyMode" value="balanced" id="autonomyModeBalanced">
+                  <div class="engine-info">
+                    <span class="engine-name">⚖️ Seimbang</span>
+                    <span class="engine-desc">Eksekusi langsung, tapi bertanya jika target proyek ambigu atau aksi berpotensi destruktif.</span>
+                  </div>
+                </label>
+                <label class="engine-option">
+                  <input type="radio" name="autonomyMode" value="strict" id="autonomyModeStrict">
+                  <div class="engine-info">
+                    <span class="engine-name">🔐 Ketat</span>
+                    <span class="engine-desc">Minta konfirmasi sebelum aksi destruktif (hapus data, force push, reset, drop).</span>
+                  </div>
+                </label>
+              </div>
+              <p style="font-size: 0.75rem; color: #94a3b8; margin-top: 6px;">
+                Mengatur seberapa sering agent berhenti untuk bertanya. Orkestrator = paling sedikit bertanya.
+              </p>
+            </div>
+
             <!-- Engine Workspace Access Role & Scope -->
             <div class="form-group">
               <div class="label-row">

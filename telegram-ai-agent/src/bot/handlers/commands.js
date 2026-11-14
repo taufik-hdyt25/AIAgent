@@ -32,6 +32,11 @@ import {
 } from "../../services/cli-runner.js";
 import { executeSwarm } from "../../services/swarm-service.js";
 import {
+  getAutonomyConfig,
+  saveAutonomyConfig,
+  getAutonomyLabel,
+} from "../../services/autonomy-service.js";
+import {
   getQueue,
   getQueueLength,
   getDeferredProjects,
@@ -194,6 +199,7 @@ export function registerBasicCommands(bot) {
         "• `/key` - Lihat & atur kata kunci (key) auto-switch proyek\n" +
         "• `/workspace` - Kunci proyek manual (opsional; default otomatis via key)\n" +
         "• `/scope` - Pengaturan mode isolasi (Auto / Project / Root / Custom)\n" +
+        "• `/mode` - Atur mode otonomi (orkestrator / seimbang / ketat)\n" +
         "• `/memories` - Lihat daftar fakta & preferensi jangka panjang AI\n" +
         "• `/remember <teks>` - Simpan fakta/preferensi baru ke memori permanen\n" +
         "• `/forget <id>` - Hapus memori AI berdasarkan ID\n" +
@@ -275,12 +281,16 @@ export function registerBasicCommands(bot) {
         ? `*${queueLen} instruksi menunggu* (\`/queue\`)`
         : "Kosong (tidak ada antrean)";
 
+    const autonomy = await getAutonomyConfig();
+    const autonomyLine = `🧠 Mode Otonomi: *${getAutonomyLabel(autonomy.mode)}* (\`/mode\`)`;
+
     const activeTask = getActiveTask();
     if (!activeTask) {
       await ctx.reply(
         `🟢 *Status TH Agent: Idle (Siap menerima instruksi)*\n\n` +
         `⚙️ Engine aktif: *${engineLabel}*\n` +
         `🤖 Model aktif: ${activeModelDisplay}\n` +
+        `${autonomyLine}\n` +
         `📋 Status Antrean: ${queueStatus}`,
         { parse_mode: "Markdown" }
       );
@@ -303,6 +313,7 @@ export function registerBasicCommands(bot) {
       `⏱ Durasi: *${elapsed} detik*${taskPreview}${swarmSection}\n\n` +
       `⚙️ Engine: *${engineLabel}*\n` +
       `🤖 Model: ${activeModelDisplay}\n` +
+      `${autonomyLine}\n` +
       `📋 Status Antrean: ${queueStatus}\n\n` +
       `💡 _Kirim /cancel untuk membatalkan atau /queue untuk melihat daftar antrean._`,
       { parse_mode: "Markdown" }
@@ -2085,6 +2096,38 @@ export function registerBasicCommands(bot) {
       `🎯 Direktori Kerja: \`projects/${matchedProject}\`\n\n` +
       `Topic ini memilih proyek dan sesi sendiri. Ini bukan sandbox keamanan; scope global tetap berlaku.`,
       buildReplyOptions(ctx, { parse_mode: "Markdown" })
+    );
+  });
+
+  // /mode, /otonomi, /autonomy
+  bot.command(["mode", "otonomi", "autonomy"], async (ctx) => {
+    const arg = ctx.match?.trim().toLowerCase();
+    const current = await getAutonomyConfig();
+
+    if (!arg) {
+      await ctx.reply(
+        `🧠 *Mode Otonomi TH Agent*\n\n` +
+          `Mode aktif: *${getAutonomyLabel(current.mode)}*\n\n` +
+          `💡 *Cara Mengubah:*\n` +
+          `• \`/mode orchestrator\` - Kamu orkestrator, agent eksekusi langsung tanpa tanya (Default ⭐)\n` +
+          `• \`/mode balanced\` - Tanya hanya jika target ambigu / aksi berisiko\n` +
+          `• \`/mode strict\` - Konfirmasi sebelum aksi destruktif`,
+        { parse_mode: "Markdown" }
+      );
+      return;
+    }
+
+    if (!["orchestrator", "balanced", "strict"].includes(arg)) {
+      await ctx.reply("⚠️ Mode tidak dikenal. Pilih: `orchestrator`, `balanced`, atau `strict`.", {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
+
+    const saved = await saveAutonomyConfig({ mode: arg });
+    await ctx.reply(
+      `✅ *Mode Otonomi Diubah*\n\nMode aktif sekarang: *${getAutonomyLabel(saved.mode)}*`,
+      { parse_mode: "Markdown" }
     );
   });
 

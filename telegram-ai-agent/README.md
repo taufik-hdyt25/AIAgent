@@ -190,6 +190,7 @@ journalctl --user -u th-agent -f
 | `/clearqueue` | Mengosongkan seluruh antrean instruksi yang menunggu |
 | `/model` | Membuka menu pemilihan model AI untuk Pi Coding Agent CLI |
 | `/status` | Melihat status task aktif, status antrean, engine, & model yang aktif |
+| `/mode [orchestrator\|balanced\|strict]` | Mengatur mode otonomi agent: seberapa sering ia berhenti untuk bertanya |
 | `/reset` / `/new` | Memulai sesi obrolan baru dari awal (reset memori percakapan) |
 | `/cancel` | Menghentikan task yang sedang diproses / membatalkan antrean |
 

@@ -88,6 +88,10 @@ import {
   togglePiSandbox,
 } from "./services/sandbox-service.js";
 import {
+  getAutonomyConfig,
+  saveAutonomyConfig,
+} from "./services/autonomy-service.js";
+import {
   readEnvFile,
   updateEnvFile,
 } from "./services/env-service.js";
@@ -174,6 +178,7 @@ export function createWebServer() {
         const voiceConfig = await getVoiceConfig();
         const sentryConfig = await getSentryConfig();
         const sandboxConfig = await getSandboxConfig();
+        const autonomyConfig = await getAutonomyConfig();
         const dockerStatus = await getDockerContainers();
         const customModels = (await loadCustomModels()) || {};
         const activeProviderId = process.env.PI_PROVIDER || "local-pi";
@@ -202,6 +207,7 @@ export function createWebServer() {
             OPENAI_API_KEY: parsed.OPENAI_API_KEY || process.env.OPENAI_API_KEY || voiceConfig.openaiApiKey || "",
           },
           sandboxConfig,
+          autonomyConfig,
           authStatus: {
             hasPiServerKey: Boolean(parsed.PI_SERVER_API_KEY || process.env.PI_SERVER_API_KEY),
             hasGithubToken: Boolean(parsed.GITHUB_TOKEN || process.env.GITHUB_TOKEN),
@@ -842,6 +848,11 @@ export function createWebServer() {
             await setEngineAccessRole(payload.scopeRole || "auto", payload.customFolders || "");
           } else if (payload.piSandbox !== undefined) {
             await togglePiSandbox(Boolean(payload.piSandbox));
+          }
+          if (payload.autonomyConfig) {
+            await saveAutonomyConfig(payload.autonomyConfig);
+          } else if (payload.autonomyMode !== undefined) {
+            await saveAutonomyConfig({ mode: payload.autonomyMode });
           }
           if (payload.DEPLOY_COMMAND !== undefined) {
             updates.DEPLOY_COMMAND = String(payload.DEPLOY_COMMAND).trim();
