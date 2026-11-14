@@ -3,7 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { fetchRemoteModels, normalizePiUrl, loadCustomModels, saveCustomModels } from "../config/models.js";
 import { updateEnvFile } from "./env-service.js";
-import { setUserPiModel } from "./context-store.js";
+import { setUserPiModel, clearUserPiModels } from "./context-store.js";
 
 /**
  * Sinkronisasi konfigurasi models.json untuk Pi CLI
@@ -12,8 +12,6 @@ import { setUserPiModel } from "./context-store.js";
 export async function syncPiCliConfig(baseUrl, apiKey, models) {
   const piAgentDirs = [
     path.join(os.homedir(), ".pi", "agent"),
-    "/home/ubuntu/.pi/agent",
-    "/home/th-agent/.pi/agent",
   ];
 
   for (const dir of piAgentDirs) {
@@ -30,9 +28,11 @@ export async function syncPiCliConfig(baseUrl, apiKey, models) {
         }
       } catch (_) {}
 
-      providers["local-pi"] = {
+      const providerId = process.env.PI_PROVIDER || "local-pi";
+      providers[providerId] = {
+        ...providers[providerId],
         baseUrl: baseUrl,
-        api: "openai-completions",
+        api: providers[providerId]?.api || "openai-completions",
         apiKey: apiKey || "sk-local",
         models: (models || []).map((m) => ({
           id: m.id,
@@ -46,7 +46,9 @@ export async function syncPiCliConfig(baseUrl, apiKey, models) {
       };
 
       await writeFile(file, JSON.stringify(configContent, null, 2) + "\n", "utf8");
-    } catch (_) {}
+    } catch (err) {
+      throw new Error(`Gagal menyimpan konfigurasi Pi CLI: ${err.message}`);
+    }
   }
 }
 
@@ -211,15 +213,14 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel =
   try {
     const custom = (await loadCustomModels()) || {};
     custom.piModels = models;
-    await saveCustomModels(custom);
+    custom.piProvider = process.env.PI_PROVIDER || "local-pi";
+    if (!await saveCustomModels(custom)) throw new Error("Gagal menyimpan daftar model.");
   } catch (err) {
-    console.error("[PiService] Gagal menyimpan remote models ke models.json:", err.message);
+    throw new Error(`Gagal menyimpan model: ${err.message}`);
   }
 
-  // Sinkronkan langsung ke Pi CLI config (~/.pi/agent/models.json)
-  await syncPiCliConfig(targetUrl, targetKey, models).catch((e) =>
-    console.warn("[PiService] Gagal sync Pi CLI config:", e.message)
-  );
+  // Sinkronkan model ke provider Pi yang sedang aktif.
+  await syncPiCliConfig(targetUrl, targetKey, models);
 
   // Pilih model langsung sesuai yang di-declare di server Pi:
   // 1. Cek parameter selectModel jika ada
@@ -252,6 +253,7 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel =
     envUpdates.PI_SERVER_API_KEY = apiKey;
   }
   await updateEnvFile(envUpdates);
+  await clearUserPiModels();
 
   if (userId) {
     await setUserPiModel(userId, chosenId);

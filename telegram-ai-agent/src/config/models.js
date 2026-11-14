@@ -78,7 +78,7 @@ export async function getModelList() {
   }
 
   const custom = await loadCustomModels();
-  if (custom && Array.isArray(custom.piModels) && custom.piModels.length > 0) {
+  if (custom && (!custom.piProvider || custom.piProvider === (process.env.PI_PROVIDER || "local-pi")) && Array.isArray(custom.piModels) && custom.piModels.length > 0) {
     return custom.piModels;
   }
 

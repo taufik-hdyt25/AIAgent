@@ -36,6 +36,7 @@ import {
   normalizePiUrl,
 } from "./config/models.js";
 import { syncPiModelDirectly } from "./services/pi-service.js";
+import { clearUserPiModels } from "./services/context-store.js";
 import {
   listPiProviders,
   savePiProvider,
@@ -358,6 +359,7 @@ export function createWebServer() {
 
           await updateEnvFile(updates);
           Object.assign(process.env, updates);
+          await clearUserPiModels();
 
           return sendJson(200, {
             ok: true,
@@ -784,6 +786,7 @@ export function createWebServer() {
           }
           if (payload.PI_MODEL !== undefined) {
             updates.PI_MODEL = String(payload.PI_MODEL).trim();
+            if (updates.PI_MODEL !== process.env.PI_MODEL) await clearUserPiModels();
           }
           if (payload.CLI_ENGINE !== undefined) {
             const rawEngine = String(payload.CLI_ENGINE).trim().toLowerCase();

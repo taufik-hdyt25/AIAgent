@@ -117,6 +117,14 @@ export async function setUserPiModel(userId, modelId) {
   await saveContext(context);
 }
 
+export async function clearUserPiModels() {
+  const context = await loadContext();
+  if (context.piModels && Object.keys(context.piModels).length) {
+    delete context.piModels;
+    await saveContext(context);
+  }
+}
+
 export async function getUserModel(userId) {
   return getUserPiModel(userId);
 }

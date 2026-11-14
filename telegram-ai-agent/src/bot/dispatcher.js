@@ -574,16 +574,7 @@ ${userMessage}
           "--approve",
         ];
         if (piModel) {
-          const isGroqModel =
-            piModel === "openai/gpt-oss-120b" ||
-            piModel === "llama-3.1-8b-instant" ||
-            piModel.startsWith("groq/");
-
-          if (isGroqModel) {
-            cliArgs.unshift("--provider", "groq", "--model", piModel.replace(/^groq\//, ""));
-          } else {
-            cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
-          }
+          cliArgs.unshift("--provider", process.env.PI_PROVIDER || "local-pi", "--model", piModel);
         }
       }
 
