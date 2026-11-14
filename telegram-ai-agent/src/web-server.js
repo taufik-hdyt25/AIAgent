@@ -35,7 +35,7 @@ import {
   saveCustomModels,
   normalizePiUrl,
 } from "./config/models.js";
-import { syncPiModelDirectly } from "./services/pi-service.js";
+import { syncPiModelDirectly, syncCpaModelsIfActive } from "./services/pi-service.js";
 import { clearUserPiModels } from "./services/context-store.js";
 import {
   listPiProviders,
@@ -105,6 +105,16 @@ const MIME_TYPES = {
 };
 
 // Buat server HTTP native Node.js
+async function syncCpaAfterCredentialChange() {
+  try {
+    const status = await getCpaStatus();
+    if (!status.modelsOk) return { synced: false, message: `Gagal mengambil model CLIProxy: ${status.errors.models}` };
+    return await syncCpaModelsIfActive(status.url, status.models);
+  } catch (err) {
+    return { synced: false, message: `Gagal sinkron model: ${err.message}` };
+  }
+}
+
 export function createWebServer() {
   const server = http.createServer(async (req, res) => {
     // Helper response JSON
@@ -430,7 +440,9 @@ export function createWebServer() {
     if (pathname === "/api/cliproxy/oauth/status" && req.method === "GET") {
       try {
         const state = url.searchParams.get("state") || "";
-        return sendJson(200, { ok: true, ...(await getCpaOAuthStatus(state)) });
+        const status = await getCpaOAuthStatus(state);
+        const modelSync = status.status === "ok" ? await syncCpaAfterCredentialChange() : undefined;
+        return sendJson(200, { ok: true, ...status, modelSync });
       } catch (err) {
         return sendError(400, err.message);
       }
@@ -471,7 +483,8 @@ export function createWebServer() {
         for await (const chunk of req) body += chunk;
         const payload = JSON.parse(body || "{}");
         await setCpaCredentialDisabled(payload.name, payload.disabled);
-        return sendJson(200, { ok: true, credentials: await listCpaCredentials() });
+        const modelSync = await syncCpaAfterCredentialChange();
+        return sendJson(200, { ok: true, credentials: await listCpaCredentials(), modelSync });
       } catch (err) {
         return sendError(400, err.message);
       }
@@ -483,7 +496,8 @@ export function createWebServer() {
         for await (const chunk of req) body += chunk;
         const payload = JSON.parse(body || "{}");
         await deleteCpaCredential(payload.name);
-        return sendJson(200, { ok: true, credentials: await listCpaCredentials() });
+        const modelSync = await syncCpaAfterCredentialChange();
+        return sendJson(200, { ok: true, credentials: await listCpaCredentials(), modelSync });
       } catch (err) {
         return sendError(400, err.message);
       }
@@ -492,7 +506,8 @@ export function createWebServer() {
     if (pathname === "/api/cliproxy/credentials/refresh" && req.method === "POST") {
       try {
         await refreshCpaCredentials();
-        return sendJson(200, { ok: true, credentials: await listCpaCredentials() });
+        const modelSync = await syncCpaAfterCredentialChange();
+        return sendJson(200, { ok: true, credentials: await listCpaCredentials(), modelSync });
       } catch (err) {
         return sendError(400, err.message);
       }

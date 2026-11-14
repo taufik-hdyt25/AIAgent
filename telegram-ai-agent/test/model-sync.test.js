@@ -26,5 +26,18 @@ test('Get Model updates active provider and replaces stale user selections', asy
     const context = JSON.parse(await readFile(path.join(dir, 'data', 'context.json')));
     assert.equal(context.piModels, undefined);
     assert.equal(context.other, true);
+
+    await writeFile(path.join(dir, 'data', 'context.json'), JSON.stringify({ piModels: { 1: 'codex-model', 2: 'old' } }));
+    const autoCode = `const { syncCpaModelsIfActive } = await import(${JSON.stringify(moduleUrl)}); const result = await syncCpaModelsIfActive('http://example.test', [{ id: 'codex-model' }, { id: 'new-model' }]); if (!result.synced) throw new Error(JSON.stringify(result));`;
+    const auto = spawnSync(process.execPath, ['--input-type=module', '-e', autoCode], { cwd: dir, env: { ...process.env, HOME: dir, ENV_FILE: path.join(dir, '.env'), PI_PROVIDER: 'cliproxy', PI_MODEL: 'codex-model', PI_SERVER_URL: 'http://example.test/v1', WORKSPACE_DIR: '' }, encoding: 'utf8' });
+    assert.equal(auto.status, 0, auto.stderr);
+    const updated = JSON.parse(await readFile(path.join(dir, 'data', 'context.json')));
+    assert.deepEqual(updated.piModels, { 1: 'codex-model' });
+    const synced = JSON.parse(await readFile(path.join(dir, '.pi', 'agent', 'models.json')));
+    assert.deepEqual(synced.providers.cliproxy.models.map(m => m.id), ['codex-model', 'new-model']);
+    await writeFile(path.join(dir, 'data', 'models.json'), JSON.stringify({ piProvider: 'cliproxy', piModels: [{ id: 'curated' }] }));
+    const guardCode = `const { syncCpaModelsIfActive } = await import(${JSON.stringify(moduleUrl)}); const r = await syncCpaModelsIfActive('http://example.test', [{id:'new-model'}]); if (r.synced || !r.message.includes('kustom')) process.exit(1); const other = await syncCpaModelsIfActive('http://other.test', [{id:'x'}]); if (!other.skipped) process.exit(2);`;
+    const guard = spawnSync(process.execPath, ['--input-type=module', '-e', guardCode], { cwd: dir, env: { ...process.env, HOME: dir, PI_PROVIDER: 'cliproxy', PI_SERVER_URL: 'http://example.test/v1' }, encoding: 'utf8' });
+    assert.equal(guard.status, 0, guard.stderr);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

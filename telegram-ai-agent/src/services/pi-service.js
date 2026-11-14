@@ -3,7 +3,8 @@ import path from "node:path";
 import os from "node:os";
 import { fetchRemoteModels, normalizePiUrl, loadCustomModels, saveCustomModels } from "../config/models.js";
 import { updateEnvFile } from "./env-service.js";
-import { setUserPiModel, clearUserPiModels } from "./context-store.js";
+import { setUserPiModel, clearUserPiModels, pruneUserPiModels } from "./context-store.js";
+import { getPiProviderRaw } from "./pi-provider-service.js";
 
 /**
  * Sinkronisasi konfigurasi models.json untuk Pi CLI
@@ -192,15 +193,39 @@ export async function repairPiSession(cwd, sessionId) {
   return { repaired: removed.size, truncated, file };
 }
 
+// Sync only when the active Pi provider points to this CLIProxy instance.
+// An explicitly curated allowlist must never be replaced automatically.
+export async function syncCpaModelsIfActive(cpaUrl, models) {
+  const providerId = process.env.PI_PROVIDER || "local-pi";
+  const provider = await getPiProviderRaw(providerId);
+  const activeUrl = process.env.PI_SERVER_URL || provider?.baseUrl || "";
+  const canonical = (url) => normalizePiUrl(url).replace(/\/v1$/, "");
+  if (!activeUrl || canonical(activeUrl) !== canonical(cpaUrl)) {
+    return { synced: false, skipped: true, message: "Provider Pi aktif tidak menggunakan endpoint CLIProxy ini." };
+  }
+  if (!Array.isArray(models) || !models.length) {
+    return { synced: false, message: "CLIProxy belum menyediakan daftar model; konfigurasi lama dipertahankan." };
+  }
+  const custom = await loadCustomModels();
+  if (custom?.piProvider === providerId && Array.isArray(custom.piModels)) {
+    const ids = (list) => list.map((m) => typeof m === "string" ? m : m.id).filter(Boolean).sort();
+    if (JSON.stringify(ids(custom.piModels)) !== JSON.stringify(ids(provider?.models || []))) {
+      return { synced: false, message: "Daftar model kustom dipertahankan. Gunakan Get Model untuk menggantinya." };
+    }
+  }
+  const result = await syncPiModelDirectly(activeUrl, process.env.PI_SERVER_API_KEY || provider?.apiKey || "", null, null, models);
+  return { synced: result.ok, activeModel: result.activeModel, count: models.length, message: result.error };
+}
+
 /**
  * Mengambil model langsung dari server Pi (GET /models, /v1/models, atau /api/tags)
  * dan langsung mengaktifkannya sebagai model default
  */
-export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel = null) {
+export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel = null, suppliedModels = null) {
   const targetUrl = normalizePiUrl(baseUrl || process.env.PI_SERVER_URL || "http://127.0.0.1:46315/v1");
   const targetKey = apiKey !== undefined ? apiKey : (process.env.PI_SERVER_API_KEY || "");
 
-  const models = await fetchRemoteModels(targetUrl, targetKey);
+  const models = suppliedModels || await fetchRemoteModels(targetUrl, targetKey);
   if (!models || models.length === 0) {
     return {
       ok: false,
@@ -253,7 +278,8 @@ export async function syncPiModelDirectly(baseUrl, apiKey, userId, selectModel =
     envUpdates.PI_SERVER_API_KEY = apiKey;
   }
   await updateEnvFile(envUpdates);
-  await clearUserPiModels();
+  if (suppliedModels) await pruneUserPiModels(models.map((m) => m.id));
+  else await clearUserPiModels();
 
   if (userId) {
     await setUserPiModel(userId, chosenId);

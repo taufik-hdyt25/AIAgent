@@ -117,6 +117,17 @@ export async function setUserPiModel(userId, modelId) {
   await saveContext(context);
 }
 
+export async function pruneUserPiModels(allowedIds) {
+  const context = await loadContext();
+  if (!context.piModels) return;
+  const allowed = new Set(allowedIds);
+  let changed = false;
+  for (const [user, model] of Object.entries(context.piModels)) {
+    if (!allowed.has(model)) { delete context.piModels[user]; changed = true; }
+  }
+  if (changed) await saveContext(context);
+}
+
 export async function clearUserPiModels() {
   const context = await loadContext();
   if (context.piModels && Object.keys(context.piModels).length) {

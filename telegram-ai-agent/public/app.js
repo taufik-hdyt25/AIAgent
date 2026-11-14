@@ -943,6 +943,16 @@ function stopCpaPolling() {
   }
 }
 
+function reportCpaModelSync(result) {
+  if (!result || result.skipped) return;
+  if (result.synced) {
+    showToast(`Model CLIProxy disinkronkan (${result.count}); aktif: ${result.activeModel}`, "success");
+    loadSettings();
+  } else {
+    showToast(result.message || "Sinkronisasi model gagal; konfigurasi lama dipertahankan.", "error", 7000);
+  }
+}
+
 function pollCpaOAuthStatus() {
   stopCpaPolling();
   if (!cpaState) return;
@@ -958,6 +968,7 @@ function pollCpaOAuthStatus() {
       if (status === "ok") {
         setCpaOAuthStatus("✅ Login berhasil, kredensial tersimpan.", "#34d399");
         stopCpaPolling();
+        reportCpaModelSync(data.modelSync);
         loadCpaStatus();
       } else if (status === "error") {
         setCpaOAuthStatus(`❌ Login gagal: ${data.error || "unknown"}`, "#f87171");
@@ -1128,6 +1139,7 @@ async function postCredential(path, body) {
   const data = await res.json();
   if (!res.ok || !data.ok) throw new Error(data.error || "Aksi gagal");
   if (Array.isArray(data.credentials)) renderCredentials(data.credentials);
+  reportCpaModelSync(data.modelSync);
   return data;
 }
 
