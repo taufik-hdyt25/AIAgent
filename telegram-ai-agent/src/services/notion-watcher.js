@@ -128,15 +128,17 @@ PANDUAN EKSEKUSI OTONOM:
 export function initNotionWatcher(bot) {
   if (watcherInterval) clearInterval(watcherInterval);
 
+  if (!process.env.NOTION_API_KEY) {
+    console.log(
+      "[Notion Watcher] Dinonaktifkan - NOTION_API_KEY belum dikonfigurasi. " +
+        "Isi key lewat .env / Web Control Panel, lalu restart bot."
+    );
+    return;
+  }
+
   getNotionConfig().then((cfg) => {
     const intervalMinutes = cfg.checkIntervalMinutes || 3;
-    if (process.env.NOTION_API_KEY) {
-      console.log(`[Notion Watcher] Aktif - interval ${intervalMinutes} menit.`);
-    } else {
-      console.log(
-        "[Notion Watcher] Menunggu NOTION_API_KEY - pengecekan dilewati sampai key diisi lewat .env / Web Control Panel."
-      );
-    }
+    console.log(`[Notion Watcher] Aktif - interval ${intervalMinutes} menit.`);
 
     // Delay awal 30 detik setelah startup
     setTimeout(() => {

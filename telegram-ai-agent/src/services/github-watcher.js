@@ -207,20 +207,18 @@ export async function initGithubWatcher(bot) {
 
   const authenticated = await isGhAuthenticated();
   if (!authenticated) {
-    console.warn(
-      "[GitHub Watcher] gh belum terautentikasi (GITHUB_TOKEN kosong). Pengecekan dilewati sampai token diisi " +
-        "lewat .env / Web Control Panel atau `gh auth login`."
+    console.log(
+      "[GitHub Watcher] Dinonaktifkan - gh belum terautentikasi (GITHUB_TOKEN kosong). " +
+        "Isi token lewat .env / Web Control Panel atau jalankan `gh auth login`, lalu restart bot."
     );
+    return;
   }
 
   const config = await loadWatchConfig();
   const intervalMs = Math.max(1, config.pollIntervalMinutes || 5) * 60 * 1000;
 
-  const status = !authenticated
-    ? "Menunggu autentikasi GitHub"
-    : (config.enabled ? "Aktif" : "Nonaktif (bisa diaktifkan via /watcher on)");
   console.log(
-    `[GitHub Watcher] ${status} - ` +
+    `[GitHub Watcher] ${config.enabled ? "Aktif" : "Nonaktif (bisa diaktifkan via /watcher on)"} - ` +
       `${config.watchedRepos.length} repositori, interval ${config.pollIntervalMinutes} menit.`
   );
 
