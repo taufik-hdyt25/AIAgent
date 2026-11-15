@@ -18,6 +18,24 @@ export async function isGhAvailable() {
   }
 }
 
+// Helper memeriksa apakah gh sudah terautentikasi (token env atau gh auth login)
+export async function isGhAuthenticated() {
+  const env = { ...process.env };
+  if (process.env.GITHUB_TOKEN) {
+    env.GH_TOKEN = process.env.GITHUB_TOKEN;
+  } else if (process.env.GH_TOKEN) {
+    env.GH_TOKEN = process.env.GH_TOKEN;
+  } else {
+    return false;
+  }
+  try {
+    await execAsync("gh auth status", { env, timeout: 15000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Regex untuk mendeteksi URL Issue GitHub dari pesan
 // Contoh: https://github.com/owner/repo/issues/123
 export const GITHUB_ISSUE_REGEX =

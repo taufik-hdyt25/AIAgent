@@ -98,6 +98,30 @@ import {
   buildAutonomyDirective,
 } from "../services/autonomy-service.js";
 
+export function parseTagPayload(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+
+  const candidates = [text];
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    const objectText = text.slice(start, end + 1);
+    candidates.push(objectText);
+    // Model kadang menulis key tanpa tanda kutip: {content: "..."}
+    candidates.push(objectText.replace(/([{,]\s*)([A-Za-z_$][\w$-]*)\s*:/g, '$1"$2":'));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object") return parsed;
+      if (typeof parsed === "string") return { content: parsed };
+    } catch (_) {}
+  }
+  return null;
+}
+
 /**
  * Memproses tag otonom dari output AI (Hermes-like self-learning & persistent memory):
  * - :::memory:add {"content": "...", "category": "...", "tags": [...]}:::
@@ -116,20 +140,19 @@ export async function processAutonomousOutput(rawText) {
   const memoryRegex = /:::memory:add\s*([\s\S]*?):::/g;
   let match;
   while ((match = memoryRegex.exec(rawText)) !== null) {
-    try {
-      const jsonStr = match[1].trim();
-      const data = JSON.parse(jsonStr);
-      if (data.content) {
-        const saved = await addMemory({
-          content: data.content,
-          category: data.category || "general",
-          tags: Array.isArray(data.tags) ? data.tags : [],
-          importance: data.importance || 4,
-        });
-        if (saved) savedMemories.push(saved);
-      }
-    } catch (e) {
-      console.warn("[Dispatcher] Gagal parse memory tag:", e.message);
+    const data = parseTagPayload(match[1]);
+    if (!data) {
+      console.warn("[Dispatcher] Gagal parse memory tag: format JSON tidak valid.");
+      continue;
+    }
+    if (data.content) {
+      const saved = await addMemory({
+        content: data.content,
+        category: data.category || "general",
+        tags: Array.isArray(data.tags) ? data.tags : [],
+        importance: data.importance || 4,
+      });
+      if (saved) savedMemories.push(saved);
     }
   }
   cleaned = cleaned.replace(memoryRegex, "").trim();
@@ -137,22 +160,21 @@ export async function processAutonomousOutput(rawText) {
   // 2. Ekstraksi :::skill:add {...} :::
   const skillRegex = /:::skill:add\s*([\s\S]*?):::/g;
   while ((match = skillRegex.exec(rawText)) !== null) {
-    try {
-      const jsonStr = match[1].trim();
-      const data = JSON.parse(jsonStr);
-      if (data.id || data.name) {
-        await saveSkill({
-          id: data.id,
-          name: data.name || data.id,
-          description: data.description || "",
-          triggers: Array.isArray(data.triggers) ? data.triggers : [data.triggers || data.id],
-          instructions: data.instructions || "",
-          source: "learned",
-        });
-        savedSkills.push(data.name || data.id);
-      }
-    } catch (e) {
-      console.warn("[Dispatcher] Gagal parse skill tag:", e.message);
+    const data = parseTagPayload(match[1]);
+    if (!data) {
+      console.warn("[Dispatcher] Gagal parse skill tag: format JSON tidak valid.");
+      continue;
+    }
+    if (data.id || data.name) {
+      await saveSkill({
+        id: data.id,
+        name: data.name || data.id,
+        description: data.description || "",
+        triggers: Array.isArray(data.triggers) ? data.triggers : [data.triggers || data.id],
+        instructions: data.instructions || "",
+        source: "learned",
+      });
+      savedSkills.push(data.name || data.id);
     }
   }
   cleaned = cleaned.replace(skillRegex, "").trim();

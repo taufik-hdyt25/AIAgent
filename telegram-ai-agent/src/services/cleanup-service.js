@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { notifyUsers } from "./github-watcher.js";
 
 const execAsync = promisify(exec);
+const EXEC_OPTS = { maxBuffer: 10 * 1024 * 1024 };
 
 let cleanupTimer = null;
 let lastCleanupResult = null;
@@ -15,7 +16,7 @@ const TIMEZONE = process.env.CLEANUP_TZ || "Asia/Jakarta";
  */
 export async function getDiskUsage() {
   try {
-    const { stdout } = await execAsync("df -h / | awk 'NR==2 {print $2, $3, $4, $5}'");
+    const { stdout } = await execAsync("df -h / | awk 'NR==2 {print $2, $3, $4, $5}'", EXEC_OPTS);
     const [size, used, avail, usePercent] = stdout.trim().split(/\s+/);
     return { size, used, avail, usePercent };
   } catch (err) {
@@ -33,7 +34,7 @@ export async function executeServerCleanup() {
   let dockerReclaimed = "0B";
   try {
     // 1. Prune docker builder cache
-    const { stdout: builderOut } = await execAsync("docker builder prune -a -f 2>&1 || true");
+    const { stdout: builderOut } = await execAsync("docker builder prune -a -f 2>&1 || true", EXEC_OPTS);
     const reclaimedMatch = builderOut.match(/Total reclaimed space:\s*([^\n]+)/i);
     if (reclaimedMatch) dockerReclaimed = reclaimedMatch[1].trim();
   } catch (e) {
@@ -42,21 +43,24 @@ export async function executeServerCleanup() {
 
   try {
     // 2. Prune dangling images
-    await execAsync("docker image prune -f 2>&1 || true");
+    await execAsync("docker image prune -f 2>&1 || true", EXEC_OPTS);
   } catch (e) {
     console.warn("[Cleanup] Docker image prune error:", e.message);
   }
 
   try {
     // 3. Clean npm cache
-    await execAsync("npm cache clean --force 2>&1 || true");
+    await execAsync("npm cache clean --force 2>&1 || true", EXEC_OPTS);
   } catch (e) {
     console.warn("[Cleanup] NPM cache clean error:", e.message);
   }
 
   try {
     // 4. Clean /tmp
-    await execAsync("rm -rf /tmp/* 2>&1 || true");
+    await execAsync(
+      "find /tmp -mindepth 1 -maxdepth 1 -exec rm -rf {} + >/dev/null 2>&1 || true",
+      EXEC_OPTS
+    );
   } catch (e) {
     console.warn("[Cleanup] /tmp clean error:", e.message);
   }

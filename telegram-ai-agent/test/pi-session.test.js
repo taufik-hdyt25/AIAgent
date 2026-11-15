@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const piServiceUrl = pathToFileURL(path.resolve('src/services/pi-service.js')).href;
 const telegramFilesUrl = pathToFileURL(path.resolve('src/services/telegram-files.js')).href;
+const dispatcherUrl = pathToFileURL(path.resolve('src/bot/dispatcher.js')).href;
 
 function runIsolated(dir, code) {
   return spawnSync(process.execPath, ['--input-type=module', '-e', code], {
@@ -107,6 +108,28 @@ test('sanitizeReplyText strips inline base64 images from chat replies', async ()
       if (!out.includes('tidak ditampilkan di chat')) throw new Error('missing placeholder');
       if (!out.includes('Hasil mockup:') || !out.includes('Selesai.')) throw new Error('text lost');
       if (m.sanitizeReplyText('halo biasa') !== 'halo biasa') throw new Error('plain text changed');
+    `;
+    const res = runIsolated(dir, code);
+    assert.equal(res.status, 0, res.stderr);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('parseTagPayload tolerates common LLM JSON mistakes', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'th-pi-tags-'));
+  try {
+    const code = `
+      const m = await import(${JSON.stringify(dispatcherUrl)});
+      const valid = m.parseTagPayload('{"content":"a","tags":["x"]}');
+      if (valid?.content !== 'a' || valid.tags[0] !== 'x') throw new Error('valid JSON broken');
+      const unquoted = m.parseTagPayload('{content: "fakta penting", category: "workflow"}');
+      if (unquoted?.content !== 'fakta penting' || unquoted.category !== 'workflow') throw new Error('unquoted keys not repaired');
+      const wrapped = m.parseTagPayload('catatan: {"content":"x"} selesai');
+      if (wrapped?.content !== 'x') throw new Error('embedded object not extracted');
+      const quoted = m.parseTagPayload('"catatan bebas"');
+      if (quoted?.content !== 'catatan bebas') throw new Error('quoted string not accepted');
+      if (m.parseTagPayload('bukan json sama sekali') !== null) throw new Error('garbage accepted');
     `;
     const res = runIsolated(dir, code);
     assert.equal(res.status, 0, res.stderr);

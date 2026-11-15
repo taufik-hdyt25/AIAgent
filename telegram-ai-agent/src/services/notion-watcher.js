@@ -13,6 +13,19 @@ let watcherInterval = null;
 let isChecking = false;
 
 export async function checkNotionTasks(bot, specificChatId = null, isManual = false) {
+  if (!process.env.NOTION_API_KEY) {
+    if (specificChatId) {
+      await bot.api
+        .sendMessage(
+          specificChatId,
+          "⚠️ *NOTION_API_KEY belum dikonfigurasi.*\nTambahkan `NOTION_API_KEY` di file `.env` atau Web Control Panel untuk mengaktifkan integrasi Notion.",
+          { parse_mode: "Markdown" }
+        )
+        .catch(() => {});
+    }
+    return;
+  }
+
   if (isChecking) {
     if (specificChatId) {
       await bot.api.sendMessage(specificChatId, "⏳ Pengecekan task Notion sedang berlangsung...");
@@ -117,7 +130,13 @@ export function initNotionWatcher(bot) {
 
   getNotionConfig().then((cfg) => {
     const intervalMinutes = cfg.checkIntervalMinutes || 3;
-    console.log(`[Notion Watcher] Aktif - interval ${intervalMinutes} menit.`);
+    if (process.env.NOTION_API_KEY) {
+      console.log(`[Notion Watcher] Aktif - interval ${intervalMinutes} menit.`);
+    } else {
+      console.log(
+        "[Notion Watcher] Menunggu NOTION_API_KEY - pengecekan dilewati sampai key diisi lewat .env / Web Control Panel."
+      );
+    }
 
     // Delay awal 30 detik setelah startup
     setTimeout(() => {

@@ -2,6 +2,7 @@ import { InlineKeyboard } from "grammy";
 import { ALLOWED_IDS } from "../config/env.js";
 import {
   isGhAvailable,
+  isGhAuthenticated,
   loadWatchConfig,
   checkNewIssuesForRepo,
   fetchIssueDetails,
@@ -67,6 +68,17 @@ export async function checkAllWatchedRepos(bot, specificChatId = null, isManual 
       await bot.api.sendMessage(
         specificChatId,
         "⚠️ *GitHub CLI (`gh`) belum aktif!*\nSilakan pasang `gh` dan isi `GITHUB_TOKEN` di file `.env` atau Web Control Panel.",
+        { parse_mode: "Markdown" }
+      );
+    }
+    return;
+  }
+
+  if (!(await isGhAuthenticated())) {
+    if (specificChatId) {
+      await bot.api.sendMessage(
+        specificChatId,
+        "⚠️ *GitHub CLI belum terautentikasi!*\nJalankan `gh auth login` di server, atau isi `GITHUB_TOKEN` di file `.env` / Web Control Panel.",
         { parse_mode: "Markdown" }
       );
     }
@@ -193,11 +205,22 @@ export async function initGithubWatcher(bot) {
     return;
   }
 
+  const authenticated = await isGhAuthenticated();
+  if (!authenticated) {
+    console.warn(
+      "[GitHub Watcher] gh belum terautentikasi (GITHUB_TOKEN kosong). Pengecekan dilewati sampai token diisi " +
+        "lewat .env / Web Control Panel atau `gh auth login`."
+    );
+  }
+
   const config = await loadWatchConfig();
   const intervalMs = Math.max(1, config.pollIntervalMinutes || 5) * 60 * 1000;
 
+  const status = !authenticated
+    ? "Menunggu autentikasi GitHub"
+    : (config.enabled ? "Aktif" : "Nonaktif (bisa diaktifkan via /watcher on)");
   console.log(
-    `[GitHub Watcher] ${config.enabled ? "Aktif" : "Nonaktif (bisa diaktifkan via /watcher on)"} - ` +
+    `[GitHub Watcher] ${status} - ` +
       `${config.watchedRepos.length} repositori, interval ${config.pollIntervalMinutes} menit.`
   );
 
