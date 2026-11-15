@@ -19,7 +19,7 @@ import {
   detectProjectFromText,
 } from "../services/sandbox-service.js";
 import { createPiEventParser } from "../services/pi-event-parser.js";
-import { repairPiSession } from "../services/pi-service.js";
+import { repairPiSession, sanitizePiSession, shrinkPiSessionForContext, isContextOverflowMessage } from "../services/pi-service.js";
 import {
   getUserConversationId,
   getUserPiModel,
@@ -449,6 +449,7 @@ ${scopeOngoingRule}
 - Jika ada proyek yang belum terdaftar di ./projects/PROJECTS_SUMMARY.md, telusuri dan daftarkan ke file tersebut.
 - Format respon dalam Markdown rapi untuk chat Telegram:
   * 🎯 ATURAN UTAMA: Jawaban WAJIB RINGKAS, PADAT, dan LANGSUNG KE POIN PENTING / KESIMPULAN (Summary).
+  * DILARANG menyertakan gambar inline / data URI base64 di jawaban (membuat context window overflow); sebutkan path file gambarnya saja.
   * DILARANG KERAS men-dump log terminal panjang, seluruh baris kode, atau rincian berbelit-belit yang membuat pesan terpotong!
   * Cukup sampaikan: (1) Apa yang dilakukan/diperbaiki, (2) Poin perubahan penting, (3) Kesimpulan status akhir.
 `.trim();
@@ -507,6 +508,7 @@ PANDUAN INTERAKSI:
    - Gunakan bullet points ringkas untuk poin-poin yang dikerjakan / diubah.
    - Laporkan hasil akhir: apakah berhasil, file mana saja yang disentuh, dan status deploy/git.
    - Buat jawaban padat dan tuntas agar pas dalam layar chat Telegram tanpa ada yang terpotong.
+   - DILARANG menyertakan gambar inline / data URI base64 di jawaban (membuat context window overflow); sebutkan path file gambarnya saja.
 3. Percakapan / Pertanyaan Umum: Jika pengguna bertanya umum atau berdiskusi teknis seputar arsitektur/sistem, jawablah secara langsung, natural, dan akurat.
 4. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
 4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
@@ -526,6 +528,7 @@ ${userMessage}
       freshRetryAttempted = false,
       emptyRetryAttempted = false,
       fallbackAttempted = false,
+      contextRecoveryAttempted = false,
       modelOverride = null,
       accumulatedText = "",
     } = {}) => {
@@ -596,6 +599,15 @@ ${userMessage}
       }
 
       if (!useCmd) {
+        const sanitized = await sanitizePiSession(executionCwd, scopedPiSessionId, {
+          aggressive: contextRecoveryAttempted,
+        }).catch(() => null);
+        if (sanitized?.changed > 0) {
+          console.warn(
+            `[Dispatcher] Menyusutkan ${sanitized.changed} pesan raksasa di sesi Pi (${Math.round(sanitized.bytesBefore / 1024)}KB -> ${Math.round(sanitized.bytesAfter / 1024)}KB).`
+          );
+        }
+
         const repaired = await repairPiSession(executionCwd, scopedPiSessionId).catch(() => ({ repaired: 0, truncated: 0 }));
         if (repaired.repaired > 0 || repaired.truncated > 0) {
           console.warn(
@@ -663,6 +675,31 @@ ${userMessage}
             // Output JSON tanpa pesan assistant final (mis. proses terhenti)
             responseText = "";
           }
+        }
+
+        // Pemulihan context window: susutkan riwayat sesi lalu ulangi sekali.
+        if (
+          !useCmd &&
+          !task.cancelled &&
+          !contextRecoveryAttempted &&
+          isContextOverflowMessage(`${jsonError || ""} ${stderr || ""}`)
+        ) {
+          console.warn("[Dispatcher] Sesi Pi melewati context window. Menyusutkan riwayat lalu mengulang permintaan...");
+          const shrunk = await shrinkPiSessionForContext(executionCwd, scopedPiSessionId, { aggressive: true }).catch(() => null);
+          if (shrunk) {
+            console.warn(
+              `[Dispatcher] Pemulihan konteks: ${shrunk.changed} pesan disusutkan, ${Math.round(shrunk.bytesBefore / 1024)}KB -> ${Math.round(shrunk.bytesAfter / 1024)}KB${shrunk.pruned ? `, ${shrunk.pruned} pesan lama dipangkas` : ""}.`
+            );
+          }
+          return executeCli({
+            continuationCount,
+            freshRetryAttempted,
+            accumulatedText,
+            emptyRetryAttempted,
+            fallbackAttempted,
+            contextRecoveryAttempted: true,
+            modelOverride,
+          });
         }
 
         // Jika --resume sesi lama Command Code gagal karena sesi tidak ditemukan, bersihkan dan ulangi sesi baru 1x
@@ -840,6 +877,11 @@ ${userMessage}
             if (partialProgress) {
               errText += `\n\n📄 *Progres terakhir:*\n${partialProgress}`;
             }
+          } else if (isContextOverflowMessage(errText)) {
+            errText =
+              `🧠 *Riwayat Percakapan Terlalu Panjang untuk Model Ini*\n\n` +
+              `${engineLabel} sudah mencoba memadatkan riwayat otomatis, tetapi permintaan masih melebihi context window model \`${modelOverride || userModel || process.env.PI_MODEL || DEFAULT_PI_MODEL}\`.\n\n` +
+              `💡 *Solusi:* pilih model dengan context window lebih besar via /model, mulai percakapan baru dengan /reset, atau pecah tugas menjadi bagian yang lebih kecil.`;
           } else if (errText.includes("permission that headless mode cannot prompt for") || errText.includes("permission")) {
             errText = `🔒 *Izin Akses File / Terminal Ditolak*\n\n${truncate(errText, 700)}\n\n💡 Pastikan Pi CLI dijalankan dengan flag \`--approve\`.`;
           } else if (errText.includes("ENOENT")) {

@@ -193,6 +193,259 @@ export async function repairPiSession(cwd, sessionId) {
   return { repaired: removed.size, truncated, file };
 }
 
+const DATA_URI_PATTERN = /data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]+/gi;
+const SAFE_LIMITS = { text: 12000, thinking: 4000, toolCall: 20000 };
+const AGGRESSIVE_LIMITS = { text: 4000, thinking: 1500, toolCall: 6000 };
+const MIN_SANITIZE_BYTES = 64 * 1024;
+const PRUNE_ABOVE_BYTES = 2.5 * 1024 * 1024;
+
+export function isContextOverflowMessage(text) {
+  if (!text) return false;
+  return /exceeds the context window|context[ _-]?length[ _-]?(exceeded|exceeds|limit)|maximum context length|input is too long|prompt is too long|too many tokens/i.test(
+    String(text)
+  );
+}
+
+function stripInlineData(text) {
+  if (typeof text !== "string" || !text.includes("base64,")) return text;
+  return text.replace(DATA_URI_PATTERN, "[gambar inline base64 dihapus otomatis untuk menghemat context window]");
+}
+
+function clipText(text, limit) {
+  if (typeof text !== "string" || text.length <= limit) return text;
+  const head = Math.max(1, Math.floor(limit * 0.7));
+  const tail = Math.max(0, limit - head);
+  const removed = text.length - limit;
+  const marker = `\n\n[... ${removed} karakter dipotong otomatis agar konteks tidak overflow ...]\n\n`;
+  return `${text.slice(0, head)}${marker}${tail > 0 ? text.slice(-tail) : ""}`;
+}
+
+function sanitizeContent(content, limits) {
+  if (typeof content === "string") {
+    const next = clipText(stripInlineData(content), limits.text);
+    return { content: next, changed: next !== content };
+  }
+  if (!Array.isArray(content)) return { content, changed: false };
+
+  let changed = false;
+  const next = content.map((part) => {
+    if (!part || typeof part !== "object") return part;
+
+    if (part.type === "image" || part.type === "image_url") {
+      changed = true;
+      return { type: "text", text: "[gambar lama dihapus dari riwayat agar konteks tidak overflow]" };
+    }
+
+    let partChanged = false;
+    const clone = { ...part };
+
+    for (const field of ["text", "thinking"]) {
+      if (typeof clone[field] === "string") {
+        const limit = field === "thinking" ? limits.thinking : limits.text;
+        const value = clipText(stripInlineData(clone[field]), limit);
+        if (value !== clone[field]) {
+          clone[field] = value;
+          partChanged = true;
+        }
+      }
+    }
+
+    if (clone.arguments !== undefined && (clone.type === "toolCall" || clone.type === "tool_call")) {
+      const asString = typeof clone.arguments === "string";
+      let raw = null;
+      try {
+        raw = asString ? clone.arguments : JSON.stringify(clone.arguments);
+      } catch {
+        raw = null;
+      }
+      if (raw && raw.length > limits.toolCall) {
+        clone.arguments = { _truncated: true, note: `Argumen tool dipotong otomatis (${raw.length} karakter)` };
+        partChanged = true;
+      } else if (raw) {
+        const cleaned = stripInlineData(raw);
+        if (cleaned !== raw) {
+          if (asString) {
+            clone.arguments = cleaned;
+          } else {
+            try {
+              clone.arguments = JSON.parse(cleaned);
+            } catch {
+              clone.arguments = cleaned;
+            }
+          }
+          partChanged = true;
+        }
+      }
+    }
+
+    if (!partChanged) return part;
+    changed = true;
+    return clone;
+  });
+
+  return { content: next, changed };
+}
+
+function findPiSessionFile(files, sessionId) {
+  return files.find((name) => name.endsWith(`_${sessionId}.jsonl`)) || null;
+}
+
+/**
+ * Menyusutkan pesan raksasa di file sesi Pi (mis. gambar base64 inline atau
+ * output tool yang sangat panjang) agar request tidak melewati context window.
+ */
+export async function sanitizePiSession(cwd, sessionId, { aggressive = false, force = false } = {}) {
+  const empty = { changed: 0, bytesBefore: 0, bytesAfter: 0, file: null };
+  if (!cwd || !sessionId) return empty;
+
+  const sessionDir = getPiSessionDir(cwd);
+  let fileName = null;
+  try {
+    fileName = findPiSessionFile(await readdir(sessionDir), sessionId);
+  } catch {
+    return empty;
+  }
+  if (!fileName) return empty;
+
+  const file = path.join(sessionDir, fileName);
+  let raw = "";
+  try {
+    raw = await readFile(file, "utf8");
+  } catch {
+    return empty;
+  }
+
+  const bytesBefore = Buffer.byteLength(raw);
+  if (!force && bytesBefore < MIN_SANITIZE_BYTES) {
+    return { changed: 0, bytesBefore, bytesAfter: bytesBefore, file };
+  }
+
+  const limits = aggressive ? AGGRESSIVE_LIMITS : SAFE_LIMITS;
+  let changed = 0;
+  const output = raw.split("\n").map((line) => {
+    if (!line.trim()) return line;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      return line;
+    }
+    if (!entry || entry.type !== "message" || !entry.message) return line;
+
+    const result = sanitizeContent(entry.message.content, limits);
+    if (!result.changed) return line;
+    entry.message = { ...entry.message, content: result.content };
+    changed += 1;
+    return JSON.stringify(entry);
+  });
+
+  if (changed === 0) {
+    return { changed: 0, bytesBefore, bytesAfter: bytesBefore, file };
+  }
+
+  const text = `${output.join("\n").replace(/\n+$/, "")}\n`;
+  try {
+    const tempFile = `${file}.tmp-${process.pid}`;
+    await writeFile(tempFile, text, "utf8");
+    await rename(tempFile, file);
+  } catch (err) {
+    console.warn("[PiService] Gagal menyusutkan sesi Pi:", err.message);
+    return { changed: 0, bytesBefore, bytesAfter: bytesBefore, file };
+  }
+
+  return { changed, bytesBefore, bytesAfter: Buffer.byteLength(text), file };
+}
+
+/**
+ * Pemulihan terakhir: buang riwayat lama, sisakan ringkasan compaction terakhir
+ * plus beberapa pesan terbaru. Dipakai hanya saat sesi tetap overflow.
+ */
+export async function prunePiSessionHistory(cwd, sessionId, { keepMessages = 16 } = {}) {
+  const empty = { pruned: 0, bytesBefore: 0, bytesAfter: 0, file: null };
+  if (!cwd || !sessionId) return empty;
+
+  const sessionDir = getPiSessionDir(cwd);
+  let fileName = null;
+  try {
+    fileName = findPiSessionFile(await readdir(sessionDir), sessionId);
+  } catch {
+    return empty;
+  }
+  if (!fileName) return empty;
+
+  const file = path.join(sessionDir, fileName);
+  let raw = "";
+  try {
+    raw = await readFile(file, "utf8");
+  } catch {
+    return empty;
+  }
+
+  const parsed = raw
+    .split("\n")
+    .map((line) => {
+      if (!line.trim()) return null;
+      try {
+        return { line, entry: JSON.parse(line) };
+      } catch {
+        return { line, entry: null };
+      }
+    })
+    .filter(Boolean);
+
+  const valid = parsed.filter((item) => item.entry);
+  const header = valid.find((item) => item.entry.type === "session") || valid[0];
+  const lastCompaction = valid.filter((item) => item.entry.type === "compaction").pop();
+  const messages = valid.filter((item) => item.entry.type === "message");
+  if (messages.length <= keepMessages) return empty;
+
+  const keptMessages = messages.slice(-keepMessages);
+  const keptIds = new Set(keptMessages.map((item) => item.entry.id).filter(Boolean));
+  const anchorId = lastCompaction?.entry?.id ?? null;
+
+  for (const { entry } of keptMessages) {
+    if (entry.parentId && !keptIds.has(entry.parentId)) entry.parentId = anchorId;
+  }
+  if (lastCompaction?.entry) {
+    lastCompaction.entry.parentId = null;
+    if (lastCompaction.entry.firstKeptEntryId && !keptIds.has(lastCompaction.entry.firstKeptEntryId)) {
+      lastCompaction.entry.firstKeptEntryId = keptMessages[0]?.entry?.id ?? lastCompaction.entry.firstKeptEntryId;
+    }
+  }
+  const kept = [];
+  if (header) kept.push(header);
+  if (lastCompaction) kept.push(lastCompaction);
+  kept.push(...keptMessages);
+
+  const text = `${kept.map((item) => JSON.stringify(item.entry)).join("\n")}\n`;
+  try {
+    const tempFile = `${file}.tmp-${process.pid}`;
+    await writeFile(tempFile, text, "utf8");
+    await rename(tempFile, file);
+  } catch (err) {
+    console.warn("[PiService] Gagal memangkas riwayat sesi Pi:", err.message);
+    return empty;
+  }
+
+  return {
+    pruned: messages.length - keptMessages.length,
+    bytesBefore: Buffer.byteLength(raw),
+    bytesAfter: Buffer.byteLength(text),
+    file,
+  };
+}
+
+export async function shrinkPiSessionForContext(cwd, sessionId, { aggressive = true, pruneAboveBytes = PRUNE_ABOVE_BYTES } = {}) {
+  const result = await sanitizePiSession(cwd, sessionId, { aggressive, force: true });
+  if (result.bytesAfter > pruneAboveBytes) {
+    const pruned = await prunePiSessionHistory(cwd, sessionId);
+    if (pruned.pruned > 0) {
+      return { ...result, ...pruned, changed: result.changed + pruned.pruned };
+    }
+  }
+  return { ...result, pruned: 0 };
+}
+
 // Sync only when the active Pi provider points to this CLIProxy instance.
 // An explicitly curated allowlist must never be replaced automatically.
 export async function syncCpaModelsIfActive(cpaUrl, models) {
