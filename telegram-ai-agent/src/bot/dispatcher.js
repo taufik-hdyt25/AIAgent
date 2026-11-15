@@ -1255,6 +1255,7 @@ export async function runAgentAutonomous({
     return args;
   };
 
+  await sanitizePiSession(safeCwd, actualConvId).catch(() => {});
   await repairPiSession(safeCwd, actualConvId).catch(() => {});
 
   let piParser = createPiEventParser();
@@ -1267,6 +1268,21 @@ export async function runAgentAutonomous({
     onSpawn,
     onStdout: (chunk) => piParser.push(chunk),
   });
+
+  if (isContextOverflowMessage(piParser.getError())) {
+    console.warn("[Dispatcher] Subagent Pi melewati context window. Menyusutkan riwayat lalu mengulang...");
+    await shrinkPiSessionForContext(safeCwd, actualConvId, { aggressive: true }).catch(() => null);
+    piParser = createPiEventParser();
+    res = await runProcess({
+      command: binToRun,
+      args: buildPiArgs(prompt),
+      cwd: safeCwd,
+      timeoutMs,
+      env: sanitizedEnv,
+      onSpawn,
+      onStdout: (chunk) => piParser.push(chunk),
+    });
+  }
 
   const isEmptyPiOutput = () =>
     res.code === 0 && !res.timedOut && !res.cancelled && !piParser.getText() && !piParser.getError();
@@ -1313,7 +1329,7 @@ export async function runAgentAutonomous({
     if (text) {
       return { ok: true, output: text };
     }
-    if (parserError && res.code !== 0) {
+    if (parserError) {
       throw new Error(parserError);
     }
   }

@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const piServiceUrl = pathToFileURL(path.resolve('src/services/pi-service.js')).href;
+const telegramFilesUrl = pathToFileURL(path.resolve('src/services/telegram-files.js')).href;
 
 function runIsolated(dir, code) {
   return spawnSync(process.execPath, ['--input-type=module', '-e', code], {
@@ -87,6 +88,25 @@ test('sanitizePiSession removes inline base64 and clips giant messages', async (
       }
       const bigPart = JSON.parse(afterText.split('\\n')[2]).message.content.find((p) => p.type === 'text');
       if (bigPart.text.length > 13000) throw new Error('text part not clipped: ' + bigPart.text.length);
+    `;
+    const res = runIsolated(dir, code);
+    assert.equal(res.status, 0, res.stderr);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('sanitizeReplyText strips inline base64 images from chat replies', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'th-pi-reply-'));
+  try {
+    const code = `
+      const m = await import(${JSON.stringify(telegramFilesUrl)});
+      const payload = '![img](data:image/png;base64,' + 'A'.repeat(5000) + ')';
+      const out = m.sanitizeReplyText('Hasil mockup:\\n' + payload + '\\nSelesai.');
+      if (out.includes('base64,')) throw new Error('base64 still present');
+      if (!out.includes('tidak ditampilkan di chat')) throw new Error('missing placeholder');
+      if (!out.includes('Hasil mockup:') || !out.includes('Selesai.')) throw new Error('text lost');
+      if (m.sanitizeReplyText('halo biasa') !== 'halo biasa') throw new Error('plain text changed');
     `;
     const res = runIsolated(dir, code);
     assert.equal(res.status, 0, res.stderr);

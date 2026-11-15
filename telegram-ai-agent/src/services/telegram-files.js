@@ -18,6 +18,17 @@ export function stripAnsi(str) {
   return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
 }
 
+const INLINE_DATA_URI = /data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]+/gi;
+
+/**
+ * Membuang gambar inline base64 dari teks balasan agar chat tidak dibanjiri
+ * payload raksasa yang tidak terbaca.
+ */
+export function sanitizeReplyText(text) {
+  if (!text || typeof text !== "string" || !text.includes("base64,")) return text || "";
+  return text.replace(INLINE_DATA_URI, "[gambar inline base64 tidak ditampilkan di chat]");
+}
+
 /**
  * Memotong teks secara aman tanpa merusak tampilan.
  */
@@ -111,6 +122,7 @@ export function buildReplyOptions(ctx, extra = {}) {
  * Bagian pertama otomatis me-reply pesan asli user jika message_id tersedia.
  */
 export async function sendSmartReply(ctx, text) {
+  text = sanitizeReplyText(text);
   if (!text || !text.trim()) {
     return ctx.reply("ℹ️ Tugas telah selesai diproses.", buildReplyOptions(ctx));
   }
