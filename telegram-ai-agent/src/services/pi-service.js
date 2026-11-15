@@ -394,7 +394,7 @@ export async function prunePiSessionHistory(cwd, sessionId, { keepMessages = 16 
     .filter(Boolean);
 
   const valid = parsed.filter((item) => item.entry);
-  const header = valid.find((item) => item.entry.type === "session") || valid[0];
+  const header = valid.find((item) => item.entry.type === "session") || null;
   const lastCompaction = valid.filter((item) => item.entry.type === "compaction").pop();
   const messages = valid.filter((item) => item.entry.type === "message");
   if (messages.length <= keepMessages) return empty;
