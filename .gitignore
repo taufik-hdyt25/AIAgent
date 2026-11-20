@@ -36,6 +36,8 @@ projects/*
 !projects/intiva/.gitkeep
 !projects/intiva/README.md
 !projects/intiva/PROJECT_INFO.md
+!projects/th-agent-restart/
+!projects/th-agent-restart/**
 
 # OS & Docker overrides
 .DS_Store
