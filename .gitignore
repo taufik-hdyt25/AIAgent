@@ -31,6 +31,8 @@ telegram-ai-agent/uploads/*
 
 # Projects directory (subprojects are separate repos)
 projects/*
+!projects/content-video-automation/
+!projects/content-video-automation/**
 !projects/.gitkeep
 !projects/intiva/
 !projects/intiva/.gitkeep

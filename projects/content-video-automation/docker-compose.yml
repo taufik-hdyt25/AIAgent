@@ -1,0 +1,16 @@
+services:
+  content-video-studio:
+    build: .
+    container_name: content-video-studio
+    restart: unless-stopped
+    ports:
+      - "3217:3217"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    networks:
+      - content-studio
+networks:
+  content-studio:
+    name: content-video-studio
