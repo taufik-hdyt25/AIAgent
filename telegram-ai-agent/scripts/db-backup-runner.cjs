@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * TH Agent Smart Database Backup Runner
- * - Automatically dumps all active user databases in PostgreSQL (th-db container)
- * - Bundles all databases into 1 compressed archive (.tar.gz) with separate folders per database
- * - Deterministic SHA-256 change detection: only creates & sends backup if data has actually changed
- * - Telegram integration: automatically sends archive to Telegram owner (sendDocument)
- * - Auto-rotation: retains last 7 local backups to prevent disk bloat
+ * TH Studio encrypted smart backup runner.
+ * Bundles PostgreSQL/SQLite/JSON stores and project .env files into one encrypted archive,
+ * then sends it to the configured Telegram Backup Vault. Secrets are never logged or committed.
  */
 
 const fs = require("fs");
@@ -18,405 +15,237 @@ const args = process.argv.slice(2);
 const isForce = args.includes("--force") || args.includes("-f");
 const isDryRun = args.includes("--dry-run");
 const skipTelegram = args.includes("--no-telegram");
-
 const CONTAINER_NAME = "th-db";
 const DB_USER = "th_user";
-const BACKUP_ROOT = path.join("/home/ubuntu/.th-agent/backups");
-const STATE_FILE = path.join("/home/ubuntu/.th-agent/data/last_db_backup_hash.json");
-
-// Databases excluded from backup
-const EXCLUDED_DATABASES = [
-  "postgres",
-  "th_wedding_db",
-  ...(process.env.BACKUP_EXCLUDE_DBS ? process.env.BACKUP_EXCLUDE_DBS.split(",").map((s) => s.trim()) : []),
-];
-
-// Known databases and auto-discovery rules
+const PROJECTS_ROOT = "/home/th-agent/projects";
+const BACKUP_ROOT = "/home/ubuntu/.th-agent/backups";
+const STATE_FILE = "/home/ubuntu/.th-agent/data/last_db_backup_hash.json";
+const ENCRYPTION_KEY_FILE = "/home/ubuntu/.th-agent/data/backup-encryption.key";
+const EXCLUDED_DATABASES = ["postgres", "th_wedding_db", ...(process.env.BACKUP_EXCLUDE_DBS || "").split(",").map((s) => s.trim()).filter(Boolean)];
+const SKIP_DIRS = new Set(["node_modules", ".git", ".next", ".cache", ".turbo", "dist", "build", "coverage"]);
 const KNOWN_SQLITE_DATABASES = [
-  {
-    name: "artosku_db",
-    filePath: "/home/th-agent/projects/dompet-bulanan/dompet.sqlite",
-    label: "Artosku (Dompet Bulanan)",
-  },
-  {
-    name: "whatsapp_bot_db",
-    filePath: "/home/th-agent/projects/wa-chat-bot/whatsapp-bot/prisma/dev.db",
-    label: "WhatsApp Bot Prisma",
-  },
+  { name: "artosku_db", filePath: `${PROJECTS_ROOT}/dompet-bulanan/dompet.sqlite`, label: "Artosku (Dompet Bulanan)" },
+  { name: "whatsapp_bot_db", filePath: `${PROJECTS_ROOT}/wa-chat-bot/whatsapp-bot/prisma/dev.db`, label: "WhatsApp Bot Prisma" },
 ];
+const AI_AGENT_STORES = [{ name: "ai_agent_memories", filePath: "/home/th-agent/telegram-ai-agent/data/memories.json", type: "JSON-Store", label: "TH Agent Vector Memories" }];
 
-const AI_AGENT_STORES = [
-  {
-    name: "ai_agent_memories",
-    filePath: "/home/th-agent/telegram-ai-agent/data/memories.json",
-    type: "JSON-Store",
-    label: "TH Agent Vector Memories",
-  },
-];
+for (const dir of [BACKUP_ROOT, path.dirname(STATE_FILE)]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+
+function getEncryptionKey() {
+  const configured = (process.env.BACKUP_ENCRYPTION_KEY || "").trim();
+  if (configured) {
+    const key = Buffer.from(configured, "base64");
+    if (key.length === 32) return key;
+    if (/^[a-f\d]{64}$/i.test(configured)) return Buffer.from(configured, "hex");
+    throw new Error("BACKUP_ENCRYPTION_KEY must be a 32-byte base64 or 64-character hex key.");
+  }
+  if (!fs.existsSync(ENCRYPTION_KEY_FILE)) {
+    const key = crypto.randomBytes(32);
+    fs.writeFileSync(ENCRYPTION_KEY_FILE, key.toString("base64") + "\n", { mode: 0o600, flag: "wx" });
+    console.log(`🔐 Generated archive key at ${ENCRYPTION_KEY_FILE}; store a secure off-server copy for recovery.`);
+  }
+  const key = Buffer.from(fs.readFileSync(ENCRYPTION_KEY_FILE, "utf8").trim(), "base64");
+  if (key.length !== 32) throw new Error(`Invalid AES key in ${ENCRYPTION_KEY_FILE}.`);
+  return key;
+}
+
+function discoverProjectEnvFiles() {
+  const results = [];
+  const rootReal = fs.realpathSync(PROJECTS_ROOT);
+  function walk(dir) {
+    let entries;
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (entry.name === ".env" && entry.isFile()) {
+        const full = path.join(dir, entry.name);
+        try {
+          const real = fs.realpathSync(full);
+          if (real.startsWith(rootReal + path.sep)) results.push({ filePath: full, relativePath: path.relative(rootReal, full) });
+        } catch {}
+        continue;
+      }
+      if (entry.isDirectory() && !entry.isSymbolicLink() && !SKIP_DIRS.has(entry.name)) walk(path.join(dir, entry.name));
+    }
+  }
+  walk(rootReal);
+  for (const filePath of ["/home/ubuntu/.th-agent/.env", "/home/th-agent/.env", "/home/th-agent/telegram-ai-agent/.env"]) {
+    if (!fs.existsSync(filePath)) continue;
+    try {
+      const real = fs.realpathSync(filePath);
+      const relativePath = `system/${path.basename(path.dirname(filePath))}/.env`;
+      if (!results.some((entry) => entry.relativePath === relativePath)) results.push({ filePath: real, relativePath });
+    } catch {}
+  }
+  return results.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+}
 
 function discoverSqliteDatabases() {
   const dbMap = new Map();
   for (const db of KNOWN_SQLITE_DATABASES) {
-    if (fs.existsSync(db.filePath)) {
-      dbMap.set(path.resolve(db.filePath), { ...db, type: "SQLite", source: "sqlite" });
-    }
+    if (fs.existsSync(db.filePath)) dbMap.set(path.resolve(db.filePath), { ...db, type: "SQLite", source: "sqlite" });
   }
-
-  // Auto-discover any other active SQLite databases across /home/th-agent/projects/
   try {
-    const cmd = `find /home/th-agent/projects/ -type f \\( -name "*.sqlite" -o -name "*.sqlite3" -o -name "*.db" \\) 2>/dev/null | grep -v "/node_modules/" | grep -v "/\\.git/" | grep -v "/\\.cache/" | grep -v "/\\.next/"`;
-    const found = execSync(cmd, { encoding: "utf-8" }).trim().split("\n").filter(Boolean);
-    for (const f of found) {
-      const absPath = path.resolve(f);
-      if (!dbMap.has(absPath)) {
-        const parts = absPath.split(path.sep);
-        const projIdx = parts.indexOf("projects");
-        const projName = projIdx !== -1 && parts[projIdx + 1] ? parts[projIdx + 1] : "db";
-        const baseName = path.basename(absPath, path.extname(absPath));
-        const cleanName = `${projName}_${baseName}`.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase();
-        dbMap.set(absPath, {
-          name: cleanName,
-          filePath: absPath,
-          type: "SQLite",
-          source: "sqlite",
-          label: `${projName} (${path.basename(absPath)})`,
-        });
+    const found = execSync(`find ${JSON.stringify(PROJECTS_ROOT)} -type f \\( -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.db' \\) 2>/dev/null`, { encoding: "utf8" }).trim().split("\n").filter(Boolean);
+    for (const filePath of found) {
+      if (filePath.split(path.sep).some((part) => SKIP_DIRS.has(part))) continue;
+      const abs = path.resolve(filePath);
+      if (!dbMap.has(abs)) {
+        const parts = abs.split(path.sep);
+        const index = parts.indexOf("projects");
+        const project = parts[index + 1] || "db";
+        const base = path.basename(abs, path.extname(abs));
+        dbMap.set(abs, { name: `${project}_${base}`.replace(/[^a-zA-Z0-9_]/g, "_").toLowerCase(), filePath: abs, type: "SQLite", source: "sqlite", label: `${project} (${path.basename(abs)})` });
       }
     }
-  } catch (err) {
-    console.warn("⚠️ Warning during SQLite dynamic discovery:", err.message);
-  }
-
-  return Array.from(dbMap.values());
-}
-
-// Ensure directories exist
-if (!fs.existsSync(BACKUP_ROOT)) {
-  fs.mkdirSync(BACKUP_ROOT, { recursive: true });
-}
-const stateDir = path.dirname(STATE_FILE);
-if (!fs.existsSync(stateDir)) {
-  fs.mkdirSync(stateDir, { recursive: true });
+  } catch (err) { console.warn("⚠️ SQLite discovery warning:", err.message); }
+  return [...dbMap.values()];
 }
 
 function getEnvConfig() {
-  const envPaths = [
-    "/home/ubuntu/.th-agent/.env",
-    "/home/th-agent/.env",
-    "/home/th-agent/telegram-ai-agent/.env",
-  ];
-  let botToken = null;
-  let backupChatId = null;
-  let allowedTelegramIds = null;
-
-  for (const envPath of envPaths) {
-    if (fs.existsSync(envPath)) {
-      try {
-        const content = fs.readFileSync(envPath, "utf-8");
-        const tokenMatch = content.match(/BOT_TOKEN=([^\r\n]+)/);
-        const backupChatMatch = content.match(/TELEGRAM_BACKUP_CHAT_ID=([^\r\n]+)/);
-        const idsMatch = content.match(/ALLOWED_TELEGRAM_IDS=([^\r\n]+)/);
-
-        if (tokenMatch && !botToken) {
-          botToken = tokenMatch[1].trim();
-        }
-        if (backupChatMatch && !backupChatId) {
-          backupChatId = backupChatMatch[1].trim();
-        }
-        if (idsMatch && !allowedTelegramIds) {
-          allowedTelegramIds = idsMatch[1].split(",")[0].trim();
-        }
-      } catch (_) {}
-    }
+  const paths = ["/home/ubuntu/.th-agent/.env", "/home/th-agent/.env", "/home/th-agent/telegram-ai-agent/.env"];
+  let botToken = null, chatId = null, allowedIds = null;
+  for (const file of paths) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      const content = fs.readFileSync(file, "utf8");
+      const token = content.match(/^BOT_TOKEN\s*=\s*['\"]?([^\r\n'\"]+)/m);
+      const chat = content.match(/^TELEGRAM_BACKUP_CHAT_ID\s*=\s*['\"]?([^\r\n'\"]+)/m);
+      const ids = content.match(/^ALLOWED_TELEGRAM_IDS\s*=\s*['\"]?([^\r\n'\"]+)/m);
+      if (token && !botToken) botToken = token[1].trim();
+      if (chat && !chatId) chatId = chat[1].trim();
+      if (ids && !allowedIds) allowedIds = ids[1].split(",")[0].trim();
+    } catch {}
   }
-
-  // Always prioritize TELEGRAM_BACKUP_CHAT_ID if set, else fallback to allowedTelegramIds
-  const chatId = backupChatId || allowedTelegramIds || "-5323409843";
-
-  if (botToken && chatId) {
-    return {
-      botToken,
-      chatId,
-    };
-  }
-  return null;
+  return botToken ? { botToken, chatId: chatId || allowedIds || "-5323409843" } : null;
 }
 
-function getDatabases() {
-  try {
-    const cmd = `docker exec ${CONTAINER_NAME} psql -U ${DB_USER} -d postgres -t -A -c "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres' ORDER BY datname;"`;
-    const output = execSync(cmd, { encoding: "utf-8" }).trim();
-    return output
-      .split("\n")
-      .map((d) => d.trim())
-      .filter((d) => Boolean(d) && !EXCLUDED_DATABASES.includes(d));
-  } catch (err) {
-    console.error("❌ Failed to query databases from container:", err.message);
-    process.exit(1);
-  }
-}
-
-function calculateDeterministicHash(sqlContent) {
-  // Filter out comments (-- ...) and dynamic session commands (\restrict ...)
-  const lines = sqlContent.split("\n");
-  const filtered = lines.filter((l) => {
-    const trimmed = l.trim();
-    return !trimmed.startsWith("--") && !trimmed.startsWith("\\");
-  });
-  return crypto.createHash("sha256").update(filtered.join("\n")).digest("hex");
+function calculateHash(content) {
+  const normalized = content.split("\n").filter((line) => !line.trim().startsWith("--") && !line.trim().startsWith("\\")).join("\n");
+  return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
 function rotateLocalBackups(maxKeep = 7) {
-  try {
-    const files = fs
-      .readdirSync(BACKUP_ROOT)
-      .filter((f) => f.startsWith("th_databases_backup_") && f.endsWith(".tar.gz"))
-      .map((f) => {
-        const fullPath = path.join(BACKUP_ROOT, f);
-        return { name: f, path: fullPath, mtime: fs.statSync(fullPath).mtimeMs };
-      })
-      .sort((a, b) => b.mtime - a.mtime);
-
-    if (files.length > maxKeep) {
-      const toDelete = files.slice(maxKeep);
-      for (const item of toDelete) {
-        fs.unlinkSync(item.path);
-        console.log(`[Auto-Rotate] Deleted old backup: ${item.name}`);
-      }
-    }
-  } catch (err) {
-    console.warn("⚠️ Warning during backup rotation:", err.message);
+  const files = fs.readdirSync(BACKUP_ROOT).filter((name) => name.startsWith("th_studio_backup_") && name.endsWith(".tar.gz.enc"))
+    .map((name) => ({ name, mtime: fs.statSync(path.join(BACKUP_ROOT, name)).mtimeMs })).sort((a, b) => b.mtime - a.mtime);
+  for (const old of files.slice(maxKeep)) {
+    fs.unlinkSync(path.join(BACKUP_ROOT, old.name));
+    console.log(`[Auto-Rotate] Deleted old backup: ${old.name}`);
   }
 }
 
-function sendToTelegram(archivePath, dbList, totalSizeBytes) {
+function sendToTelegram(archivePath, entryNames, sizeBytes) {
   const config = getEnvConfig();
-  if (!config) {
-    console.warn("⚠️ Telegram configuration not found. Skipping Telegram send.");
-    return false;
-  }
-
-  const { botToken, chatId } = config;
-  const sizeMb = (totalSizeBytes / (1024 * 1024)).toFixed(2);
-  const sizeKb = (totalSizeBytes / 1024).toFixed(1);
-  const displaySize = totalSizeBytes > 1024 * 1024 ? `${sizeMb} MB` : `${sizeKb} KB`;
-
-  // Format timestamp in WIB (UTC+7)
-  const now = new Date();
-  const wibTime = new Intl.DateTimeFormat("id-ID", {
-    timeZone: "Asia/Jakarta",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(now);
-
-  const dbBullets = dbList
-    .map((db) => {
-      if (typeof db === "object" && db.name) {
-        return `  • \`${db.name}\` _(${db.type || "DB"})_`;
-      }
-      return `  • \`${db}\``;
-    })
-    .join("\n");
-  const caption =
-    `📦 *Auto-Backup Database TH Studio*\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n` +
-    `✨ *Status:* Terdeteksi perubahan data baru!\n` +
-    `🗄️ *Databases:* \n${dbBullets}\n` +
-    `📊 *Ukuran Arsip:* ${displaySize}\n` +
-    `⏱️ *Waktu:* ${wibTime} WIB\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n` +
-    `_Semua database dibundling jadi 1 file dan terpisah per folder di dalamnya._`;
-
-  console.log(`[Telegram] Sending backup (${displaySize}) to Chat ID ${chatId}...`);
+  if (!config) { console.warn("⚠️ Telegram configuration missing; archive retained locally."); return false; }
+  const timestamp = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" }).format(new Date());
+  const caption = `🔐 *Encrypted TH Studio Backup*\n━━━━━━━━━━━━━━━━━━━━\n📦 One archive: databases + project .env files\n🗄️ Components: ${entryNames.length}\n📊 Size: ${(sizeBytes / 1048576).toFixed(2)} MB\n⏱️ ${timestamp} WIB\n🔒 AES-256-GCM encrypted. Restore key must be kept separately.`;
+  const proc = spawnSync("curl", ["-sS", "--max-time", "120", "-F", `chat_id=${config.chatId}`, "-F", `document=@${archivePath}`, "-F", `caption=${caption}`, "-F", "parse_mode=Markdown", `https://api.telegram.org/bot${config.botToken}/sendDocument`], { encoding: "utf8", timeout: 130000 });
+  if (proc.error) { console.error("❌ Telegram upload failed:", proc.error.message); return false; }
   try {
-    const curlArgs = [
-      "-s",
-      "-F", `chat_id=${chatId}`,
-      "-F", `document=@${archivePath}`,
-      "-F", `caption=${caption}`,
-      "-F", "parse_mode=Markdown",
-      `https://api.telegram.org/bot${botToken}/sendDocument`
-    ];
-    const proc = spawnSync("curl", curlArgs, { encoding: "utf-8" });
-    if (proc.error) {
-      console.error("❌ Failed to execute curl:", proc.error.message);
-      return false;
-    }
-    const parsed = JSON.parse(proc.stdout || "{}");
-    if (parsed.ok) {
-      console.log("✅ Backup successfully delivered to Telegram!");
-      return true;
-    } else {
-      console.error("❌ Telegram API error:", parsed.description);
-      return false;
-    }
-  } catch (err) {
-    console.error("❌ Failed to send document to Telegram:", err.message);
-    return false;
-  }
+    const response = JSON.parse(proc.stdout || "{}");
+    if (response.ok) { console.log("✅ Encrypted backup delivered to Telegram Backup Vault."); return true; }
+    console.error("❌ Telegram API error:", response.description || "Unknown error");
+  } catch { console.error("❌ Invalid Telegram response."); }
+  return false;
 }
 
 async function runBackup() {
-  console.log("🚀 Starting TH Database Backup Runner...");
-
-  const pgDatabases = getDatabases();
-  console.log(`📋 Found active PostgreSQL databases in ${CONTAINER_NAME}:`, pgDatabases);
-
-  const sqliteDatabases = discoverSqliteDatabases();
-  console.log(`📋 Found active SQLite databases:`, sqliteDatabases.map((s) => `${s.name} (${s.label})`));
-
-  const activeStores = AI_AGENT_STORES.filter((s) => fs.existsSync(s.filePath)).map((s) => ({
-    ...s,
-    source: "json_store",
-  }));
-  if (activeStores.length > 0) {
-    console.log(`📋 Found active persistent stores:`, activeStores.map((s) => `${s.name} (${s.label})`));
-  }
-
-  const allDbEntries = [
-    ...pgDatabases.map((db) => ({ name: db, type: "PostgreSQL", source: "postgres" })),
-    ...sqliteDatabases,
-    ...activeStores,
-  ].filter((item) => !EXCLUDED_DATABASES.includes(item.name));
-
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  
-  const tempDir = path.join(BACKUP_ROOT, `bundle_temp_${dateStr}`);
-  fs.mkdirSync(tempDir, { recursive: true });
-
-  const dbHashes = {};
-  const dbSummaries = [];
-
+  const tempDir = path.join(BACKUP_ROOT, `bundle_temp_${Date.now()}`);
+  const workDir = path.join(BACKUP_ROOT, `encrypted_temp_${Date.now()}`);
+  console.log("🚀 Starting encrypted TH Studio backup...");
+  fs.mkdirSync(tempDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(workDir, { recursive: true, mode: 0o700 });
   try {
-    for (const item of allDbEntries) {
-      console.log(`⏳ Dumping database: ${item.name} (${item.type})...`);
-      const dbDir = path.join(tempDir, item.name);
-      fs.mkdirSync(dbDir, { recursive: true });
+    const pgDbs = execSync(`docker exec ${CONTAINER_NAME} psql -U ${DB_USER} -d postgres -t -A -c "SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres' ORDER BY datname;"`, { encoding: "utf8" }).trim().split("\n").filter((name) => name && !EXCLUDED_DATABASES.includes(name));
+    const sqliteDbs = discoverSqliteDatabases();
+    const stores = AI_AGENT_STORES.filter((s) => fs.existsSync(s.filePath)).map((s) => ({ ...s, source: "json_store" }));
+    const envFiles = discoverProjectEnvFiles();
+    const entries = [...pgDbs.map((name) => ({ name, type: "PostgreSQL", source: "postgres" })), ...sqliteDbs, ...stores];
+    console.log(`📋 Found ${pgDbs.length} PostgreSQL DBs, ${sqliteDbs.length} SQLite DBs, ${stores.length} JSON stores, ${envFiles.length} project .env files.`);
 
-      let sqlContent = "";
-      let primaryFile = "";
+    const hashes = {};
+    const summaries = [];
+    for (const item of entries) {
+      const destDir = path.join(tempDir, "databases", item.name);
+      fs.mkdirSync(destDir, { recursive: true, mode: 0o700 });
+      let content = "";
+      let primaryFile;
       if (item.source === "postgres") {
-        const dumpCmd = `docker exec ${CONTAINER_NAME} pg_dump -U ${DB_USER} ${item.name}`;
-        sqlContent = execSync(dumpCmd, { encoding: "utf-8", maxBuffer: 100 * 1024 * 1024 });
-        primaryFile = path.join(dbDir, `${item.name}.sql`);
-        fs.writeFileSync(primaryFile, sqlContent, "utf-8");
+        content = execSync(`docker exec ${CONTAINER_NAME} pg_dump -U ${DB_USER} ${JSON.stringify(item.name)}`, { encoding: "utf8", maxBuffer: 100 * 1024 * 1024 });
+        primaryFile = path.join(destDir, `${item.name}.sql`);
+        fs.writeFileSync(primaryFile, content, { mode: 0o600 });
       } else if (item.source === "sqlite") {
-        const dumpCmd = `python3 -c "import sqlite3, sys; conn = sqlite3.connect('${item.filePath}'); sys.stdout.write('\\n'.join(conn.iterdump()))"`;
-        sqlContent = execSync(dumpCmd, { encoding: "utf-8", maxBuffer: 100 * 1024 * 1024 });
-
-        // Copy raw .sqlite file alongside .sql dump for instant file recovery
-        const rawFileName = path.basename(item.filePath);
-        fs.copyFileSync(item.filePath, path.join(dbDir, rawFileName));
-        primaryFile = path.join(dbDir, `${item.name}.sql`);
-        fs.writeFileSync(primaryFile, sqlContent, "utf-8");
-      } else if (item.source === "json_store") {
-        sqlContent = fs.readFileSync(item.filePath, "utf-8");
-        primaryFile = path.join(dbDir, path.basename(item.filePath));
-        fs.writeFileSync(primaryFile, sqlContent, "utf-8");
+        const python = "import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); sys.stdout.write('\\n'.join(c.iterdump()))";
+        content = execSync(`python3 -c ${JSON.stringify(python)} ${JSON.stringify(item.filePath)}`, { encoding: "utf8", maxBuffer: 100 * 1024 * 1024 });
+        fs.copyFileSync(item.filePath, path.join(destDir, path.basename(item.filePath)));
+        primaryFile = path.join(destDir, `${item.name}.sql`);
+        fs.writeFileSync(primaryFile, content, { mode: 0o600 });
+      } else {
+        content = fs.readFileSync(item.filePath, "utf8");
+        primaryFile = path.join(destDir, path.basename(item.filePath));
+        fs.copyFileSync(item.filePath, primaryFile);
       }
-
-      const hash = calculateDeterministicHash(sqlContent);
-      dbHashes[item.name] = hash;
-
-      const stat = fs.statSync(primaryFile);
-      dbSummaries.push({
-        database: item.name,
-        type: item.type,
-        sizeBytes: stat.size,
-        hash: hash,
-      });
-      console.log(`   ✓ ${item.name} (${item.type}): ${(stat.size / 1024).toFixed(1)} KB (hash: ${hash.slice(0, 12)}...)`);
+      const hash = calculateHash(content);
+      hashes[`db:${item.name}`] = hash;
+      summaries.push({ name: item.name, type: item.type, sizeBytes: fs.statSync(primaryFile).size, sha256: hash });
     }
 
-    // Compute composite hash for all databases
-    const compositeHash = crypto
-      .createHash("sha256")
-      .update(JSON.stringify(dbHashes))
-      .digest("hex");
-
-    console.log(`🔑 Composite Database Hash: ${compositeHash.slice(0, 16)}...`);
-
-    // Load previous hash
-    let previousState = null;
-    if (fs.existsSync(STATE_FILE)) {
-      try {
-        previousState = JSON.parse(fs.readFileSync(STATE_FILE, "utf-8"));
-      } catch (_) {}
+    const copiedEnvFiles = [];
+    for (const env of envFiles) {
+      const dest = path.join(tempDir, "project-env", env.relativePath);
+      fs.mkdirSync(path.dirname(dest), { recursive: true, mode: 0o700 });
+      fs.copyFileSync(env.filePath, dest);
+      fs.chmodSync(dest, 0o600);
+      const hash = crypto.createHash("sha256").update(fs.readFileSync(env.filePath)).digest("hex");
+      hashes[`env:${env.relativePath}`] = hash;
+      copiedEnvFiles.push({ path: env.relativePath, sha256: hash });
     }
 
-    const hasChanged = !previousState || previousState.compositeHash !== compositeHash;
-
-    if (!hasChanged && !isForce) {
-      console.log("ℹ️  [Skip] No database changes detected since last backup. Telegram dispatch skipped.");
-      // Clean up temp
-      fs.rmSync(tempDir, { recursive: true, force: true });
+    const compositeHash = crypto.createHash("sha256").update(JSON.stringify(hashes)).digest("hex");
+    let previous = null;
+    try { previous = JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch {}
+    const changed = !previous || previous.compositeHash !== compositeHash;
+    if (!changed && !isForce) {
+      console.log("ℹ️ No database or project .env changes detected; Telegram dispatch skipped.");
       return { changed: false };
     }
-
-    if (isForce) {
-      console.log("⚡ Forced backup requested (--force flag).");
-    } else {
-      console.log("✨ New or modified data detected in database!");
-    }
-
     if (isDryRun) {
-      console.log("🔍 Dry run completed. Changes detected, no archive created.");
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      console.log(`🔍 Dry run: detected changes; would package ${entries.length} DB/store items and ${envFiles.length} .env files.`);
       return { changed: true, dryRun: true };
     }
 
-    // Create metadata.json inside the bundle
-    const metadata = {
-      backupDate: now.toISOString(),
-      compositeHash: compositeHash,
-      databases: dbSummaries,
-    };
-    fs.writeFileSync(path.join(tempDir, "metadata.json"), JSON.stringify(metadata, null, 2), "utf-8");
-
-    // Package into .tar.gz
-    const archiveName = `th_databases_backup_${dateStr}.tar.gz`;
+    const now = new Date();
+    const timestamp = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(now).replace(/[,:\s-]/g, "");
+    const metadata = { backupDate: now.toISOString(), compositeHash, encryption: "AES-256-GCM", databases: summaries, envFiles: copiedEnvFiles };
+    fs.writeFileSync(path.join(tempDir, "metadata.json"), JSON.stringify(metadata, null, 2), { mode: 0o600 });
+    const archiveName = `th_studio_backup_${timestamp}.tar.gz.enc`;
+    const tarPath = path.join(workDir, "payload.tar.gz");
     const archivePath = path.join(BACKUP_ROOT, archiveName);
+    execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(tempDir)} .`);
 
-    console.log(`📦 Packaging archive: ${archiveName}...`);
-    execSync(`tar -czf "${archivePath}" -C "${tempDir}" .`);
-    const archiveStat = fs.statSync(archivePath);
+    const key = getEncryptionKey();
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+    const input = fs.readFileSync(tarPath);
+    const encrypted = Buffer.concat([cipher.update(input), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    const header = Buffer.from("THBK1");
+    const payload = Buffer.concat([header, iv, tag, encrypted]);
+    fs.writeFileSync(archivePath, payload, { mode: 0o600 });
+    const size = fs.statSync(archivePath).size;
+    console.log(`✅ Encrypted archive ready: ${archiveName} (${(size / 1048576).toFixed(2)} MB).`);
 
-    console.log(`✅ Archive created: ${archivePath} (${(archiveStat.size / 1024).toFixed(1)} KB)`);
+    const delivered = skipTelegram || sendToTelegram(archivePath, [...entries.map((item) => item.name), ...envFiles.map((item) => `.env:${item.relativePath}`)], size);
+    if (!skipTelegram && !delivered) throw new Error("Backup archive created but Telegram delivery failed; state is not advanced for retry.");
 
-    // Clean up temporary folder
-    fs.rmSync(tempDir, { recursive: true, force: true });
-
-    // Save state
-    const newState = {
-      lastBackupAt: now.toISOString(),
-      compositeHash: compositeHash,
-      dbHashes: dbHashes,
-      lastArchive: archiveName,
-      lastArchiveSize: archiveStat.size,
-    };
-    fs.writeFileSync(STATE_FILE, JSON.stringify(newState, null, 2), "utf-8");
-
-    // Rotate local backups (keep last 7)
+    fs.writeFileSync(STATE_FILE, JSON.stringify({ lastBackupAt: now.toISOString(), compositeHash, hashes, lastArchive: archiveName, lastArchiveSize: size }, null, 2), { mode: 0o600 });
     rotateLocalBackups(7);
-
-    // Dispatch to Telegram
-    if (!skipTelegram) {
-      sendToTelegram(archivePath, allDbEntries, archiveStat.size);
-    }
-
-    return {
-      changed: true,
-      archivePath: archivePath,
-      sizeBytes: archiveStat.size,
-    };
+    return { changed: true, archivePath, sizeBytes: size, delivered };
   } catch (err) {
     console.error("❌ Backup failed:", err.message);
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    }
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    fs.rmSync(workDir, { recursive: true, force: true });
   }
 }
 
