@@ -208,7 +208,7 @@ if (
         { command: "cancel", description: "Hentikan tugas aktif atau antrean" },
       ])
       .catch((err) => {
-        console.warn("Gagal mendaftarkan menu commands ke Telegram:", err.message);
+        console.warn("Gagal mendaftarkan menu commands ke Telegram:", err.message, "cause:", err.cause?.message || err.cause || "-");
       });
   };
 
@@ -276,7 +276,7 @@ if (
 
         console.log("[Bot Gateway] Polling connection ditutup atau dihentikan.");
       } catch (err) {
-        console.error(`❌ Kendala polling bot Telegram: ${err.message}`);
+        console.error(`❌ Kendala polling bot Telegram: ${err.message}`, "cause:", err.cause?.message || err.cause || "-");
 
         if (err.error_code === 409 || err.description?.includes("Conflict") || String(err).includes("409")) {
           console.warn("\n⚠️  [409 CONFLICT DETECTED]");

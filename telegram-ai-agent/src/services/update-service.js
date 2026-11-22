@@ -157,7 +157,7 @@ async function syncAndRebuildBundle() {
     console.log("[Update Service] Memperbarui bundle executable th-agent-bin...");
     const entry = path.join(agentDir, "src/bot.js");
     await execAsync(
-      `npx -y esbuild "${entry}" --bundle --platform=node --format=esm --banner:js="#!/usr/bin/env node\nimport { createRequire } from 'module'; const require = createRequire(import.meta.url);" --target=node20 --outfile="${binPath}"`,
+      `npx -y esbuild "${entry}" --bundle --packages=external --platform=node --format=esm --banner:js="#!/usr/bin/env node\nimport { createRequire } from 'module'; const require = createRequire(import.meta.url);" --target=node20 --outfile="${binPath}"`,
       { cwd: agentDir }
     );
   }
