@@ -1,11 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
+  buildConversationKey,
   setActiveTask,
   clearActiveTask,
-  getActiveTask,
   registerWorker,
   unregisterWorker,
-  getActiveWorkers,
   killAllWorkers,
 } from "./cli-runner.js";
 import { runAgentAutonomous, processAutonomousOutput } from "../bot/dispatcher.js";
@@ -142,12 +141,15 @@ export async function executeSwarm({
   });
 
   // Daftarkan task utama sebagai Swarm aktif
+  const swarmThreadId = ctx.message?.message_thread_id || null;
   setActiveTask({
     id: swarmId,
     startedAt: startTime,
     preview: `🐝 Swarm (${workerStates.length} Sub-Agents)`,
     userId: actualUserId,
     chatId: ctx.chat?.id,
+    threadId: swarmThreadId,
+    conversationKey: buildConversationKey(ctx.chat?.id, swarmThreadId),
     isSwarm: true,
   });
 

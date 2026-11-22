@@ -862,7 +862,7 @@ setup_binary_bundle_and_service() {
     npx -y esbuild "$entry_file" --bundle --platform=node --format=esm \
         --banner:js="#!/usr/bin/env node
 import { createRequire } from 'module'; const require = createRequire(import.meta.url);" \
-        --target=node20 --outfile="$global_dir/th-agent-bin"
+        --keep-names --target=node20 --outfile="$global_dir/th-agent-bin"
     chmod +x "$global_dir/th-agent-bin"
 
     # Salin juga ke local dist agar terlihat jika dibuka
@@ -885,6 +885,7 @@ import { createRequire } from 'module'; const require = createRequire(import.met
     elif [ -f "$workspace_dir/.env" ]; then
         cp "$workspace_dir/.env" "$global_dir/.env"
     fi
+    chmod 640 "$global_dir/.env" 2>/dev/null || true
 
     # 3. Buat CLI Command Wrapper di ~/.local/bin/th-agent
     cat << 'EOF' > "$bin_link"
@@ -1124,6 +1125,7 @@ Environment=ENV_FILE=$global_dir/.env
 Environment=PROJECTS_DIR=$projects_target
 Environment=WORKSPACE_DIR=$workspace_dir
 Environment=WEB_PORT=$web_port
+Environment=TH_ADMIN_AGENT_API_KEY_FILE=$global_dir/.env
 Environment=PATH=$safe_path
 
 [Install]

@@ -23,7 +23,10 @@ import {
 } from "../../services/env-service.js";
 import { syncPiModelDirectly } from "../../services/pi-service.js";
 import {
+  buildConversationKey,
   getActiveTask,
+  getActiveTasks,
+  getActiveTaskForConversation,
   setActiveTask,
   clearActiveTask,
   killProcessTree,
@@ -284,13 +287,18 @@ export function registerBasicCommands(bot) {
     const autonomy = await getAutonomyConfig();
     const autonomyLine = `🧠 Mode Otonomi: *${getAutonomyLabel(autonomy.mode)}* (\`/mode\`)`;
 
-    const activeTask = getActiveTask();
+    const statusThreadId = ctx.message?.message_thread_id || null;
+    const statusConversationKey = buildConversationKey(ctx.chat?.id, statusThreadId);
+    const activeTask = getActiveTaskForConversation(statusConversationKey);
+    const otherActiveCount = getActiveTasks().length - (activeTask ? 1 : 0);
+
     if (!activeTask) {
       await ctx.reply(
         `🟢 *Status TH Agent: Idle (Siap menerima instruksi)*\n\n` +
         `⚙️ Engine aktif: *${engineLabel}*\n` +
         `🤖 Model aktif: ${activeModelDisplay}\n` +
         `${autonomyLine}\n` +
+        (otherActiveCount > 0 ? `🔄 Tugas lain berjalan: *${otherActiveCount}* (chat/topic lain)\n` : "") +
         `📋 Status Antrean: ${queueStatus}`,
         { parse_mode: "Markdown" }
       );
@@ -325,7 +333,7 @@ export function registerBasicCommands(bot) {
 
   // /queue, /antrean, /q
   bot.command(["queue", "antrean", "q"], async (ctx) => {
-    const activeTask = getActiveTask();
+    const activeTasks = getActiveTasks();
     const queue = getQueue();
     const isPaused = isQueuePaused();
 
@@ -342,13 +350,15 @@ export function registerBasicCommands(bot) {
       text += "\n";
     }
 
-    if (activeTask) {
-      const elapsed = Math.floor((Date.now() - activeTask.startedAt) / 1000);
-      text += `⚡ *Tugas Utama Sedang Berjalan:*\n`;
-      text += `• ID: \`${activeTask.id}\`${activeTask.targetProject ? ` (\`projects/${activeTask.targetProject}\`)` : ""}\n`;
-      text += `• Durasi: ${elapsed} detik\n`;
-      if (activeTask.preview) {
-        text += `• Instruksi: _“${truncate(activeTask.preview, 80)}”_\n`;
+    if (activeTasks.length > 0) {
+      text += `⚡ *Tugas Utama Sedang Berjalan (${activeTasks.length}):*\n`;
+      for (const task of activeTasks) {
+        const elapsed = Math.floor((Date.now() - task.startedAt) / 1000);
+        const topicLabel = task.threadId ? ` • topic ${task.threadId}` : "";
+        text += `• ID: \`${task.id}\`${task.targetProject ? ` (\`projects/${task.targetProject}\`)` : ""} _(${elapsed}s${topicLabel})_\n`;
+        if (task.preview) {
+          text += `  💬 _“${truncate(task.preview, 80)}”_\n`;
+        }
       }
       text += "\n";
     } else if (activeWorkers.length === 0) {
@@ -363,7 +373,7 @@ export function registerBasicCommands(bot) {
     if (queue.length === 0) {
       text += `_Antrean instruksi saat ini kosong._\nSemua pesan yang Anda kirim saat AI sedang bekerja akan otomatis masuk antrean di sini.`;
       const keyboard = new InlineKeyboard();
-      if (activeTask) {
+      if (activeTasks.length > 0) {
         keyboard.text("🛑 Batalkan Tugas Aktif", "queue_cancel_active");
       }
       await ctx.reply(text, {
@@ -403,7 +413,7 @@ export function registerBasicCommands(bot) {
       keyboard.text("▶️ Lanjutkan Antrean", "queue_resume").row();
     }
     keyboard.text("🗑️ Kosongkan Antrean", "queue_clear");
-    if (activeTask) {
+    if (activeTasks.length > 0) {
       keyboard.text("🛑 Batalkan Tugas Aktif", "queue_cancel_active");
     }
 
@@ -485,31 +495,42 @@ export function registerBasicCommands(bot) {
 
   // /cancel [all]
   bot.command("cancel", async (ctx) => {
-    const activeTask = getActiveTask();
+    const threadId = ctx.message?.message_thread_id || null;
+    const conversationKey = buildConversationKey(ctx.chat?.id, threadId);
+    const convTask = getActiveTaskForConversation(conversationKey);
+    const allActive = getActiveTasks();
+    const activeTask = convTask || (allActive.length === 1 ? allActive[0] : null);
     const queueLen = getQueueLength();
     const arg = ctx.match?.trim().toLowerCase();
+
+    const cancelTask = (task) => {
+      if (!task) return;
+      task.cancelled = true;
+      if (task.process) killProcessTree(task.process, "SIGTERM");
+      if (task.abortController?.abort) task.abortController.abort();
+    };
 
     // Jika user mengirim /cancel all
     if (arg === "all" || arg === "semua") {
       killAllWorkers("SIGTERM");
-      if (activeTask?.process) {
-        activeTask.cancelled = true;
-        killProcessTree(activeTask.process, "SIGTERM");
-      } else if (activeTask) {
-        activeTask.cancelled = true;
-      }
-      if (activeTask?.abortController?.abort) {
-        activeTask.abortController.abort();
-      }
+      for (const task of allActive) cancelTask(task);
       const cleared = clearQueue();
       await ctx.reply(
-        `🛑 *Semua Dibatalkan:*\nTugas aktif & sub-agent dihentikan, serta *${cleared} instruksi di antrean* telah dibatalkan.`,
+        `🛑 *Semua Dibatalkan:*\n*${allActive.length} tugas aktif* & sub-agent dihentikan, serta *${cleared} instruksi di antrean* telah dibatalkan.`,
         { parse_mode: "Markdown" }
       );
       return;
     }
 
     if (!activeTask) {
+      if (allActive.length > 0) {
+        await ctx.reply(
+          `ℹ️ Tidak ada tugas aktif di chat ini. Ada *${allActive.length} tugas* berjalan di chat/topic lain.\n\nGunakan \`/cancel all\` untuk menghentikan semuanya.`,
+          { parse_mode: "Markdown" }
+        );
+        return;
+      }
+
       const workersKilled = killAllWorkers("SIGTERM");
       if (workersKilled > 0) {
         await ctx.reply(`🛑 Berhasil menghentikan *${workersKilled} sub-agent worker* yang sedang aktif.`);
@@ -536,18 +557,14 @@ export function registerBasicCommands(bot) {
 
     // Jika antrean kosong, langsung batalkan tugas aktif
     if (queueLen === 0) {
-      activeTask.cancelled = true;
-      if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
-      if (activeTask.abortController?.abort) activeTask.abortController.abort();
+      cancelTask(activeTask);
       await ctx.reply(`🛑 Permintaan pembatalan tugas aktif (\`${activeTask.id}\`)${workerNotice} telah dikirim.`);
       return;
     }
 
     // Jika ada antrean tersisa, pause antrean dan tanyakan konfirmasi lewat tombol interaktif
     pauseQueue();
-    activeTask.cancelled = true;
-    if (activeTask.process) killProcessTree(activeTask.process, "SIGTERM");
-    if (activeTask.abortController?.abort) activeTask.abortController.abort();
+    cancelTask(activeTask);
 
     const queueList = getQueue()
       .slice(0, 3)
@@ -622,9 +639,13 @@ export function registerBasicCommands(bot) {
       return;
     }
 
-    if (getActiveTask()) {
+    const execThreadId = ctx.message?.message_thread_id || null;
+    const execConversationKey = buildConversationKey(ctx.chat?.id, execThreadId);
+    const runningExecTask = getActiveTaskForConversation(execConversationKey);
+
+    if (runningExecTask) {
       await ctx.reply(
-        `⏳ Ada proses lain yang sedang berjalan (${getActiveTask().id}). Tunggu selesai atau kirim /cancel.`
+        `⏳ Masih ada proses berjalan di chat ini (${runningExecTask.id}). Tunggu selesai atau kirim /cancel.`
       );
       return;
     }
@@ -638,6 +659,8 @@ export function registerBasicCommands(bot) {
       preview: `/exec ${truncate(cmd, 60)}`,
       userId: ctx.from?.id,
       chatId: ctx.chat?.id,
+      threadId: execThreadId,
+      conversationKey: execConversationKey,
     };
     setActiveTask(task);
 
@@ -698,7 +721,7 @@ export function registerBasicCommands(bot) {
       task.cancelled = true;
       killProcessTree(child, "SIGTERM");
       setTimeout(() => {
-        if (getActiveTask()?.id === taskId) killProcessTree(child, "SIGKILL");
+        if (!settled) killProcessTree(child, "SIGKILL");
       }, 3000).unref();
     }, 120000);
 

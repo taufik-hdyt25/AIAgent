@@ -7,7 +7,7 @@
   "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
-    "bundle": "npx -y esbuild src/bot.js --bundle --platform=node --format=esm --banner:js=\"#!/usr/bin/env node\nimport { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --target=node26 --outfile=dist/bot.bundle.js",
+    "bundle": "npx -y esbuild src/bot.js --bundle --platform=node --format=esm --banner:js=\"#!/usr/bin/env node\nimport { createRequire } from 'module'; const require = createRequire(import.meta.url);\" --keep-names --target=node26 --outfile=dist/bot.bundle.js",
     "start:bundle": "node dist/bot.bundle.js",
     "background": "launchctl load ~/Library/LaunchAgents/com.taufik.th-agent.plist",
     "stop": "launchctl unload ~/Library/LaunchAgents/com.taufik.th-agent.plist",

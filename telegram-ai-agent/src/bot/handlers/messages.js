@@ -39,6 +39,19 @@ export function getQuickReply(rawText) {
   return null;
 }
 
+/**
+ * Menjalankan agent di background agar update berikutnya (dari chat atau
+ * forum topic lain) tetap diproses tanpa menunggu task ini selesai.
+ */
+function dispatchToAgent(message, ctx, fileInfo = null) {
+  sendToAgent(message, ctx, fileInfo).catch((err) => {
+    console.error("[Agent] Gagal memproses instruksi:", err?.message || err);
+    ctx
+      .reply(`❌ Gagal memproses instruksi: ${err?.message || err}`, buildReplyOptions(ctx))
+      .catch(() => {});
+  });
+}
+
 export function registerMessageHandlers(bot) {
   // Handler untuk menerima dokumen/file dari Telegram chat
   bot.on("message:document", async (ctx) => {
@@ -97,7 +110,7 @@ export function registerMessageHandlers(bot) {
       const defaultInstruction = `Pengguna mengirim file "${fileInfo.fileName}". Analisis file ini, jelaskan isi atau fungsinya, dan jika diminta dieksekusi atau berupa skrip/program, jalankan perintah eksekusinya dan laporkan hasilnya.`;
       const promptMessage = caption || defaultInstruction;
 
-      await sendToAgent(promptMessage, ctx, fileInfo);
+      dispatchToAgent(promptMessage, ctx, fileInfo);
     } catch (err) {
       console.error("Gagal memproses dokumen:", err.message || err);
       try {
@@ -146,7 +159,7 @@ export function registerMessageHandlers(bot) {
       const defaultInstruction = `Pengguna mengirim gambar ini tanpa pesan teks tambahan. Analisis gambar ini (misalnya jika berupa screenshot error koding, diagram sistem, UI mockup, atau log terminal), jelaskan temuanmu, dan berikan solusi atau langkah konkrit untuk menindaklanjutinya.`;
       const promptMessage = caption || defaultInstruction;
 
-      await sendToAgent(promptMessage, ctx, fileInfo);
+      dispatchToAgent(promptMessage, ctx, fileInfo);
     } catch (err) {
       console.error("Gagal memproses gambar:", err.message || err);
       await ctx.reply(`❌ Gagal memproses gambar: ${err.message}`);
@@ -239,7 +252,7 @@ export function registerMessageHandlers(bot) {
       }
 
       // Kirim teks hasil transkripsi ke agent
-      await sendToAgent(voiceText, ctx, fileInfo);
+      dispatchToAgent(voiceText, ctx, fileInfo);
     } catch (err) {
       console.error("[Voice Handler] Gagal memproses pesan suara:", err.message || err);
       if (statusMsg) {
@@ -280,6 +293,6 @@ export function registerMessageHandlers(bot) {
       return;
     }
 
-    await sendToAgent(text, ctx);
+    dispatchToAgent(text, ctx);
   });
 }

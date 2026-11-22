@@ -1,13 +1,22 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DATA_DIR } from "../config/env.js";
-import { getActiveTask, getActiveWorkers, getLockedProjects } from "./cli-runner.js";
+import { truncate } from "./telegram-files.js";
+import {
+  buildConversationKey,
+  getActiveTaskCount,
+  getActiveWorkers,
+  getLockedProjects,
+  getReservedConversationCount,
+  isConversationBusy,
+  releaseConversationReservation,
+  tryReserveConversation,
+} from "./cli-runner.js";
 
 // Antrean tugas AI yang menunggu giliran eksekusi (FIFO Queue)
 const taskQueue = [];
 let isPaused = false;
 let executorFn = null;
-let isProcessing = false;
 const deferredProjects = new Set();
 
 const QUEUE_STATUS_FILE = path.join(DATA_DIR, "queue-status.json");
@@ -84,14 +93,17 @@ export function registerQueueExecutor(fn) {
 export function enqueueTask({ userMessage, ctx, fileInfo = null, targetProject = null }) {
   // Generate ID antrean yang mudah dibaca, contoh: Q-1042
   const qId = `Q-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 90 + 10)}`;
+  const threadId = ctx.message?.message_thread_id || null;
   const item = {
     id: qId,
     userMessage,
     ctx,
     fileInfo,
     targetProject: targetProject || null,
+    conversationKey: buildConversationKey(ctx.chat?.id, threadId),
     userId: ctx.from?.id,
     chatId: ctx.chat?.id,
+    threadId,
     username: ctx.from?.username || ctx.from?.first_name || "User",
     messageId: ctx.message?.message_id,
     preview: truncate(userMessage, 120),
@@ -184,7 +196,8 @@ export function resumeQueue() {
 }
 
 /**
- * Memproses instruksi berikutnya dari antrean jika AI sedang idle
+ * Memproses antrean: satu tugas per percakapan, percakapan berbeda boleh
+ * berjalan paralel (dibatasi kapasitas global).
  */
 export async function processNextQueue() {
   if (isPaused) {
@@ -193,63 +206,43 @@ export async function processNextQueue() {
   if (taskQueue.length === 0) {
     return false;
   }
-  if (isProcessing) {
-    return false;
-  }
   if (typeof executorFn !== "function") {
     console.warn("[Queue Service] Belum ada queue executor yang terdaftar.");
     return false;
   }
 
-  // Cari item antrean yang proyeknya tidak sedang sibuk
-  const lockedProjects = getLockedProjects();
-  const currentTask = getActiveTask();
-  const activeWorkers = getActiveWorkers();
   const maxConcurrent = 3;
+  let startedAny = false;
 
-  let candidateIndex = -1;
-  for (let i = 0; i < taskQueue.length; i++) {
+  for (let i = 0; i < taskQueue.length; ) {
+    const totalActive =
+      getActiveTaskCount() + getActiveWorkers().length + getReservedConversationCount();
+    if (totalActive >= maxConcurrent) break;
+
     const item = taskQueue[i];
-    if (item.targetProject) {
-      if (!lockedProjects.has(item.targetProject)) {
-        if (!currentTask || activeWorkers.length + 1 < maxConcurrent) {
-          candidateIndex = i;
-          break;
-        }
-      }
-    } else {
-      if (!currentTask && activeWorkers.length === 0) {
-        candidateIndex = i;
-        break;
-      }
+    const conversationKey = item.conversationKey || buildConversationKey(item.chatId, item.threadId);
+    const lockedProjects = getLockedProjects();
+    const conversationBusy = isConversationBusy(conversationKey);
+    const projectBusy = Boolean(item.targetProject && lockedProjects.has(item.targetProject));
+
+    if (conversationBusy || projectBusy || !tryReserveConversation(conversationKey)) {
+      i++;
+      continue;
     }
-  }
 
-  if (candidateIndex === -1) {
-    return false;
-  }
+    taskQueue.splice(i, 1);
+    syncQueueStatusToFile().catch(() => {});
+    startedAny = true;
 
-  isProcessing = true;
-  const nextItem = taskQueue.splice(candidateIndex, 1)[0];
-  syncQueueStatusToFile().catch(() => {});
-  if (!nextItem) {
-    isProcessing = false;
-    return false;
-  }
-
-  // Lepaskan flag lock sebelum memanggil executorFn agar pemanggilan berikutnya tidak terhalang
-  isProcessing = false;
-
-  try {
-    await executorFn(nextItem);
-    return true;
-  } catch (err) {
-    console.error("[Queue Service] Error saat memproses antrean:", err);
-    if (!getActiveTask()) {
-      setTimeout(() => {
+    Promise.resolve()
+      .then(() => executorFn(item))
+      .catch((err) => console.error("[Queue Service] Error saat memproses antrean:", err))
+      .finally(() => {
+        releaseConversationReservation(conversationKey);
         processNextQueue().catch(() => {});
-      }, 500);
-    }
-    return false;
+      });
+    // Array bergeser: periksa item berikutnya pada indeks yang sama.
   }
+
+  return startedAny;
 }

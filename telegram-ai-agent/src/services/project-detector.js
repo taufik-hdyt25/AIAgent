@@ -26,7 +26,6 @@ const BUILTIN_PROJECT_ALIASES = {
     "bot telegram",
     "command code",
     "commandcode",
-    "cliproxy",
   ],
   "th-blog": [
     "th-blog",

@@ -5,20 +5,78 @@ import path from "node:path";
 import { LOG_DIR, MAX_OUTPUT, TIMEOUT_MS, MAX_TIMEOUT_MS } from "../config/env.js";
 import { truncate } from "./telegram-files.js";
 
-let activeTask = null;
+// Satu task utama per percakapan (chat + forum topic). Percakapan berbeda
+// boleh berjalan paralel tanpa saling menimpa.
+const activeTasks = new Map();
+const reservedConversations = new Set();
 const activeWorkers = new Map();
 
+export function buildConversationKey(chatId, threadId = null) {
+  return `${chatId == null ? "unknown" : chatId}:${threadId || 0}`;
+}
+
+function resolveTaskKey(task) {
+  return task.conversationKey || buildConversationKey(task.chatId, task.threadId);
+}
+
 export function getActiveTask() {
-  return activeTask;
+  let latest = null;
+  for (const task of activeTasks.values()) {
+    if (!latest || (task.startedAt || 0) >= (latest.startedAt || 0)) {
+      latest = task;
+    }
+  }
+  return latest;
+}
+
+export function getActiveTasks() {
+  return Array.from(activeTasks.values());
+}
+
+export function getActiveTaskCount() {
+  return activeTasks.size;
+}
+
+export function getActiveTaskForConversation(conversationKey) {
+  if (!conversationKey) return null;
+  return activeTasks.get(conversationKey) || null;
+}
+
+export function isConversationBusy(conversationKey) {
+  if (!conversationKey) return false;
+  return activeTasks.has(conversationKey) || reservedConversations.has(conversationKey);
+}
+
+// Reservasi sinkron agar dua pesan dari percakapan yang sama tidak lolos
+// pengecekan "idle" secara bersamaan sebelum task pertama terdaftar.
+export function tryReserveConversation(conversationKey) {
+  if (!conversationKey) return false;
+  if (activeTasks.has(conversationKey) || reservedConversations.has(conversationKey)) {
+    return false;
+  }
+  reservedConversations.add(conversationKey);
+  return true;
+}
+
+export function releaseConversationReservation(conversationKey) {
+  if (conversationKey) reservedConversations.delete(conversationKey);
+}
+
+export function getReservedConversationCount() {
+  return reservedConversations.size;
 }
 
 export function setActiveTask(task) {
-  activeTask = task;
+  activeTasks.set(resolveTaskKey(task), task);
 }
 
 export function clearActiveTask(taskId) {
-  if (activeTask && (!taskId || activeTask.id === taskId)) {
-    activeTask = null;
+  if (!taskId) {
+    activeTasks.clear();
+    return;
+  }
+  for (const [key, task] of activeTasks) {
+    if (task.id === taskId) activeTasks.delete(key);
   }
 }
 
@@ -36,8 +94,8 @@ export function getActiveWorkers() {
 
 export function getLockedProjects() {
   const locked = new Set();
-  if (activeTask && activeTask.targetProject) {
-    locked.add(activeTask.targetProject);
+  for (const task of activeTasks.values()) {
+    if (task.targetProject) locked.add(task.targetProject);
   }
   for (const w of activeWorkers.values()) {
     if (w.targetProject) {
@@ -101,6 +159,7 @@ export function runProcess({
   timeoutMs = TIMEOUT_MS,
   maxTimeoutMs = MAX_TIMEOUT_MS,
   maxOutput = MAX_OUTPUT,
+  signal = null,
   onStdout,
   onStderr,
   onSpawn,
@@ -156,6 +215,7 @@ export function runProcess({
       }, 5000);
       killTimer.unref();
       settled = true;
+      signal?.removeEventListener("abort", onAbort);
       resolve({
         child,
         code: null,
@@ -175,6 +235,12 @@ export function runProcess({
 
     armIdleTimeout();
     hardTimer = setTimeout(() => fireTimeout("max"), Math.max(maxTimeoutMs, timeoutMs));
+
+    const onAbort = () => fireTimeout("aborted");
+    if (signal) {
+      if (signal.aborted) onAbort();
+      else signal.addEventListener("abort", onAbort, { once: true });
+    }
 
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString();
@@ -201,6 +267,7 @@ export function runProcess({
       settled = true;
       clearTimeout(idleTimer);
       clearTimeout(hardTimer);
+      signal?.removeEventListener("abort", onAbort);
       resolve({
         child,
         code: null,
@@ -216,6 +283,7 @@ export function runProcess({
       settled = true;
       clearTimeout(idleTimer);
       clearTimeout(hardTimer);
+      signal?.removeEventListener("abort", onAbort);
       resolve({
         child,
         code,

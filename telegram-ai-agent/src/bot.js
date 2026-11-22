@@ -14,7 +14,7 @@ import { initNotionWatcher } from "./services/notion-watcher.js";
 import { initDailyCleanup } from "./services/cleanup-service.js";
 import { initServerSentry } from "./services/sentry-service.js";
 import {
-  getActiveTask,
+  getActiveTasks,
   clearActiveTask,
   killProcessTree,
 } from "./services/cli-runner.js";
@@ -317,32 +317,36 @@ if (
       console.log(`\n💤 [PowerManagement] Terdeteksi Mac baru saja dibuka dari Sleep mode (${sleepSeconds} detik).`);
       console.log(`⚡ [PowerManagement] Memulihkan koneksi bot secara kilat...`);
 
-      // Cek status tugas aktif (jangan langsung kill jika proses masih berjalan sehat)
-      const activeTask = getActiveTask();
-      let taskStillRunning = false;
-
-      if (activeTask) {
-        if (activeTask.process && activeTask.process.pid && !activeTask.process.killed) {
+      // Cek status semua tugas aktif (jangan langsung kill jika proses masih berjalan sehat)
+      const activeTasks = getActiveTasks();
+      const taskStates = activeTasks.map((task) => {
+        let stillRunning = false;
+        if (task.process && task.process.pid && !task.process.killed) {
           try {
-            process.kill(activeTask.process.pid, 0);
-            taskStillRunning = true;
+            process.kill(task.process.pid, 0);
+            stillRunning = true;
           } catch (_) {
-            taskStillRunning = false;
+            stillRunning = false;
           }
         }
 
         // Jika proses child masih hidup dan interupsi wajar (< 10 menit), biarkan lanjut sampai tuntas!
-        if (taskStillRunning && sleepSeconds < 600) {
-          console.log(`⚡ [PowerManagement] Tugas #${activeTask.id} masih aktif di background. Melanjutkan eksekusi...`);
-        } else {
-          console.log(`[PowerManagement] Menghentikan tugas #${activeTask.id} yang terinterupsi (${sleepSeconds}s)...`);
-          activeTask.cancelled = true;
-          if (activeTask.process) {
-            killProcessTree(activeTask.process, "SIGKILL");
-          }
-          clearActiveTask(activeTask.id);
-          processNextQueue().catch(() => {});
+        if (stillRunning && sleepSeconds < 600) {
+          console.log(`⚡ [PowerManagement] Tugas #${task.id} masih aktif di background. Melanjutkan eksekusi...`);
+          return { task, stillRunning };
         }
+
+        console.log(`[PowerManagement] Menghentikan tugas #${task.id} yang terinterupsi (${sleepSeconds}s)...`);
+        task.cancelled = true;
+        if (task.process) {
+          killProcessTree(task.process, "SIGKILL");
+        }
+        clearActiveTask(task.id);
+        return { task, stillRunning: false };
+      });
+
+      if (taskStates.length > 0) {
+        processNextQueue().catch(() => {});
       }
 
       // Abort & stop socket lama yang menggantung saat sleep
@@ -354,20 +358,15 @@ if (
       if (isOnline) {
         lastPollingActivity = Date.now();
         console.log(`✅ [PowerManagement] Wi-Fi & Internet aktif! TH Agent langsung terhubung kembali.`);
-        if (activeTask?.chatId) {
-          if (taskStillRunning) {
-            bot.api.sendMessage(
-              activeTask.chatId,
-              `⚡ *Mac aktif kembali!*\nTugas #${activeTask.id} tetap berjalan di background dan akan segera dilaporkan setelah selesai.`,
-              { parse_mode: "Markdown" }
-            ).catch(() => {});
-          } else {
-            bot.api.sendMessage(
-              activeTask.chatId,
-              `⚡ *Mac baru saja dibuka!*\nKoneksi TH Agent otomatis aktif kembali & siap menerima perintah baru.`,
-              { parse_mode: "Markdown" }
-            ).catch(() => {});
-          }
+        for (const { task, stillRunning } of taskStates) {
+          if (!task.chatId) continue;
+          bot.api.sendMessage(
+            task.chatId,
+            stillRunning
+              ? `⚡ *Mac aktif kembali!*\nTugas #${task.id} tetap berjalan di background dan akan segera dilaporkan setelah selesai.`
+              : `⚡ *Mac baru saja dibuka!*\nKoneksi TH Agent otomatis aktif kembali & siap menerima perintah baru.`,
+            { parse_mode: "Markdown" }
+          ).catch(() => {});
         }
       }
       return;

@@ -33,17 +33,17 @@ import {
 } from "../services/context-store.js";
 import { getTopicBinding, buildTopicConversationId } from "../services/topic-service.js";
 import {
-  getActiveTask,
+  buildConversationKey,
+  getActiveTaskCount,
+  tryReserveConversation,
+  releaseConversationReservation,
   setActiveTask,
   clearActiveTask,
   appendLog,
   killProcessTree,
   runProcess,
-  registerWorker,
-  unregisterWorker,
   getActiveWorkers,
   getLockedProjects,
-  isProjectBusy,
 } from "../services/cli-runner.js";
 import { truncate, sendSmartReply, buildReplyOptions, stripAnsi } from "../services/telegram-files.js";
 import {
@@ -76,7 +76,6 @@ import {
 import {
   isMultiTaskRequest,
   executeSwarm,
-  WORKER_PROFILES,
 } from "../services/swarm-service.js";
 import {
   detectTargetProject,
@@ -200,6 +199,8 @@ function formatDurationShort(ms) {
 export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, id = null, targetProject = null, engineOverride = null, _fallbackAttempted = false }) {
   const userId = ctx.from?.id;
   const taskId = id || randomUUID().slice(0, 8);
+  const threadId = ctx.message?.message_thread_id || null;
+  const conversationKey = buildConversationKey(ctx.chat?.id, threadId);
   const resolvedProject = targetProject || await detectTargetProject(userMessage, fileInfo);
 
   const task = {
@@ -210,6 +211,8 @@ export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, i
     preview: truncate(userMessage, 100),
     userId,
     chatId: ctx.chat?.id,
+    threadId,
+    conversationKey,
     userMessage,
     targetProject: resolvedProject,
   };
@@ -226,7 +229,6 @@ export async function executeTaskInternal({ userMessage, ctx, fileInfo = null, i
   const typingInterval = setInterval(sendTyping, 4000);
 
   try {
-    const threadId = ctx.message?.message_thread_id || null;
     const baseConvId = await getUserConversationId(userId);
     const convId = buildTopicConversationId(baseConvId, ctx.chat?.id, threadId);
 
@@ -939,7 +941,7 @@ ${userMessage}
         task.timeoutReason = reason;
         killProcessTree(child, "SIGTERM");
         killTimer = setTimeout(() => {
-          if (getActiveTask()?.id === taskId) killProcessTree(child, "SIGKILL");
+          if (!settled) killProcessTree(child, "SIGKILL");
         }, 5000);
         killTimer.unref();
       };
@@ -993,118 +995,9 @@ registerQueueExecutor(async (item) => {
 });
 
 /**
- * Eksekusi instruksi paralel dengan Subagent Worker untuk proyek yang berbeda
- */
-export async function executeParallelProjectTask({ userMessage, ctx, fileInfo = null, targetProject }) {
-  const userId = ctx.from?.id;
-  const activeWorkers = getActiveWorkers();
-  const usedNames = new Set(activeWorkers.map((w) => w.name));
-  const profile = WORKER_PROFILES.find((p) => !usedNames.has(p.name)) || WORKER_PROFILES[activeWorkers.length % WORKER_PROFILES.length];
-  const workerId = `sub-${targetProject.slice(0, 10)}-${randomUUID().slice(0, 4)}`;
-
-  const worker = {
-    id: workerId,
-    name: profile.name,
-    emoji: profile.emoji,
-    title: userMessage,
-    targetProject,
-    process: null,
-    startedAt: Date.now(),
-  };
-
-  registerWorker(workerId, worker);
-
-  // Beritahu pengguna di Telegram bahwa subagent paralel aktif
-  await ctx.reply(
-    `🚀 *Smart Concurrency: Subagent Worker Diaktifkan!*\n\n` +
-      `${profile.emoji} *[Subagent ${profile.name}]* ditugaskan khusus:\n` +
-      `📁 *Target Proyek:* \`projects/${targetProject}\`\n` +
-      `📌 _"${truncate(userMessage, 90)}"_\n\n` +
-      `⚡ _Tugas ini dieksekusi secara independen & paralel bersamaan di server._`,
-    { parse_mode: "Markdown" }
-  ).catch(() => {});
-
-  // Send typing indicator
-  const sendTyping = () => {
-    if (ctx.chat?.id) ctx.api.sendChatAction(ctx.chat.id, "typing").catch(() => {});
-  };
-  sendTyping();
-  const typingTimer = setInterval(sendTyping, 4000);
-
-  try {
-    const workerConvId = `${userId || "u"}-${targetProject}`;
-
-    // Prompt terarah khusus untuk proyek ini
-    const projectNotice = `
-FOKUS TARGET PROYEK (SUBAGENT WORKER ${profile.name} ${profile.emoji}):
-- Kamu adalah Subagent khusus yang ditugaskan secara spesifik untuk proyek: './projects/${targetProject}'.
-- Seluruh pemeriksaan kode, pengeditan file, testing, dan perintah terminal WAJIB difokuskan di dalam direktori './projects/${targetProject}'.
-- DILARANG menyentuh atau memodifikasi file di luar folder proyek './projects/${targetProject}'.
-`.trim();
-
-    let fileInfoPrompt = "";
-    if (fileInfo) {
-      fileInfoPrompt = `
-INFORMASI FILE DARI PENGGUNA:
-- Nama File: ${fileInfo.fileName}
-- Lokasi: ${fileInfo.absolutePath}
-${fileInfo.textContent ? `\n--- ISI DOKUMEN ---\n${truncate(fileInfo.textContent, 8000)}\n--- AKHIR ---` : ""}
-`.trim();
-    }
-
-    const [relevantMemories, matchingSkills] = await Promise.all([
-      searchMemories(userMessage, { limit: 2, minScore: 0.2 }).catch(() => []),
-      findMatchingSkills(userMessage, { limit: 2, minScore: 0.25 }).catch(() => []),
-    ]);
-    const memoryPrompt = formatMemoriesForPrompt(relevantMemories);
-    const skillPrompt = formatSkillsForPrompt(matchingSkills);
-
-    const workerPrompt = `
-[Pesan dari Pengguna]:
-${userMessage}
-${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}
-${projectNotice}
-${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}
-[Panduan Eksekusi Subagent]:
-- Fokus langsung pada pengerjaan tugas di './projects/${targetProject}' tanpa meminta konfirmasi (Zero-Confirmation).
-- Simpan fakta baru jika ada: :::memory:add {"content": "...", "category": "preference|architecture|workflow|solution", "tags": [...]}:::
-- Format output: Ringkas, padat, laporkan hasil jadinya secara langsung.
-`.trim();
-
-    const res = await runAgentAutonomous({
-      prompt: workerPrompt,
-      convId: workerConvId,
-      userId,
-      cwd: path.join(PROJECTS_DIR, targetProject),
-      systemPrompt: `Kamu adalah Subagent [${profile.name} ${profile.emoji}] dari TH Agent, khusus menangani proyek ./projects/${targetProject}. Bersikap ramah, senior programmer, dan solutif.`,
-      onSpawn: (child) => {
-        worker.process = child;
-      },
-    });
-
-    clearInterval(typingTimer);
-    unregisterWorker(workerId);
-
-    const { cleanedText } = await processAutonomousOutput(res.output || "");
-    const header = `${profile.emoji} *[Subagent ${profile.name}] Proyek \`projects/${targetProject}\` Selesai!*\n\n`;
-    await sendSmartReply(ctx, header + cleanedText);
-
-    // Lanjutkan antrean jika ada tugas yang menunggu
-    processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
-  } catch (err) {
-    clearInterval(typingTimer);
-    unregisterWorker(workerId);
-    await ctx.reply(
-      `❌ *[Subagent ${profile.name}]* Mengalami kendala pada proyek \`${targetProject}\`:\n${err.message}`,
-      buildReplyOptions(ctx)
-    );
-    processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
-  }
-}
-
-/**
  * Entry point utama menerima pesan/file untuk TH Agent.
- * Mendukung Smart Concurrency: eksekusi paralel instan jika target proyek berbeda!
+ * Mendukung concurrency per percakapan (chat + forum topic): chat berbeda
+ * berjalan paralel, sedangkan pesan beruntun di percakapan yang sama diantrekan.
  */
 export async function sendToAgent(userMessage, ctx, fileInfo = null) {
   // Jika antrean sedang di-pause tapi user mengirim pesan baru, unpause otomatis
@@ -1118,36 +1011,37 @@ export async function sendToAgent(userMessage, ctx, fileInfo = null) {
     return;
   }
 
-  const targetProject = await detectTargetProject(userMessage, fileInfo);
-  const currentTask = getActiveTask();
-  const activeWorkers = getActiveWorkers();
-  const totalActive = (currentTask ? 1 : 0) + activeWorkers.length;
+  const threadId = ctx.message?.message_thread_id || null;
+  const conversationKey = buildConversationKey(ctx.chat?.id, threadId);
+  const reserved = tryReserveConversation(conversationKey);
+  let targetProject = null;
 
-  // 1. Jika sistem sedang benar-benar idle, langsung eksekusi sebagai tugas utama
-  if (!currentTask && activeWorkers.length === 0) {
-    await executeTaskInternal({ userMessage, ctx, fileInfo, targetProject });
-    return;
+  try {
+    targetProject = await detectTargetProject(userMessage, fileInfo);
+    const maxConcurrent = 3; // Menjaga batas RAM & CPU VPS tetap aman
+    const totalActive = getActiveTaskCount() + getActiveWorkers().length;
+    const lockedProjects = getLockedProjects();
+    const isTargetBusy = Boolean(targetProject && lockedProjects.has(targetProject));
+
+    // Jalankan langsung jika percakapan ini bebas, proyeknya tidak dipakai
+    // percakapan lain, dan kapasitas server masih tersedia.
+    if (reserved && !isTargetBusy && totalActive < maxConcurrent) {
+      await executeTaskInternal({ userMessage, ctx, fileInfo, targetProject });
+      return;
+    }
+  } finally {
+    if (reserved) releaseConversationReservation(conversationKey);
   }
 
-  // 2. SMART PROJECT-AWARE CONCURRENCY:
-  // Jika ada tugas yang sedang jalan, cek apakah target proyeknya BERBEDA & TIDAK SEDANG SIBUK
-  const lockedProjects = getLockedProjects();
-  const isTargetBusy = targetProject && lockedProjects.has(targetProject);
-  const maxConcurrent = 3; // Menjaga batas RAM & CPU VPS tetap aman
-
-  if (targetProject && !isTargetBusy && totalActive < maxConcurrent) {
-    console.log(`[Smart Concurrency] Target proyek '${targetProject}' bebas. Menjalankan subagent paralel!`);
-    await executeParallelProjectTask({ userMessage, ctx, fileInfo, targetProject });
-    return;
-  }
-
-  // 3. JIKA PROYEK SAMA ATAU GLOBAL ATAU WORKER PENUH -> MASUKKAN KE ANTREAN (FIFO) SENYAP
+  // Percakapan masih sibuk / proyek sama sedang dikerjakan / kapasitas penuh
   const queueItem = enqueueTask({ userMessage, ctx, fileInfo, targetProject });
   const position = getQueuePosition(queueItem.id);
 
   console.log(
     `[Queue] Tugas ${queueItem.id} masuk antrean senyap (#${position})${targetProject ? ` [${targetProject}]` : ""}`
   );
+
+  processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
 
   return { queued: true, id: queueItem.id, position, targetProject };
 }
@@ -1162,6 +1056,9 @@ export async function runAgentAutonomous({
   engineOverride = null,
   timeoutMs = TIMEOUT_MS,
   onSpawn = null,
+  modelOverride = null,
+  disableTools = false,
+  signal = null,
 }) {
   const actualConvId = convId || `auto-${randomUUID().slice(0, 8)}`;
   const useCmd = isCommandCodeEngine(engineOverride || getEngine());
@@ -1221,6 +1118,7 @@ export async function runAgentAutonomous({
         cwd: safeCwd,
         timeoutMs,
         env: sanitizedEnv,
+        signal,
         onSpawn,
         onStdout: (chunk) => cmdParser.push(chunk),
       });
@@ -1259,9 +1157,11 @@ export async function runAgentAutonomous({
   }
 
   const binToRun = PI_BIN;
-  const piModel = userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL);
+  const piModel = modelOverride || (userId ? await getUserPiModel(userId) : (process.env.PI_MODEL || DEFAULT_PI_MODEL));
   const buildPiArgs = (promptText, modelId = piModel) => {
-    const args = ["--session-id", actualConvId, "--mode", "json", "-p", promptText, "--approve"];
+    const args = ["--mode", "json", "-p", promptText, "--approve"];
+    if (disableTools) args.push("--no-session", "--no-tools", "--no-mcp", "--no-extensions", "--no-skills", "--no-prompt-templates");
+    else args.unshift("--session-id", actualConvId);
     if (modelId) {
       const isGroqModel =
         modelId === "openai/gpt-oss-120b" ||
@@ -1287,6 +1187,7 @@ export async function runAgentAutonomous({
     cwd: safeCwd,
     timeoutMs,
     env: sanitizedEnv,
+    signal,
     onSpawn,
     onStdout: (chunk) => piParser.push(chunk),
   });
@@ -1301,6 +1202,7 @@ export async function runAgentAutonomous({
       cwd: safeCwd,
       timeoutMs,
       env: sanitizedEnv,
+      signal,
       onSpawn,
       onStdout: (chunk) => piParser.push(chunk),
     });
@@ -1322,13 +1224,14 @@ export async function runAgentAutonomous({
         cwd: safeCwd,
         timeoutMs,
         env: sanitizedEnv,
+        signal,
         onSpawn,
         onStdout: (chunk) => piParser.push(chunk),
       });
     }
   }
 
-  if (isEmptyPiOutput() && piModel && !piModel.startsWith("groq/")) {
+  if (isEmptyPiOutput() && !modelOverride && piModel && !piModel.startsWith("groq/")) {
     const fallbackModel = process.env.PI_FALLBACK_MODEL || "gemini-3.8-flash-tiered";
     if (fallbackModel && fallbackModel !== piModel) {
       console.warn(`[Dispatcher] Subagent Pi terus membalas kosong. Beralih ke fallback ${fallbackModel}...`);
@@ -1339,6 +1242,7 @@ export async function runAgentAutonomous({
         cwd: safeCwd,
         timeoutMs,
         env: sanitizedEnv,
+        signal,
         onSpawn,
         onStdout: (chunk) => piParser.push(chunk),
       });
