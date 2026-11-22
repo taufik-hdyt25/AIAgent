@@ -2,18 +2,21 @@
 
 /**
  * TH Studio smart backup runner.
- * Creates a standard .tar.gz bundle of databases and project .env files, then sends it to Telegram Backup Vault.
+ * Creates an AES-256 encrypted ZIP bundle of databases and project .env files, then sends it to Telegram Backup Vault.
+ * Set password by creating the secure BACKUP_PASSWORD_FILE with a random password before running.
  */
 
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { execSync, spawnSync } = require("child_process");
+const { execSync, execFileSync, spawnSync } = require("child_process");
 
 const args = process.argv.slice(2);
 const isForce = args.includes("--force") || args.includes("-f");
 const isDryRun = args.includes("--dry-run");
 const skipTelegram = args.includes("--no-telegram");
+const PASSWORD_FILE = process.env.BACKUP_PASSWORD_FILE || "/home/ubuntu/.th-agent/data/backup-encryption.key";
+const ZIP_BIN = "/usr/bin/7z";
 const CONTAINER_NAME = "th-db";
 const DB_USER = "th_user";
 const PROJECTS_ROOT = "/home/th-agent/projects";
@@ -105,7 +108,7 @@ function calculateHash(content) {
 }
 
 function rotateLocalBackups(maxKeep = 7) {
-  const files = fs.readdirSync(BACKUP_ROOT).filter((name) => name.startsWith("th_studio_backup_") && (name.endsWith(".tar.gz") || name.endsWith(".tar.gz.enc")))
+  const files = fs.readdirSync(BACKUP_ROOT).filter((name) => name.startsWith("th_studio_backup_") && (name.endsWith(".zip") || name.endsWith(".tar.gz") || name.endsWith(".tar.gz.enc")))
     .map((name) => ({ name, mtime: fs.statSync(path.join(BACKUP_ROOT, name)).mtimeMs })).sort((a, b) => b.mtime - a.mtime);
   for (const old of files.slice(maxKeep)) {
     fs.unlinkSync(path.join(BACKUP_ROOT, old.name));
@@ -117,12 +120,12 @@ function sendToTelegram(archivePath, entryNames, sizeBytes) {
   const config = getEnvConfig();
   if (!config) { console.warn("⚠️ Telegram configuration missing; archive retained locally."); return false; }
   const timestamp = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" }).format(new Date());
-  const caption = `📦 *TH Studio Backup*\n━━━━━━━━━━━━━━━━━━━━\n🗄️ Components: ${entryNames.length}\n📊 Size: ${(sizeBytes / 1048576).toFixed(2)} MB\n⏱️ ${timestamp} WIB\n🔒 Plain .tar.gz archive (no password encryption).`;
+  const caption = `📦 *TH Studio Backup*\n━━━━━━━━━━━━━━━━━━━━\n🗄️ Components: ${entryNames.length}\n📊 Size: ${(sizeBytes / 1048576).toFixed(2)} MB\n⏱️ ${timestamp} WIB\n🔐 AES-256 encrypted ZIP. Get the password separately from the server operator.`;
   const proc = spawnSync("curl", ["-sS", "--max-time", "120", "-F", `chat_id=${config.chatId}`, "-F", `document=@${archivePath}`, "-F", `caption=${caption}`, "-F", "parse_mode=Markdown", `https://api.telegram.org/bot${config.botToken}/sendDocument`], { encoding: "utf8", timeout: 130000 });
   if (proc.error) { console.error("❌ Telegram upload failed:", proc.error.message); return false; }
   try {
     const response = JSON.parse(proc.stdout || "{}");
-    if (response.ok) { console.log("✅ Encrypted backup delivered to Telegram Backup Vault."); return true; }
+    if (response.ok) { console.log("✅ Password-protected ZIP delivered to Telegram Backup Vault."); return true; }
     console.error("❌ Telegram API error:", response.description || "Unknown error");
   } catch { console.error("❌ Invalid Telegram response."); }
   return false;
@@ -131,7 +134,11 @@ function sendToTelegram(archivePath, entryNames, sizeBytes) {
 async function runBackup() {
   const tempDir = path.join(BACKUP_ROOT, `bundle_temp_${Date.now()}`);
   const workDir = path.join(BACKUP_ROOT, `encrypted_temp_${Date.now()}`);
-  console.log("🚀 Starting TH Studio backup...");
+  console.log("🚀 Starting encrypted TH Studio backup...");
+  const password = fs.readFileSync(PASSWORD_FILE, "utf8").trim();
+  if (password.length < 24) throw new Error("Backup encryption password is missing or too short");
+  if (!fs.existsSync(ZIP_BIN)) throw new Error("7-Zip is required to create encrypted ZIP archives");
+  const passwordBytes = Buffer.from(password, "utf8");
   fs.mkdirSync(tempDir, { recursive: true, mode: 0o700 });
   fs.mkdirSync(workDir, { recursive: true, mode: 0o700 });
   try {
@@ -195,14 +202,15 @@ async function runBackup() {
 
     const now = new Date();
     const timestamp = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(now).replace(/[,:\s-]/g, "");
-    const metadata = { backupDate: now.toISOString(), compositeHash, encryption: "AES-256-GCM", databases: summaries, envFiles: copiedEnvFiles };
+    const metadata = { backupDate: now.toISOString(), compositeHash, encryption: "7z AES-256 ZIP; encrypted headers", databases: summaries, envFiles: copiedEnvFiles };
     fs.writeFileSync(path.join(tempDir, "metadata.json"), JSON.stringify(metadata, null, 2), { mode: 0o600 });
-    const archiveName = `th_studio_backup_${timestamp}.tar.gz`;
+    const archiveName = `th_studio_backup_${timestamp}.zip`;
     const archivePath = path.join(BACKUP_ROOT, archiveName);
-    execSync(`tar -czf ${JSON.stringify(archivePath)} -C ${JSON.stringify(tempDir)} .`);
+    execFileSync(ZIP_BIN, ["a", "-tzip", "-mem=AES256", `-p${password}`, archivePath, "."], { cwd: tempDir, stdio: "ignore" });
     fs.chmodSync(archivePath, 0o600);
+    execFileSync(ZIP_BIN, ["t", `-p${password}`, archivePath], { stdio: "ignore" });
     const size = fs.statSync(archivePath).size;
-    console.log(`✅ Plain .tar.gz archive ready: ${archiveName} (${(size / 1048576).toFixed(2)} MB).`);
+    console.log(`✅ AES-256 encrypted ZIP ready: ${archiveName} (${(size / 1048576).toFixed(2)} MB).`);
 
     const delivered = skipTelegram || sendToTelegram(archivePath, [...entries.map((item) => item.name), ...envFiles.map((item) => `.env:${item.relativePath}`)], size);
     if (!skipTelegram && !delivered) throw new Error("Backup archive created but Telegram delivery failed; state is not advanced for retry.");
@@ -216,6 +224,7 @@ async function runBackup() {
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
     fs.rmSync(workDir, { recursive: true, force: true });
+    passwordBytes.fill(0);
   }
 }
 
