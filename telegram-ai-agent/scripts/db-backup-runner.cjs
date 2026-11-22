@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * TH Studio encrypted smart backup runner.
- * Bundles PostgreSQL/SQLite/JSON stores and project .env files into one encrypted archive,
- * then sends it to the configured Telegram Backup Vault. Secrets are never logged or committed.
+ * TH Studio password-protected smart backup runner.
+ * Bundles PostgreSQL/SQLite/JSON stores and project .env files into one .tar.gz,
+ * encrypts it with an OpenSSL-compatible password, then sends it to Telegram Backup Vault.
  */
 
 const fs = require("fs");
@@ -20,7 +20,7 @@ const DB_USER = "th_user";
 const PROJECTS_ROOT = "/home/th-agent/projects";
 const BACKUP_ROOT = "/home/ubuntu/.th-agent/backups";
 const STATE_FILE = "/home/ubuntu/.th-agent/data/last_db_backup_hash.json";
-const ENCRYPTION_KEY_FILE = "/home/ubuntu/.th-agent/data/backup-encryption.key";
+const ARCHIVE_PASSWORD_FILE = "/home/ubuntu/.th-agent/data/backup-archive-password.txt";
 const EXCLUDED_DATABASES = ["postgres", "th_wedding_db", ...(process.env.BACKUP_EXCLUDE_DBS || "").split(",").map((s) => s.trim()).filter(Boolean)];
 const SKIP_DIRS = new Set(["node_modules", ".git", ".next", ".cache", ".turbo", "dist", "build", "coverage"]);
 const KNOWN_SQLITE_DATABASES = [
@@ -31,22 +31,17 @@ const AI_AGENT_STORES = [{ name: "ai_agent_memories", filePath: "/home/th-agent/
 
 for (const dir of [BACKUP_ROOT, path.dirname(STATE_FILE)]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 
-function getEncryptionKey() {
-  const configured = (process.env.BACKUP_ENCRYPTION_KEY || "").trim();
-  if (configured) {
-    const key = Buffer.from(configured, "base64");
-    if (key.length === 32) return key;
-    if (/^[a-f\d]{64}$/i.test(configured)) return Buffer.from(configured, "hex");
-    throw new Error("BACKUP_ENCRYPTION_KEY must be a 32-byte base64 or 64-character hex key.");
+function getArchivePassword() {
+  const configured = (process.env.BACKUP_ARCHIVE_PASSWORD || "").trim();
+  if (configured) return configured;
+  if (!fs.existsSync(ARCHIVE_PASSWORD_FILE)) {
+    const password = crypto.randomBytes(24).toString("base64url");
+    fs.writeFileSync(ARCHIVE_PASSWORD_FILE, `${password}\n`, { mode: 0o600, flag: "wx" });
+    console.log(`🔐 Generated archive password at ${ARCHIVE_PASSWORD_FILE}; save a secure off-server copy for recovery.`);
   }
-  if (!fs.existsSync(ENCRYPTION_KEY_FILE)) {
-    const key = crypto.randomBytes(32);
-    fs.writeFileSync(ENCRYPTION_KEY_FILE, key.toString("base64") + "\n", { mode: 0o600, flag: "wx" });
-    console.log(`🔐 Generated archive key at ${ENCRYPTION_KEY_FILE}; store a secure off-server copy for recovery.`);
-  }
-  const key = Buffer.from(fs.readFileSync(ENCRYPTION_KEY_FILE, "utf8").trim(), "base64");
-  if (key.length !== 32) throw new Error(`Invalid AES key in ${ENCRYPTION_KEY_FILE}.`);
-  return key;
+  const password = fs.readFileSync(ARCHIVE_PASSWORD_FILE, "utf8").trim();
+  if (password.length < 16 || /[\r\n]/.test(password)) throw new Error("Archive password must be at least 16 characters and contain no newlines.");
+  return password;
 }
 
 function discoverProjectEnvFiles() {
@@ -137,7 +132,7 @@ function sendToTelegram(archivePath, entryNames, sizeBytes) {
   const config = getEnvConfig();
   if (!config) { console.warn("⚠️ Telegram configuration missing; archive retained locally."); return false; }
   const timestamp = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" }).format(new Date());
-  const caption = `🔐 *Encrypted TH Studio Backup*\n━━━━━━━━━━━━━━━━━━━━\n📦 One archive: databases + project .env files\n🗄️ Components: ${entryNames.length}\n📊 Size: ${(sizeBytes / 1048576).toFixed(2)} MB\n⏱️ ${timestamp} WIB\n🔒 AES-256-GCM encrypted. Restore key must be kept separately.`;
+  const caption = `🔐 *Password-Protected TH Studio Backup*\n━━━━━━━━━━━━━━━━━━━━\n📦 One encrypted .tar.gz archive: databases + project .env files\n🗄️ Components: ${entryNames.length}\n📊 Size: ${(sizeBytes / 1048576).toFixed(2)} MB\n⏱️ ${timestamp} WIB\n🔒 AES-256 encrypted; password required to extract.`;
   const proc = spawnSync("curl", ["-sS", "--max-time", "120", "-F", `chat_id=${config.chatId}`, "-F", `document=@${archivePath}`, "-F", `caption=${caption}`, "-F", "parse_mode=Markdown", `https://api.telegram.org/bot${config.botToken}/sendDocument`], { encoding: "utf8", timeout: 130000 });
   if (proc.error) { console.error("❌ Telegram upload failed:", proc.error.message); return false; }
   try {
@@ -222,15 +217,12 @@ async function runBackup() {
     const archivePath = path.join(BACKUP_ROOT, archiveName);
     execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(tempDir)} .`);
 
-    const key = getEncryptionKey();
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-    const input = fs.readFileSync(tarPath);
-    const encrypted = Buffer.concat([cipher.update(input), cipher.final()]);
-    const tag = cipher.getAuthTag();
-    const header = Buffer.from("THBK1");
-    const payload = Buffer.concat([header, iv, tag, encrypted]);
-    fs.writeFileSync(archivePath, payload, { mode: 0o600 });
+    const password = getArchivePassword();
+    const passwordFile = path.join(workDir, "password");
+    fs.writeFileSync(passwordFile, `${password}\n`, { mode: 0o600, flag: "wx" });
+    const encrypted = spawnSync("openssl", ["enc", "-aes-256-cbc", "-salt", "-pbkdf2", "-iter", "600000", "-in", tarPath, "-out", archivePath, "-pass", `file:${passwordFile}`], { encoding: "utf8" });
+    if (encrypted.error || encrypted.status !== 0) throw new Error(`OpenSSL encryption failed: ${encrypted.error?.message || encrypted.stderr || "unknown error"}`);
+    fs.chmodSync(archivePath, 0o600);
     const size = fs.statSync(archivePath).size;
     console.log(`✅ Encrypted archive ready: ${archiveName} (${(size / 1048576).toFixed(2)} MB).`);
 
