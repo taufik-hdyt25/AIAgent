@@ -313,6 +313,21 @@
           </div>
         </div>
 
+        <section class="card" data-section="ai" id="agentGenerateServiceCard" aria-labelledby="agentGenerateServiceTitle">
+          <div class="card-header">
+            <div class="card-icon purple">✨</div>
+            <div>
+              <h2 class="card-title" id="agentGenerateServiceTitle">Layanan Generate Agent</h2>
+              <p class="card-description">TH Agent menyediakan API server-to-server untuk generate konten menggunakan model utama Agent.</p>
+            </div>
+          </div>
+          <div class="card-body">
+            <p class="form-help">Endpoint: <code>POST /api/ai-generate</code> · Health: <code>GET /api/ai-generate/health</code>. Akses memerlukan Bearer API key dan key hanya boleh disimpan di backend aplikasi pemanggil—jangan pernah ditaruh di browser.</p>
+            <p class="form-help" style="margin-top: 0.75rem;">Panduan integrasi, format request/response, batasan, dan contoh kode tersedia di dokumentasi repository:</p>
+            <a href="/TH-ADMIN-INTEGRATION.md" target="_blank" rel="noopener" style="display: inline-flex; margin-top: 0.5rem; color: #60a5fa; font-weight: 600;">📖 Buka dokumentasi integrasi API</a>
+          </div>
+        </section>
+
         <!-- SECTION: Provider Pi (multi-provider models.json) -->
         <div class="card" data-section="ai" id="piProviderSection">
           <div class="card-header">

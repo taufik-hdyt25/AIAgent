@@ -1189,6 +1189,24 @@ export function createWebServer() {
       }
     }
 
+    // Publikasikan panduan integrasi tanpa menaruhnya di folder UI atau mengekspos file repo lain.
+    if (pathname === "/TH-ADMIN-INTEGRATION.md" && req.method === "GET") {
+      try {
+        const docPath = path.resolve(__dirname, "../../TH-ADMIN-INTEGRATION.md");
+        const content = await readFile(docPath);
+        res.writeHead(200, {
+          "Content-Type": "text/markdown; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "X-Content-Type-Options": "nosniff",
+        });
+        res.end(content);
+      } catch {
+        res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("Integration documentation not found");
+      }
+      return;
+    }
+
     // Sajikan File Statis dari folder public/
     const currentPublicDir = resolvePublicDir();
     let safePath = pathname === "/" ? "/index.html" : pathname;
