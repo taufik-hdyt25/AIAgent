@@ -1,8 +1,10 @@
 import "dotenv/config";
 import { spawn } from "node:child_process";
 import dns from "node:dns/promises";
+import fs from "node:fs";
+import path from "node:path";
 import { Bot } from "grammy";
-import { BOT_TOKEN, ALLOWED_IDS, ensureDirectories } from "./config/env.js";
+import { BOT_TOKEN, ALLOWED_IDS, DATA_DIR, ensureDirectories } from "./config/env.js";
 import { startWebServer } from "./web-server.js";
 import { sendToAgent } from "./bot/dispatcher.js";
 import { registerMiddleware } from "./bot/middleware.js";
@@ -158,12 +160,73 @@ bot.catch((error) => {
   }
 });
 
+// Satu bot hanya boleh polling dengan satu token. Dua instance yang polling
+// bersamaan memicu 409 Conflict, koneksi putus-nyambung, dan pesan tertunda.
+const BOT_LOCK_FILE = path.join(DATA_DIR, "bot.lock");
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function acquireBotLock() {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const fd = fs.openSync(BOT_LOCK_FILE, "wx", 0o600);
+      fs.writeSync(fd, String(process.pid));
+      fs.closeSync(fd);
+      return { ok: true };
+    } catch (err) {
+      if (err.code !== "EEXIST") {
+        console.warn(`[Bot Gateway] Gagal membuat lock file (${err.message}); lanjut tanpa lock.`);
+        return { ok: true };
+      }
+
+      let pid = 0;
+      try {
+        pid = Number(fs.readFileSync(BOT_LOCK_FILE, "utf8").trim());
+      } catch {}
+
+      if (pid && pid !== process.pid && isProcessAlive(pid)) {
+        return { ok: false, pid };
+      }
+
+      // Lock basi dari proses yang sudah mati: hapus lalu coba lagi.
+      try {
+        fs.unlinkSync(BOT_LOCK_FILE);
+      } catch {}
+    }
+  }
+  return { ok: true };
+}
+
+function releaseBotLock() {
+  try {
+    const pid = Number(fs.readFileSync(BOT_LOCK_FILE, "utf8").trim());
+    if (!pid || pid === process.pid) fs.unlinkSync(BOT_LOCK_FILE);
+  } catch {}
+}
+
 // Jalankan Bot Telegram jika token sudah tersedia
 if (
   process.env.NODE_ENV !== "test" &&
   BOT_TOKEN &&
   BOT_TOKEN !== "PLACEHOLDER_TOKEN_FOR_CHECK"
 ) {
+  const lock = acquireBotLock();
+  if (!lock.ok) {
+    console.error(
+      `[Bot Gateway] Instance lain (PID ${lock.pid}) sudah memakai token bot ini. ` +
+        "Hentikan instance tersebut dulu; proses ini keluar agar tidak terjadi 409 Conflict."
+    );
+    process.exit(1);
+  }
+  process.on("exit", releaseBotLock);
+
   console.log("Memulai Telegram Coding Agent (TH Agent Gateway)...");
 
   const syncCommands = () => {
@@ -217,6 +280,7 @@ if (
   let isWatcherStarted = false;
   let shouldRun = true;
   let isPollingActive = false;
+  let intentionalStop = false;
 
   // Helper untuk menghentikan loop polling grammY dengan bersih dan aman dari dead lock
   const stopPollingSafely = async (timeoutMs = 2500) => {
@@ -235,6 +299,8 @@ if (
     let retryAttempt = 0;
 
     while (shouldRun) {
+      let reconnectImmediately = false;
+
       try {
         // Bersihkan state polling lama jika ada
         if (bot.pollingRunning) {
@@ -274,22 +340,40 @@ if (
           },
         });
 
-        console.log("[Bot Gateway] Polling connection ditutup atau dihentikan.");
+        // start() hanya selesai saat polling memang dihentikan; sambung lagi cepat.
+        console.log("[Bot Gateway] Polling connection ditutup, menyambung ulang...");
+        reconnectImmediately = true;
       } catch (err) {
-        console.error(`❌ Kendala polling bot Telegram: ${err.message}`, "cause:", err.cause?.message || err.cause || "-");
+        const message = String(err?.message || err);
+        const aborted = intentionalStop || /aborted/i.test(message);
 
-        if (err.error_code === 409 || err.description?.includes("Conflict") || String(err).includes("409")) {
-          console.warn("\n⚠️  [409 CONFLICT DETECTED]");
-          console.warn("   Token bot ini sedang aktif dijalankan di tempat lain atau socket sebelumnya sedang ditutup oleh Telegram.");
-          console.warn("   Menunggu 15 detik sebelum mencoba reconnect kembali...\n");
-          await new Promise((r) => setTimeout(r, 15000));
-          continue;
+        if (aborted) {
+          // Reset yang disengaja (watchdog/stop) bukan kegagalan; jangan pakai backoff.
+          console.log("[Bot Gateway] Polling direset sengaja, menyambung ulang...");
+          reconnectImmediately = true;
+        } else {
+          console.error(`❌ Kendala polling bot Telegram: ${message}`, "cause:", err.cause?.message || err.cause || "-");
+
+          if (err.error_code === 409 || err.description?.includes("Conflict") || String(err).includes("409")) {
+            console.warn("\n⚠️  [409 CONFLICT DETECTED]");
+            console.warn("   Token bot ini sedang aktif dijalankan di tempat lain atau socket sebelumnya sedang ditutup oleh Telegram.");
+            console.warn("   Menunggu 15 detik sebelum mencoba reconnect kembali...\n");
+            await new Promise((r) => setTimeout(r, 15000));
+            continue;
+          }
         }
       } finally {
         isPollingActive = false;
+        intentionalStop = false;
       }
 
       if (!shouldRun) break;
+
+      if (reconnectImmediately) {
+        retryAttempt = 0;
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
+      }
 
       retryAttempt++;
       // Pastikan koneksi internet (DNS Telegram) sudah siap sebelum mencoba start polling ulang
@@ -350,6 +434,7 @@ if (
       }
 
       // Abort & stop socket lama yang menggantung saat sleep
+      intentionalStop = true;
       await stopPollingSafely();
 
       // Tunggu Wi-Fi aktif kembali
@@ -383,6 +468,7 @@ if (
       if (hasNet) {
         console.warn("⚠️ [Watchdog] Internet aktif tetapi socket Telegram menggantung (dead socket). Mereset socket polling secara aman...");
         lastPollingActivity = Date.now(); // reset timer agar tidak spam abort
+        intentionalStop = true;
         await stopPollingSafely();
       } else {
         console.warn("📶 [Watchdog] Menunggu koneksi internet pulih kembali...");
@@ -390,13 +476,16 @@ if (
     }
   }, 5000);
 
-  // Graceful shutdown
+  // Graceful shutdown (dengan batas waktu agar tidak menggantung selamanya)
   const handleExit = async () => {
     shouldRun = false;
     clearInterval(watchdogInterval);
+    const forceExit = setTimeout(() => process.exit(0), 3000);
+    forceExit.unref();
     try {
       await bot.stop().catch(() => {});
     } catch (_) {}
+    releaseBotLock();
     process.exit(0);
   };
 
