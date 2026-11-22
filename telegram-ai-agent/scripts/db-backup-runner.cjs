@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * TH Studio password-protected smart backup runner.
- * Bundles PostgreSQL/SQLite/JSON stores and project .env files into one .tar.gz,
- * encrypts it with an OpenSSL-compatible password, then sends it to Telegram Backup Vault.
+ * TH Studio smart backup runner.
+ * Creates a standard .tar.gz bundle of databases and project .env files, then sends it to Telegram Backup Vault.
  */
 
 const fs = require("fs");
@@ -20,7 +19,6 @@ const DB_USER = "th_user";
 const PROJECTS_ROOT = "/home/th-agent/projects";
 const BACKUP_ROOT = "/home/ubuntu/.th-agent/backups";
 const STATE_FILE = "/home/ubuntu/.th-agent/data/last_db_backup_hash.json";
-const ARCHIVE_PASSWORD_FILE = "/home/ubuntu/.th-agent/data/backup-archive-password.txt";
 const EXCLUDED_DATABASES = ["postgres", "th_wedding_db", ...(process.env.BACKUP_EXCLUDE_DBS || "").split(",").map((s) => s.trim()).filter(Boolean)];
 const SKIP_DIRS = new Set(["node_modules", ".git", ".next", ".cache", ".turbo", "dist", "build", "coverage"]);
 const KNOWN_SQLITE_DATABASES = [
@@ -30,19 +28,6 @@ const KNOWN_SQLITE_DATABASES = [
 const AI_AGENT_STORES = [{ name: "ai_agent_memories", filePath: "/home/th-agent/telegram-ai-agent/data/memories.json", type: "JSON-Store", label: "TH Agent Vector Memories" }];
 
 for (const dir of [BACKUP_ROOT, path.dirname(STATE_FILE)]) fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-
-function getArchivePassword() {
-  const configured = (process.env.BACKUP_ARCHIVE_PASSWORD || "").trim();
-  if (configured) return configured;
-  if (!fs.existsSync(ARCHIVE_PASSWORD_FILE)) {
-    const password = crypto.randomBytes(24).toString("base64url");
-    fs.writeFileSync(ARCHIVE_PASSWORD_FILE, `${password}\n`, { mode: 0o600, flag: "wx" });
-    console.log(`🔐 Generated archive password at ${ARCHIVE_PASSWORD_FILE}; save a secure off-server copy for recovery.`);
-  }
-  const password = fs.readFileSync(ARCHIVE_PASSWORD_FILE, "utf8").trim();
-  if (password.length < 16 || /[\r\n]/.test(password)) throw new Error("Archive password must be at least 16 characters and contain no newlines.");
-  return password;
-}
 
 function discoverProjectEnvFiles() {
   const results = [];
@@ -120,7 +105,7 @@ function calculateHash(content) {
 }
 
 function rotateLocalBackups(maxKeep = 7) {
-  const files = fs.readdirSync(BACKUP_ROOT).filter((name) => name.startsWith("th_studio_backup_") && name.endsWith(".tar.gz.enc"))
+  const files = fs.readdirSync(BACKUP_ROOT).filter((name) => name.startsWith("th_studio_backup_") && (name.endsWith(".tar.gz") || name.endsWith(".tar.gz.enc")))
     .map((name) => ({ name, mtime: fs.statSync(path.join(BACKUP_ROOT, name)).mtimeMs })).sort((a, b) => b.mtime - a.mtime);
   for (const old of files.slice(maxKeep)) {
     fs.unlinkSync(path.join(BACKUP_ROOT, old.name));
@@ -132,7 +117,7 @@ function sendToTelegram(archivePath, entryNames, sizeBytes) {
   const config = getEnvConfig();
   if (!config) { console.warn("⚠️ Telegram configuration missing; archive retained locally."); return false; }
   const timestamp = new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", dateStyle: "medium", timeStyle: "short" }).format(new Date());
-  const caption = `🔐 *Password-Protected TH Studio Backup*\n━━━━━━━━━━━━━━━━━━━━\n📦 One encrypted .tar.gz archive: databases + project .env files\n🗄️ Components: ${entryNames.length}\n📊 Size: ${(sizeBytes / 1048576).toFixed(2)} MB\n⏱️ ${timestamp} WIB\n🔒 AES-256 encrypted; password required to extract.`;
+  const caption = `📦 *TH Studio Backup*\n━━━━━━━━━━━━━━━━━━━━\n🗄️ Components: ${entryNames.length}\n📊 Size: ${(sizeBytes / 1048576).toFixed(2)} MB\n⏱️ ${timestamp} WIB\n🔒 Plain .tar.gz archive (no password encryption).`;
   const proc = spawnSync("curl", ["-sS", "--max-time", "120", "-F", `chat_id=${config.chatId}`, "-F", `document=@${archivePath}`, "-F", `caption=${caption}`, "-F", "parse_mode=Markdown", `https://api.telegram.org/bot${config.botToken}/sendDocument`], { encoding: "utf8", timeout: 130000 });
   if (proc.error) { console.error("❌ Telegram upload failed:", proc.error.message); return false; }
   try {
@@ -146,7 +131,7 @@ function sendToTelegram(archivePath, entryNames, sizeBytes) {
 async function runBackup() {
   const tempDir = path.join(BACKUP_ROOT, `bundle_temp_${Date.now()}`);
   const workDir = path.join(BACKUP_ROOT, `encrypted_temp_${Date.now()}`);
-  console.log("🚀 Starting encrypted TH Studio backup...");
+  console.log("🚀 Starting TH Studio backup...");
   fs.mkdirSync(tempDir, { recursive: true, mode: 0o700 });
   fs.mkdirSync(workDir, { recursive: true, mode: 0o700 });
   try {
@@ -212,19 +197,12 @@ async function runBackup() {
     const timestamp = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(now).replace(/[,:\s-]/g, "");
     const metadata = { backupDate: now.toISOString(), compositeHash, encryption: "AES-256-GCM", databases: summaries, envFiles: copiedEnvFiles };
     fs.writeFileSync(path.join(tempDir, "metadata.json"), JSON.stringify(metadata, null, 2), { mode: 0o600 });
-    const archiveName = `th_studio_backup_${timestamp}.tar.gz.enc`;
-    const tarPath = path.join(workDir, "payload.tar.gz");
+    const archiveName = `th_studio_backup_${timestamp}.tar.gz`;
     const archivePath = path.join(BACKUP_ROOT, archiveName);
-    execSync(`tar -czf ${JSON.stringify(tarPath)} -C ${JSON.stringify(tempDir)} .`);
-
-    const password = getArchivePassword();
-    const passwordFile = path.join(workDir, "password");
-    fs.writeFileSync(passwordFile, `${password}\n`, { mode: 0o600, flag: "wx" });
-    const encrypted = spawnSync("openssl", ["enc", "-aes-256-cbc", "-salt", "-pbkdf2", "-iter", "600000", "-in", tarPath, "-out", archivePath, "-pass", `file:${passwordFile}`], { encoding: "utf8" });
-    if (encrypted.error || encrypted.status !== 0) throw new Error(`OpenSSL encryption failed: ${encrypted.error?.message || encrypted.stderr || "unknown error"}`);
+    execSync(`tar -czf ${JSON.stringify(archivePath)} -C ${JSON.stringify(tempDir)} .`);
     fs.chmodSync(archivePath, 0o600);
     const size = fs.statSync(archivePath).size;
-    console.log(`✅ Encrypted archive ready: ${archiveName} (${(size / 1048576).toFixed(2)} MB).`);
+    console.log(`✅ Plain .tar.gz archive ready: ${archiveName} (${(size / 1048576).toFixed(2)} MB).`);
 
     const delivered = skipTelegram || sendToTelegram(archivePath, [...entries.map((item) => item.name), ...envFiles.map((item) => `.env:${item.relativePath}`)], size);
     if (!skipTelegram && !delivered) throw new Error("Backup archive created but Telegram delivery failed; state is not advanced for retry.");
