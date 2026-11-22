@@ -111,7 +111,15 @@ Ketentuan field:
 }
 ```
 
-Batas: `shortDescription` maksimal 500 karakter, `fullDescription` maksimal 12.000 karakter.
+Batas generate yang divalidasi server:
+
+| Output | Minimal | Maksimal |
+|---|---:|---:|
+| `shortDescription` | 80 karakter | 500 karakter |
+| `fullDescription` | 250 karakter | 12.000 karakter |
+| `content` (privacy policy / terms of service) | 500 karakter teks tanpa tag HTML | 40.000 karakter |
+
+Jika model menghasilkan di bawah batas minimum, endpoint mengembalikan `502 GENERATION_FAILED`; permintaan tidak dianggap sukses. Minimum adalah aturan kualitas endpoint, bukan batas resmi toko aplikasi. Untuk dokumen legal, panjang saja tidak menjamin kelengkapan atau kepatuhan; tinjau dan sesuaikan placeholder dengan praktik aplikasi.
 
 ### 3.2 Sukses — `privacy_policy` / `terms_of_service`
 

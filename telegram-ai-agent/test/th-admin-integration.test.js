@@ -24,5 +24,8 @@ test("TH Admin integration scopes outputs and avoids reporting generated content
   assert.match(source, /shortDescription/);
   assert.match(source, /privacy_policy/);
   assert.match(source, /terms_of_service/);
+  assert.match(source, /shortDescription: \{ min: 80, max: 500 \}/);
+  assert.match(source, /fullDescription: \{ min: 250, max: 12_000 \}/);
+  assert.match(source, /legalDocument: \{ min: 500, max: 40_000 \}/);
   assert.match(source, /status=ok id=/);
 });
