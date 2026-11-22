@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { DATA_DIR } from "../config/env.js";
+import { DATA_DIR, MAX_CONCURRENT_TASKS } from "../config/env.js";
 import { truncate } from "./telegram-files.js";
 import {
   buildConversationKey,
@@ -211,7 +211,7 @@ export async function processNextQueue() {
     return false;
   }
 
-  const maxConcurrent = 3;
+  const maxConcurrent = MAX_CONCURRENT_TASKS;
   let startedAny = false;
 
   for (let i = 0; i < taskQueue.length; ) {

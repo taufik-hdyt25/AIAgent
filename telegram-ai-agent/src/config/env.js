@@ -145,6 +145,8 @@ export const MAX_TIMEOUT_MS = Math.max(
   Number(process.env.TASK_MAX_TIMEOUT_MS || 14400000)
 );
 export const MAX_OUTPUT = Number(process.env.MAX_TASK_OUTPUT || 12000);
+// Batas configurable agar parallelisme naik tanpa membuat concurrency benar-benar tak terbatas.
+export const MAX_CONCURRENT_TASKS = Math.max(1, Number.parseInt(process.env.MAX_CONCURRENT_TASKS || "10", 10) || 10);
 
 export const ALLOWED_IDS = new Set(
   (process.env.ALLOWED_TELEGRAM_IDS || "")

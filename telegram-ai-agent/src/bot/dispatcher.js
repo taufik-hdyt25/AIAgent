@@ -10,6 +10,7 @@ import {
   MAX_TIMEOUT_MS,
   MAX_OUTPUT,
   PROJECTS_DIR,
+  MAX_CONCURRENT_TASKS,
 } from "../config/env.js";
 import {
   isPiSandboxActive,
@@ -1018,7 +1019,7 @@ export async function sendToAgent(userMessage, ctx, fileInfo = null) {
 
   try {
     targetProject = await detectTargetProject(userMessage, fileInfo);
-    const maxConcurrent = 3; // Menjaga batas RAM & CPU VPS tetap aman
+    const maxConcurrent = MAX_CONCURRENT_TASKS; // Bisa diatur melalui MAX_CONCURRENT_TASKS
     const totalActive = getActiveTaskCount() + getActiveWorkers().length;
     const lockedProjects = getLockedProjects();
     const isTargetBusy = Boolean(targetProject && lockedProjects.has(targetProject));
