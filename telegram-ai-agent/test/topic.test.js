@@ -18,3 +18,18 @@ test('reply keeps topic for all message chunks', async () => {
   assert.ok(sent.length > 1);
   assert.ok(sent.every((item) => item.options.message_thread_id === 10));
 });
+
+test('long replies are split without dropping any content', async () => {
+  const sent = [];
+  const ctx = { message: { message_id: 9 }, reply: async (text, options) => sent.push({ text, options }) };
+  const paragraphs = Array.from({ length: 40 }, (_, i) => `Bagian ${i + 1}: ${'x'.repeat(300)}`).join('\n\n');
+  await sendSmartReply(ctx, paragraphs);
+
+  assert.ok(sent.length > 2);
+  assert.ok(sent.every((item) => item.text.length <= 4096));
+
+  const joined = sent.map((item) => item.text).join('\n\n');
+  for (let i = 1; i <= 40; i++) {
+    assert.match(joined, new RegExp(`Bagian ${i}\\b`), `missing Bagian ${i}`);
+  }
+});
