@@ -5,8 +5,9 @@ import fs from "node:fs";
 const source = fs.readFileSync(new URL("../src/web-server.js", import.meta.url), "utf8");
 
 test("TH Admin integration exposes authenticated generation and health routes", () => {
-  assert.match(source, /\/api\/integrations\/th-admin\/generate/);
-  assert.match(source, /\/api\/integrations\/th-admin\/health/);
+  assert.match(source, /\/api\/ai-generate/);
+  assert.match(source, /\/api\/ai-generate\/health/);
+  assert.doesNotMatch(source, /\/api\/integrations\/th-admin\/(?:generate|health)/);
   assert.match(source, /TH_ADMIN_AGENT_API_KEY/);
   assert.match(source, /timingSafeEqual/);
   assert.match(source, /TH_ADMIN_AGENT_API_KEY_FILE/);
