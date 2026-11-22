@@ -39,7 +39,7 @@ API key ini **hanya untuk server-to-server**. Simpan di secret/env server TH Adm
 ### 2.1 Health check
 
 ```http
-GET /api/integrations/th-admin/health
+GET /api/ai-generate/health
 Authorization: Bearer <API_KEY>
 ```
 
@@ -60,7 +60,7 @@ Health check tidak membocorkan konfigurasi maupun rahasia.
 ### 2.2 Generate
 
 ```http
-POST /api/integrations/th-admin/generate
+POST /api/ai-generate
 Authorization: Bearer <API_KEY>
 Content-Type: application/json
 ```
@@ -191,7 +191,7 @@ Endpoint TH Admin dikecualikan dari Basic Auth Web UI, jadi autentikasinya murni
 ### curl
 
 ```bash
-curl -X POST "https://ai.thstudio.web.id/api/integrations/th-admin/generate" \
+curl -X POST "https://ai.thstudio.web.id/api/ai-generate" \
   -H "Authorization: Bearer <API_KEY>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -215,7 +215,7 @@ curl -X POST "https://ai.thstudio.web.id/api/integrations/th-admin/generate" \
 ### Node.js / TypeScript (server-side)
 
 ```ts
-const res = await fetch("https://ai.thstudio.web.id/api/integrations/th-admin/generate", {
+const res = await fetch("https://ai.thstudio.web.id/api/ai-generate", {
   method: "POST",
   headers: {
     Authorization: `Bearer ${process.env.TH_ADMIN_AGENT_API_KEY}`,
@@ -243,7 +243,7 @@ console.log(json.data);
 ### PHP
 
 ```php
-$ch = curl_init('https://ai.thstudio.web.id/api/integrations/th-admin/generate');
+$ch = curl_init('https://ai.thstudio.web.id/api/ai-generate');
 curl_setopt_array($ch, [
     CURLOPT_POST => true,
     CURLOPT_RETURNTRANSFER => true,
@@ -284,7 +284,7 @@ $json = json_decode($body, true);
 
 ## 7. Ringkasan handoff
 
-1. **Endpoint:** `POST https://ai.thstudio.web.id/api/integrations/th-admin/generate`
+1. **Endpoint:** `POST https://ai.thstudio.web.id/api/ai-generate`
 2. **Auth:** header `Authorization: Bearer <API_KEY>`
 3. **Model:** `gpt-6-luna` (opsional dikirim eksplisit; model lain ditolak)
-4. **Health:** `GET https://ai.thstudio.web.id/api/integrations/th-admin/health`
+4. **Health:** `GET https://ai.thstudio.web.id/api/ai-generate/health`

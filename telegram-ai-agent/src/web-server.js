@@ -242,7 +242,7 @@ export function createWebServer() {
     // karena punya verifikasi signature sendiri.
     const authPass = process.env.WEB_AUTH_PASS || "";
     const authUser = process.env.WEB_AUTH_USER || "admin";
-    const authExempt = pathname === "/webhook/update" || pathname === "/api/integrations/th-admin/health" || pathname === "/api/integrations/th-admin/generate";
+    const authExempt = pathname === "/webhook/update" || pathname === "/api/ai-generate/health" || pathname === "/api/ai-generate";
     if (authPass && !authExempt) {
       const provided = req.headers.authorization || "";
       const expected = "Basic " + Buffer.from(`${authUser}:${authPass}`).toString("base64");
@@ -270,12 +270,12 @@ export function createWebServer() {
       return;
     }
 
-    if ((pathname === "/api/integrations/th-admin/health" && req.method === "GET") || (pathname === "/api/integrations/th-admin/generate" && req.method === "POST")) {
+    if ((pathname === "/api/ai-generate/health" && req.method === "GET") || (pathname === "/api/ai-generate" && req.method === "POST")) {
       const clientIp = getClientIp(req);
       if (TH_ADMIN_ALLOWED_IPS.size && !TH_ADMIN_ALLOWED_IPS.has(clientIp)) return sendJson(403, { ok: false, error: { code: "FORBIDDEN", message: "Client network is not allowed" } });
     }
 
-    if (pathname === "/api/integrations/th-admin/health" && req.method === "GET") {
+    if (pathname === "/api/ai-generate/health" && req.method === "GET") {
       const expectedKey = await getThAdminApiKey();
       if (!expectedKey) return sendJson(503, { ok: false, error: { code: "INTEGRATION_NOT_CONFIGURED", message: "TH Admin integration is not configured" } });
       const supplied = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1] || "";
@@ -283,7 +283,7 @@ export function createWebServer() {
       return sendJson(200, { ok: true, data: { status: "ok" } });
     }
 
-    if (pathname === "/api/integrations/th-admin/generate" && req.method === "POST") {
+    if (pathname === "/api/ai-generate" && req.method === "POST") {
       const expectedKey = await getThAdminApiKey();
       if (!expectedKey) return sendJson(503, { ok: false, error: { code: "INTEGRATION_NOT_CONFIGURED", message: "TH Admin integration is not configured" } });
       const supplied = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1] || "";
@@ -349,7 +349,7 @@ export function createWebServer() {
           const result = await runProcess({
             command: process.env.PI_BIN || agentSettings.PI_BIN || "pi",
             args,
-            cwd: PROJECTS_DIR,
+            cwd: os.homedir(),
             timeoutMs,
             maxTimeoutMs: timeoutMs,
             maxOutput: 48_000,
@@ -358,7 +358,11 @@ export function createWebServer() {
             onStdout: (chunk) => parser.push(chunk),
           });
           if (result.timedOut || result.cancelled) throw new Error("Generation timed out");
-          if (result.code !== 0) throw new Error("Active model failed");
+          if (result.error || result.code !== 0) {
+            const diagnostic = String(result.error || result.stderr || `exit ${result.code}`).replace(/[\r\n]+/g, " ").slice(0, 300);
+            console.error(`[th-admin-integration] task=${task} model=${selectedModel} status=cli_error detail=${diagnostic} id=${taskId}`);
+            throw new Error("Active model failed");
+          }
           const data = normalizeIntegrationResult(task, parser.getText() || result.stdout);
           console.info(`[th-admin-integration] task=${task} model=${selectedModel} durationMs=${Date.now() - startedAt} status=ok id=${taskId}`);
           return sendJson(200, { ok: true, data });
