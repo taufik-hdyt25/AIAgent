@@ -1,7 +1,13 @@
-const DEFAULT_URL = "http://127.0.0.1:8317";
+const DEFAULT_URL = "http://127.0.0.1:3013";
 
 function baseUrl() {
-  return (process.env.CLIPROXY_URL || DEFAULT_URL).replace(/\/+$/, "");
+  if (process.env.AICONNECT_URL) return process.env.AICONNECT_URL.replace(/\/+$/, "");
+  if (process.env.CLIPROXY_URL) return process.env.CLIPROXY_URL.replace(/\/+$/, "");
+  return DEFAULT_URL;
+}
+
+function aiconnectLoginUrl() {
+  return `${baseUrl()}/`;
 }
 
 function mgmtKey() {
@@ -152,6 +158,9 @@ export async function refreshCpaCredentials() {
 }
 
 export async function startCpaOAuth(provider = "antigravity") {
+  // AIconnect/AIClient2API mengelola OAuth melalui dashboard webnya sendiri.
+  // Jangan memanggil endpoint management CLIProxy lama yang tidak tersedia di port 3013.
+  if (baseUrl().includes(":3013")) return { provider, url: aiconnectLoginUrl(), state: "aiconnect-dashboard" };
   const allowed = ["antigravity", "claude", "codex", "kimi", "kimi-ai", "xai", "devin", "meta"];
   const p = String(provider || "").toLowerCase();
   if (!allowed.includes(p)) throw new Error(`Provider OAuth tidak didukung: ${provider}`);

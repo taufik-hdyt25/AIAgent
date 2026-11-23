@@ -911,7 +911,7 @@ if (btnNewPiProvider) {
   btnNewPiProvider.addEventListener("click", clearPiProviderForm);
 }
 
-// ===== CLIProxyAPI OAuth (Antigravity / Claude / Codex) =====
+// ===== AIconnect / AIClient2API account access =====
 const cpaStatusBadge = document.getElementById("cpaStatusBadge");
 const cpaStatusText = document.getElementById("cpaStatusText");
 const cpaProvider = document.getElementById("cpaProvider");
@@ -1023,8 +1023,8 @@ async function startCpaLogin() {
       cpaAuthUrl.textContent = data.url;
     }
     if (cpaCallbackUrl) cpaCallbackUrl.value = "";
-    setCpaOAuthStatus("Buka URL di atas, login, lalu tempel URL callback yang gagal dimuat.", "#facc15");
-    pollCpaOAuthStatus();
+    setCpaOAuthStatus(data.state === "aiconnect-dashboard" ? "Dashboard AIconnect dibuka. Selesaikan login di sana, lalu kembali dan klik Refresh." : "Buka URL di atas, login, lalu tempel URL callback yang gagal dimuat.", "#facc15");
+    if (data.state !== "aiconnect-dashboard") pollCpaOAuthStatus();
     window.open(data.url, "_blank", "noopener");
   } catch (err) {
     setCpaOAuthStatus(`❌ ${err.message}`, "#f87171");
@@ -1067,7 +1067,7 @@ if (btnCpaRefresh) btnCpaRefresh.addEventListener("click", loadCpaStatus);
 if (btnCpaSubmitCallback) btnCpaSubmitCallback.addEventListener("click", submitCpaCallback);
 loadCpaStatus();
 
-// ===== Modal: Kelola Kredensial CLIProxyAPI =====
+// ===== Modal: Kelola Kredensial AIconnect =====
 const btnManageCredentials = document.getElementById("btnManageCredentials");
 const credModal = document.getElementById("credModal");
 const credModalClose = document.getElementById("credModalClose");

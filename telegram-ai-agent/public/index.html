@@ -224,7 +224,7 @@
                 </select>
               </div>
               <p class="form-help" style="margin-top: 6px;">
-                <strong>pi</strong>: tool-calling ke endpoint OpenAI-compatible (CLIProxyAPI/LiteLLM/Ollama).
+                <strong>pi</strong>: tool-calling ke endpoint OpenAI-compatible (AIconnect/LiteLLM/Ollama).
                 <strong>commandcode</strong>: menjalankan <code>cmd -p ... --yolo</code> memakai akun/plan Command Code.
               </p>
             </div>
@@ -252,7 +252,7 @@
 
             <!-- Model Default untuk Pi CLI -->
             <div class="form-group" id="groupPiModel">
-              <p class="form-help" style="margin-bottom: 10px;">Provider Pi aktif: <strong id="piActiveProviderSummary">memuat...</strong>. <a href="#piProviderSection">Kelola provider</a> · <a href="#cpaSection">Login akun CLIProxy</a></p>
+              <p class="form-help" style="margin-bottom: 10px;">Provider Pi aktif: <strong id="piActiveProviderSummary">memuat...</strong>. <a href="#piProviderSection">Kelola provider</a> · <a href="#cpaSection">Login akun AIconnect</a></p>
               <!-- Link Server Pi & Get Model Box -->
               <div style="background: rgba(16, 185, 129, 0.07); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
                 <div class="label-row" style="margin-bottom: 6px;">
@@ -352,7 +352,7 @@
             </div>
           </div>
           <div class="card-body">
-            <p class="form-help" style="margin-bottom: 12px;"><strong>cliproxy</strong> biasanya mengarah ke CLIProxyAPI; <strong>local-pi</strong> adalah nama profil umum, tidak selalu server lokal. Periksa URL masing-masing. Akun Antigravity/Codex dikelola di bagian CLIProxy.</p>
+            <p class="form-help" style="margin-bottom: 12px;"><strong>a2-codex</strong> mengarah ke AIconnect/AIClient2API; <strong>local-pi</strong> adalah nama profil umum. Akun AI dikelola melalui dashboard AIconnect.</p>
             <div class="label-row" style="margin-bottom: 0.5rem;">
               <label class="form-label">PROFIL TERDAFTAR</label>
               <span class="label-hint" id="piProviderDefaultBadge">Default: local-pi</span>
@@ -399,7 +399,7 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
           </div>
         </div>
 
-        <!-- SECTION: CLIProxyAPI OAuth (Antigravity / Claude / Codex) -->
+        <!-- SECTION: AIconnect / AIClient2API Account Login -->
         <div class="card" data-section="ai" id="cpaSection">
           <div class="card-header">
             <div class="card-icon amber">
@@ -409,8 +409,8 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
               </svg>
             </div>
             <div>
-              <h2 class="card-title">3. Akun CLIProxyAPI</h2>
-              <p class="card-description">Login Antigravity atau Codex di gateway. Ini akun di balik CLIProxy, bukan profil provider Pi. Aktifkan profil yang mengarah ke CLIProxy lalu ambil model.</p>
+              <h2 class="card-title">3. Akun AIconnect</h2>
+              <p class="card-description">Kelola login akun AI melalui AIconnect (AIClient2API). Dashboard AIconnect menyediakan halaman login dan manajemen OAuth sendiri.</p>
             </div>
           </div>
           <div class="card-body">
@@ -427,13 +427,13 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
                 <option value="codex">OpenAI Codex</option>
               </select>
               <button type="button" id="btnCpaLogin" style="font-size: 0.82rem; padding: 7px 14px; white-space: nowrap; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 600;">
-                🔐 Login via Browser
+                🔐 Buka Login AIconnect
               </button>
               <button type="button" id="btnCpaRefresh" style="font-size: 0.82rem; padding: 7px 12px; white-space: nowrap; background: none; color: #94a3b8; border: 1px solid rgba(148,163,184,0.3); border-radius: 6px; cursor: pointer;">
                 ⟳ Refresh
               </button>
               <button type="button" id="btnManageCredentials" style="font-size: 0.82rem; padding: 7px 12px; white-space: nowrap; background: rgba(99,102,241,0.15); color: #a5b4fc; border: 1px solid rgba(99,102,241,0.4); border-radius: 6px; cursor: pointer;">
-                👥 Kredensial
+                👥 Kredensial AIconnect
               </button>
             </div>
 
@@ -469,7 +469,7 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
             </div>
             <div>
               <h2 class="card-title">4. API Key Endpoint Pi</h2>
-              <p class="card-description">Key untuk mengakses endpoint model aktif; berbeda dari login akun Antigravity/Codex di CLIProxy.</p>
+              <p class="card-description">Key untuk mengakses endpoint model aktif; login akun AI dikelola melalui dashboard AIconnect.</p>
             </div>
           </div>
 
@@ -1044,12 +1044,12 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
   <!-- Toast Notification Container -->
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <!-- Modal: Kelola Kredensial CLIProxyAPI -->
+  <!-- Modal: Kelola Kredensial AIconnect -->
   <div id="credModal" class="modal-overlay hidden" aria-hidden="true">
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="credModalTitle">
       <div class="modal-header">
         <div>
-          <h3 id="credModalTitle">Kelola Kredensial CLIProxyAPI</h3>
+          <h3 id="credModalTitle">Kelola Kredensial AIconnect</h3>
           <p>Akun Antigravity / Claude / Codex yang terhubung ke gateway.</p>
         </div>
         <button type="button" id="credModalClose" class="modal-close" aria-label="Tutup">&times;</button>
