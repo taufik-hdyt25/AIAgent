@@ -9,7 +9,10 @@ test("universal AI endpoint exposes one authenticated route for shared generatio
   assert.match(source, /UNIVERSAL_AI_MODES/);
   assert.match(source, /universalAiPrompt/);
   assert.match(source, /normalizeUniversalAiResult/);
+  assert.match(source, /resolveUniversalProviderModel/);
+  assert.match(source, /buildUniversalModelArgs/);
   assert.match(source, /mode must be generate or structured/);
+  assert.match(source, /provider must be a valid provider ID/);
   assert.match(source, /--no-tools/);
 });
 

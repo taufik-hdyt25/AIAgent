@@ -241,6 +241,40 @@ function normalizeUniversalAiResult(mode, output) {
   return { content: text.slice(start, end + 1), data };
 }
 
+async function resolveUniversalProviderModel({ providerId, modelId, settings }) {
+  const providers = await listPiProviders();
+  const activeProviderId = settings.PI_PROVIDER || process.env.PI_PROVIDER || "local-pi";
+  const requestedProvider = String(providerId || "").trim();
+  const requestedModel = String(modelId || "").trim();
+  let provider = requestedProvider ? providers.find((item) => item.id === requestedProvider) : null;
+
+  if (requestedProvider && !provider) {
+    throw Object.assign(new Error(`Provider '${requestedProvider}' tidak terhubung di TH Agent`), { code: "PROVIDER_UNAVAILABLE", status: 400 });
+  }
+
+  if (!provider && requestedModel) {
+    provider = providers.find((item) => (item.models || []).some((itemModel) => (typeof itemModel === "string" ? itemModel : itemModel?.id) === requestedModel));
+  }
+  if (!provider) provider = providers.find((item) => item.id === activeProviderId) || providers[0];
+  if (!provider) throw Object.assign(new Error("Tidak ada provider AI yang terhubung di TH Agent"), { code: "PROVIDER_UNAVAILABLE", status: 503 });
+
+  const activeModel = settings.PI_MODEL || process.env.PI_MODEL || "";
+  const selectedModel = requestedModel || activeModel || (typeof provider.models?.[0] === "string" ? provider.models[0] : provider.models?.[0]?.id) || "";
+  const connectedModels = (provider.models || []).map((item) => typeof item === "string" ? item : item?.id).filter(Boolean);
+  if (!selectedModel || !connectedModels.includes(selectedModel)) {
+    throw Object.assign(new Error(`Model '${selectedModel || ""}' tidak tersedia pada provider '${provider.id}'`), { code: "MODEL_UNAVAILABLE", status: 400 });
+  }
+  return { providerId: provider.id, modelId: selectedModel };
+}
+
+function buildUniversalModelArgs(providerId, modelId) {
+  // Model Groq lama tetap kompatibel dengan format CLI yang sudah dipakai TH Agent.
+  if (providerId === "groq" || modelId.startsWith("groq/")) {
+    return ["--provider", "groq", "--model", modelId.replace(/^groq\//, "")];
+  }
+  return ["--provider", providerId, "--model", modelId];
+}
+
 function normalizeIntegrationResult(task, output) {
   const text = String(output || "").trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   const start = text.indexOf("{");
@@ -454,13 +488,18 @@ export function createWebServer() {
           if (payload.app !== undefined && (typeof payload.app !== "string" || payload.app.length > 120)) return sendJson(400, { ok: false, error: { code: "INVALID_APP", message: "app must be a short string" } });
           if (payload.task !== undefined && (typeof payload.task !== "string" || payload.task.length > 160)) return sendJson(400, { ok: false, error: { code: "INVALID_TASK", message: "task must be a short string" } });
           if (payload.model !== undefined && (typeof payload.model !== "string" || payload.model.length > 200)) return sendJson(400, { ok: false, error: { code: "INVALID_MODEL", message: "model must be a valid model ID" } });
+          if (payload.provider !== undefined && (typeof payload.provider !== "string" || payload.provider.length > 120)) return sendJson(400, { ok: false, error: { code: "INVALID_PROVIDER", message: "provider must be a valid provider ID" } });
           const { parsed: universalSettings } = await readEnvFile();
-          const universalProvider = universalSettings.PI_PROVIDER || process.env.PI_PROVIDER || "local-pi";
           const universalEngine = universalSettings.CLI_ENGINE || process.env.CLI_ENGINE || "pi";
           if (universalEngine !== "pi") return sendJson(503, { ok: false, error: { code: "ENGINE_UNSUPPORTED", message: "Universal AI currently requires the Pi engine" } });
-          const universalModel = payload.model || universalSettings.PI_MODEL || process.env.PI_MODEL || "";
-          if (!universalModel) return sendJson(503, { ok: false, error: { code: "MODEL_UNAVAILABLE", message: "No active model is configured" } });
-          if (payload.model && payload.model !== universalModel) return sendJson(400, { ok: false, error: { code: "MODEL_UNAVAILABLE", message: "Only the active primary model is available" } });
+          let resolvedModel;
+          try {
+            resolvedModel = await resolveUniversalProviderModel({ providerId: payload.provider, modelId: payload.model, settings: universalSettings });
+          } catch (err) {
+            return sendJson(err.status || 503, { ok: false, error: { code: err.code || "MODEL_UNAVAILABLE", message: err.message } });
+          }
+          const universalProvider = resolvedModel.providerId;
+          const universalModel = resolvedModel.modelId;
 
           const taskId = randomUUID();
           const startedAt = Date.now();
@@ -470,9 +509,7 @@ export function createWebServer() {
           const timeout = setTimeout(() => controller.abort(), timeoutMs);
           try {
             const parser = createPiEventParser();
-            const modelArgs = universalModel.startsWith("groq/") || universalModel === "openai/gpt-oss-120b" || universalModel === "llama-3.1-8b-instant"
-              ? ["--provider", "groq", "--model", universalModel.replace(/^groq\//, "")]
-              : ["--provider", universalProvider, "--model", universalModel];
+            const modelArgs = buildUniversalModelArgs(universalProvider, universalModel);
             const args = ["--mode", "json", "--print", universalAiPrompt(payload), "--no-session", "--no-tools", "--no-mcp", "--no-extensions", "--no-skills", "--no-prompt-templates", "--no-context-files", ...modelArgs];
             const result = await runProcess({ command: process.env.PI_BIN || universalSettings.PI_BIN || "pi", args, cwd: os.homedir(), timeoutMs, maxTimeoutMs: timeoutMs, maxOutput: 64_000, signal: controller.signal, env: { ...process.env, CI: "true", NONINTERACTIVE: "1" }, onStdout: (chunk) => parser.push(chunk) });
             if (result.timedOut || result.cancelled) throw new Error("Generation timed out");
