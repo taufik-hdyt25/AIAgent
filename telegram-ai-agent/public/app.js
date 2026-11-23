@@ -1,3 +1,16 @@
+// Session Web Settings
+const btnLogout = document.getElementById("btnLogout");
+if (btnLogout) {
+  btnLogout.addEventListener("click", async () => {
+    btnLogout.disabled = true;
+    try {
+      await fetch("/api/auth/logout", { method: "POST", cache: "no-store" });
+    } finally {
+      window.location.replace("/login.html");
+    }
+  });
+}
+
 // State aplikasi
 let currentSettings = {};
 let availableOptions = { piModels: [] };
