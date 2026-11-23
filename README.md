@@ -80,4 +80,10 @@ th-agent run        # Run in foreground terminal for live debugging
 - **Telegram Bot:** Directly connected via Telegram Webhook / Long Polling
 - **Coding Workspace:** All autonomous AI execution is strictly scoped within `./projects/`
 
-Detailed technical documentation for the bot can be found in [telegram-ai-agent/README.md](./telegram-ai-agent/README.md).
+Dokumentasi lengkap tersedia di:
+
+- [TH Agent README](./telegram-ai-agent/README.md)
+- [Documentation Index](./docs/README.md)
+- [Universal AI API](./docs/api/UNIVERSAL-AI-API.md)
+- [TH Admin Integration API](./docs/api/TH-ADMIN-INTEGRATION.md)
+- [Product Research API](./docs/api/PRODUCT-RESEARCH-API.md)
