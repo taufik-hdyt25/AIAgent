@@ -20,6 +20,16 @@ test("TH Admin integration limits payloads, requests and generation time", () =>
   assert.match(source, /TH_ADMIN_AGENT_TIMEOUT_MS/);
 });
 
+test("product research API provides secured Play Store, persistence, and AI analysis routes", () => {
+  assert.match(source, /\/api\/product-research\/candidates/);
+  assert.match(source, /\/api\/product-research\/candidate/);
+  assert.match(source, /\/api\/product-research\/analyze/);
+  assert.match(source, /PRODUCT_RESEARCH_RATE_LIMITS/);
+  assert.match(source, /safeEqualSecret\(supplied, expectedKey\)/);
+  assert.match(source, /authExempt\s*=\s*[^;]*pathname\.startsWith\("\/api\/product-research"\)/);
+  assert.match(source, /researchId/);
+});
+
 test("TH Admin integration scopes outputs and avoids reporting generated content", () => {
   assert.match(source, /shortDescription/);
   assert.match(source, /privacy_policy/);
