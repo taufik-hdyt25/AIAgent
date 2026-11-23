@@ -205,7 +205,7 @@ function integrationPrompt(task, input) {
 
 function universalAiPrompt(payload) {
   const mode = String(payload.mode || "generate").trim().toLowerCase();
-  const app = asPlainText(payload.app, 120) || "unknown-app";
+  const app = asPlainText(payload.app, 120);
   const task = asPlainText(payload.task, 160) || asPlainText(payload.profile, 160) || "general";
   const language = asPlainText(payload.language, 30) || "id";
   const profile = asPlainText(payload.profile, 160) || task;
@@ -218,8 +218,8 @@ function universalAiPrompt(payload) {
     : "Return only the requested content without preamble or markdown fences unless the user explicitly asks for markdown.";
   const trustedInput = JSON.stringify({ ...input, prompt: prompt || undefined });
   return [
-    "You are the shared TH Agent AI generation service.",
-    `APPLICATION: ${app}`,
+    "You are the general-purpose TH Agent AI generation service.",
+    ...(app ? [`APPLICATION_CONTEXT: ${app}`] : []),
     `TASK: ${task}`,
     `PROFILE: ${profile}`,
     `LANGUAGE: ${language}`,
@@ -437,6 +437,44 @@ export function createWebServer() {
       return;
     }
 
+    // Browser-safe chat proxy: the browser never receives TH_ADMIN_AGENT_API_KEY.
+    // It forwards the request internally to the authenticated universal AI endpoint.
+    if (pathname === "/api/chat" && req.method === "POST") {
+      const expectedKey = await getThAdminApiKey();
+      if (!expectedKey) return sendJson(503, { ok: false, error: { code: "INTEGRATION_NOT_CONFIGURED", message: "TH Agent chat is not configured" } });
+      let body = "";
+      req.setTimeout(15_000, () => req.destroy());
+      try {
+        for await (const chunk of req) {
+          body += chunk;
+          if (Buffer.byteLength(body) > UNIVERSAL_AI_BODY_MAX) {
+            return sendJson(413, { ok: false, error: { code: "BODY_TOO_LARGE", message: "Request body exceeds 128 KB" } });
+          }
+        }
+        JSON.parse(body || "{}");
+        const localPort = req.socket.localPort || Number(process.env.WEB_PORT || 3030);
+        const internalResponse = await fetch(`http://127.0.0.1:${localPort}/api/ai`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${expectedKey}`,
+            "Content-Type": "application/json",
+          },
+          body,
+          signal: AbortSignal.timeout(605_000),
+        });
+        const responseBody = await internalResponse.text();
+        res.writeHead(internalResponse.status, {
+          "Content-Type": internalResponse.headers.get("content-type") || "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        res.end(responseBody);
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(400, { ok: false, error: { code: "INVALID_JSON", message: "Request body must be valid JSON" } });
+        return sendJson(502, { ok: false, error: { code: "CHAT_PROXY_FAILED", message: "Unable to reach the AI generation service" } });
+      }
+      return;
+    }
+
     if ((pathname === "/api/ai-generate/health" && req.method === "GET") || ((pathname === "/api/ai-generate" || pathname === "/api/ai") && req.method === "POST")) {
       const clientIp = getClientIp(req);
       if (TH_ADMIN_ALLOWED_IPS.size && !TH_ADMIN_ALLOWED_IPS.has(clientIp)) return sendJson(403, { ok: false, error: { code: "FORBIDDEN", message: "Client network is not allowed" } });
@@ -504,7 +542,7 @@ export function createWebServer() {
           const taskId = randomUUID();
           const startedAt = Date.now();
           const timeoutMs = Math.max(30_000, Math.min(Number(universalSettings.TH_ADMIN_AGENT_TIMEOUT_MS) || 240_000, 600_000));
-          console.info(`[universal-ai] app=${String(payload.app || "unknown").slice(0, 80)} task=${String(payload.task || payload.profile || "general").slice(0, 80)} model=${universalModel} status=started id=${taskId}`);
+          console.info(`[universal-ai] app=${String(payload.app || "-" ).slice(0, 80)} task=${String(payload.task || payload.profile || "general").slice(0, 80)} model=${universalModel} status=started id=${taskId}`);
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), timeoutMs);
           try {
@@ -515,8 +553,17 @@ export function createWebServer() {
             if (result.timedOut || result.cancelled) throw new Error("Generation timed out");
             if (result.error || result.code !== 0) throw new Error("Active model failed");
             const resultData = normalizeUniversalAiResult(mode, parser.getText() || result.stdout);
-            console.info(`[universal-ai] app=${String(payload.app || "unknown").slice(0, 80)} durationMs=${Date.now() - startedAt} status=ok id=${taskId}`);
-            return sendJson(200, { ok: true, requestId: taskId, app: payload.app || "unknown-app", task: payload.task || payload.profile || "general", mode, model: universalModel, ...resultData, durationMs: Date.now() - startedAt });
+            console.info(`[universal-ai] app=${String(payload.app || "-").slice(0, 80)} durationMs=${Date.now() - startedAt} status=ok id=${taskId}`);
+            return sendJson(200, {
+              ok: true,
+              requestId: taskId,
+              ...(payload.app ? { app: payload.app } : {}),
+              task: payload.task || payload.profile || "general",
+              mode,
+              model: universalModel,
+              ...resultData,
+              durationMs: Date.now() - startedAt,
+            });
           } catch (err) {
             if (err?.code === "INVALID_INPUT") return sendJson(400, { ok: false, requestId: taskId, error: { code: "INVALID_INPUT", message: err.message } });
             const timedOut = controller.signal.aborted || /timed out/i.test(err.message || "");
@@ -1424,7 +1471,7 @@ export function createWebServer() {
 
     // Sajikan File Statis dari folder public/
     const currentPublicDir = resolvePublicDir();
-    let safePath = pathname === "/" ? "/index.html" : pathname;
+    let safePath = pathname === "/" ? "/index.html" : (pathname === "/chat" ? "/chat.html" : pathname);
     safePath = path.normalize(safePath).replace(/^(\.\.[/\\])+/, "");
     const filePath = path.join(currentPublicDir, safePath);
 

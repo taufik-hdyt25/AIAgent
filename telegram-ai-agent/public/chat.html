@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TH Agent Chat</title>
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/chat.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><img src="/logo.png" alt="TH Agent"><div><strong>TH Agent</strong><small>Personal AI workspace</small></div></div>
+      <button class="new-chat" id="newChat">＋ Chat baru</button>
+      <div class="sidebar-title">Percakapan</div>
+      <div id="chatList" class="chat-list"></div>
+      <div class="sidebar-bottom">
+        <a href="/" class="side-link">⚙ Pengaturan Agent</a>
+        <div class="connection"><span class="dot"></span><span id="connectionText">Siap digunakan</span></div>
+      </div>
+    </aside>
+
+    <main class="chat-main">
+      <header class="topbar">
+        <button class="icon-btn mobile-only" id="menuBtn" aria-label="Menu">☰</button>
+        <div><h1 id="chatTitle">Chat baru</h1><p id="modelLabel">Memuat model...</p></div>
+        <div class="top-actions"><select id="modelSelect" title="Pilih model"></select><button class="icon-btn" id="clearChat" title="Hapus percakapan">⌫</button></div>
+      </header>
+
+      <section class="messages" id="messages">
+        <div class="welcome" id="welcome">
+          <div class="welcome-mark">✦</div>
+          <h2>Ada yang bisa saya bantu?</h2>
+          <p>Gunakan TH Agent untuk bertanya, menulis, menganalisis, atau mengolah ide.</p>
+          <div class="suggestions">
+            <button data-prompt="Jelaskan konsep ini dengan bahasa sederhana: ">Jelaskan konsep</button>
+            <button data-prompt="Buatkan rencana langkah demi langkah untuk: ">Buat rencana</button>
+            <button data-prompt="Tulis ulang teks berikut agar lebih profesional:\n\n">Tulis ulang teks</button>
+            <button data-prompt="Analisis kelebihan, kekurangan, dan rekomendasi untuk: ">Analisis sesuatu</button>
+          </div>
+        </div>
+      </section>
+
+      <footer class="composer-wrap">
+        <form id="composer" class="composer">
+          <textarea id="prompt" rows="1" placeholder="Kirim pesan ke TH Agent..." autocomplete="off"></textarea>
+          <div class="composer-footer"><span>Enter untuk kirim · Shift+Enter untuk baris baru</span><button id="sendBtn" type="submit">Kirim <span>➤</span></button></div>
+        </form>
+        <small class="disclaimer">TH Agent dapat membuat kesalahan. Periksa kembali informasi penting.</small>
+      </footer>
+    </main>
+  </div>
+  <script src="/chat.js"></script>
+</body>
+</html>

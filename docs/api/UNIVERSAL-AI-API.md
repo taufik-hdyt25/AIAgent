@@ -43,8 +43,8 @@ Field utama:
 
 | Field | Wajib | Tipe | Keterangan |
 |---|---:|---|---|
-| `app` | Disarankan | string | Identitas aplikasi pemanggil, misalnya `th-blog` atau `content-studio`. |
-| `task` | Disarankan | string | Jenis pekerjaan, misalnya `autopost`, `seo`, atau `video-script`. |
+| `app` | Tidak | string | Identitas aplikasi pemanggil untuk tracing/logging. Boleh dihilangkan. |
+| `task` | Tidak | string | Jenis pekerjaan, misalnya `autopost`, `seo`, atau `video-script`. Default: `general`. |
 | `mode` | Tidak | string | `generate` atau `structured`. Default: `generate`. |
 | `profile` | Tidak | string | Profil/pola pekerjaan yang dipakai sebagai konteks. |
 | `prompt` | Kondisional | string | Instruksi utama untuk model. Wajib jika `input` kosong. |
@@ -66,7 +66,6 @@ Jika `provider` dan `model` tidak dikirim, TH Agent menggunakan provider dan mod
 
 ```json
 {
-  "app": "th-blog",
   "task": "autopost",
   "mode": "generate",
   "profile": "blog-article",
@@ -74,6 +73,8 @@ Jika `provider` dan `model` tidak dikirim, TH Agent menggunakan provider dan mod
   "prompt": "Buat artikel SEO tentang manfaat olahraga pagi."
 }
 ```
+
+Field `app` tidak diperlukan. Jika dikirim, nilainya hanya digunakan sebagai konteks identitas dan logging.
 
 ### Memilih provider dan model tertentu
 
@@ -94,7 +95,6 @@ Jika hanya `model` dikirim, TH Agent mencari provider terhubung yang memiliki mo
 
 ```json
 {
-  "app": "content-studio",
   "task": "video-script",
   "mode": "generate",
   "model": "claude-3-5-sonnet",
@@ -156,7 +156,6 @@ Dipakai ketika client membutuhkan output JSON yang dapat langsung diproses aplik
 
 ```json
 {
-  "app": "th-blog",
   "task": "seo",
   "mode": "structured",
   "profile": "blog-seo",
@@ -259,7 +258,7 @@ Jangan mengirim secret provider, token, password, atau data sensitif yang tidak 
 ## Rekomendasi integrasi client
 
 1. Simpan URL endpoint dan API key di environment client.
-2. Gunakan `requestId` untuk logging dan tracing.
+2. Gunakan `requestId` untuk logging dan tracing; `app` bersifat opsional.
 3. Tangani error `MODEL_UNAVAILABLE` dengan memilih model lain yang tersedia.
 4. Jangan menganggap response berhasil hanya berdasarkan HTTP status; cek `ok === true`.
 5. Untuk mode `structured`, validasi kembali `data` menggunakan schema aplikasi.

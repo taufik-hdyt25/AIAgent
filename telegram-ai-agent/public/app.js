@@ -1604,6 +1604,7 @@ if (sentryAutoHealCheckbox) {
 // Tab Switching Navigation (Segmented Control)
 const tabButtons = document.querySelectorAll(".tab-btn");
 const cards = document.querySelectorAll(".card[data-section]");
+const quickActionButtons = document.querySelectorAll("[data-jump-tab]");
 
 function activateTab(tabId) {
   tabButtons.forEach((btn) => {
@@ -1626,6 +1627,13 @@ tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
     const tabId = btn.getAttribute("data-tab");
     activateTab(tabId);
+  });
+});
+
+quickActionButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    activateTab(btn.getAttribute("data-jump-tab"));
+    document.querySelector(".nav-tabs-wrapper")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 });
 

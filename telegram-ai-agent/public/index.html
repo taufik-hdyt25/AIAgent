@@ -30,6 +30,7 @@
       </div>
 
       <div class="header-status">
+        <a href="/chat" class="btn btn-primary" style="text-decoration:none; margin-right:10px;">✦ Buka Chat AI</a>
         <div class="status-pill" id="statusPill">
           <span class="status-dot"></span>
           <span id="statusText">Memeriksa sistem...</span>
@@ -65,12 +66,20 @@
       </div>
     </section>
 
+    <!-- Quick Actions -->
+    <section class="quick-actions" aria-label="Aksi cepat">
+      <a class="quick-action primary" href="/chat"><span class="quick-action-icon">✦</span><span><strong>Chat dengan Agent</strong><small>Buka workspace AI</small></span><span class="quick-arrow">→</span></a>
+      <button class="quick-action" type="button" data-jump-tab="ai"><span class="quick-action-icon">🧠</span><span><strong>Provider & Model</strong><small>Kelola koneksi AI</small></span><span class="quick-arrow">→</span></button>
+      <button class="quick-action" type="button" data-jump-tab="runtime"><span class="quick-action-icon">🛡️</span><span><strong>Keamanan Runtime</strong><small>Scope dan timeout</small></span><span class="quick-arrow">→</span></button>
+      <button class="quick-action" type="button" data-jump-tab="sentry"><span class="quick-action-icon">🩺</span><span><strong>Health Check</strong><small>Audit server</small></span><span class="quick-arrow">→</span></button>
+    </section>
+
     <!-- Sleek Navigation Tabs (Segmented Control) -->
     <nav class="nav-tabs-wrapper" aria-label="Settings Categories">
       <div class="nav-tabs" id="navTabs">
         <button type="button" class="tab-btn active" data-tab="all">
-          <span class="tab-icon">📋</span>
-          <span>Semua Pengaturan</span>
+          <span class="tab-icon">⌂</span>
+          <span>Overview</span>
         </button>
         <button type="button" class="tab-btn" data-tab="bot">
           <span class="tab-icon">🤖</span>
@@ -96,6 +105,7 @@
           <span class="tab-icon">⚙️</span>
           <span>Runtime & Limit</span>
         </button>
+        <a href="/chat" class="sidebar-chat-link">✦ Buka Chat AI</a>
       </div>
     </nav>
 

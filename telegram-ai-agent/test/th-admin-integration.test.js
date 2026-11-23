@@ -6,6 +6,8 @@ const source = fs.readFileSync(new URL("../src/web-server.js", import.meta.url),
 
 test("universal AI endpoint exposes one authenticated route for shared generation", () => {
   assert.match(source, /pathname === "\/api\/ai"/);
+  assert.match(source, /pathname === "\/api\/chat"/);
+  assert.match(source, /Browser-safe chat proxy/);
   assert.match(source, /UNIVERSAL_AI_MODES/);
   assert.match(source, /universalAiPrompt/);
   assert.match(source, /normalizeUniversalAiResult/);
@@ -13,6 +15,7 @@ test("universal AI endpoint exposes one authenticated route for shared generatio
   assert.match(source, /buildUniversalModelArgs/);
   assert.match(source, /mode must be generate or structured/);
   assert.match(source, /provider must be a valid provider ID/);
+  assert.match(source, /APPLICATION_CONTEXT/);
   assert.match(source, /--no-tools/);
 });
 
