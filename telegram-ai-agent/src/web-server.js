@@ -274,7 +274,7 @@ export function createWebServer() {
       const expectedKey = await getThAdminApiKey();
       if (!expectedKey) return sendJson(503, { ok: false, error: { code: "INTEGRATION_NOT_CONFIGURED", message: "Product research API is not configured" } });
       const supplied = req.headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1] || "";
-      if (!safeEqualSecret(supplied, expectedKey)) return sendJson(401, { ok: false, error: { code: "UNAUTHORIZED", message: "Invalid or missing bearer token" } });
+      if (!safeEqualSecret(supplied.trim(), expectedKey.trim())) return sendJson(401, { ok: false, error: { code: "UNAUTHORIZED", message: "Invalid or missing bearer token" } });
       const requestTime = Date.now();
       const priorRequest = PRODUCT_RESEARCH_RATE_LIMITS.get(researchIp);
       if (priorRequest && requestTime - priorRequest.startedAt < TH_ADMIN_RATE_WINDOW_MS && priorRequest.count >= TH_ADMIN_RATE_MAX) return sendJson(429, { ok: false, error: { code: "RATE_LIMITED", message: "Too many product research requests; retry shortly" } });

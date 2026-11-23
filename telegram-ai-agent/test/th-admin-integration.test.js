@@ -26,7 +26,7 @@ test("product research API provides secured Play Store, persistence, and AI anal
   assert.match(source, /\/api\/product-research\/candidate/);
   assert.match(source, /\/api\/product-research\/analyze/);
   assert.match(source, /PRODUCT_RESEARCH_RATE_LIMITS/);
-  assert.match(source, /safeEqualSecret\(supplied, expectedKey\)/);
+  assert.match(source, /safeEqualSecret\(supplied\.trim\(\), expectedKey\.trim\(\)\)/);
   assert.match(source, /authExempt\s*=\s*[^;]*pathname\.startsWith\("\/api\/product-research"\)/);
   assert.match(source, /researchId/);
 });
