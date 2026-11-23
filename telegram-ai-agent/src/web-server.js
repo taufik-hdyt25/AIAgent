@@ -437,6 +437,32 @@ export function createWebServer() {
       return;
     }
 
+    // Web chat upload: simpan file/gambar ke workspace uploads.
+    if (pathname === "/api/chat/upload" && req.method === "POST") {
+      try {
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk;
+          if (Buffer.byteLength(body) > 12 * 1024 * 1024) return sendJson(413, { ok: false, error: "Ukuran file maksimal 12 MB." });
+        }
+        const payload = JSON.parse(body || "{}");
+        const dataUrl = String(payload.dataUrl || "");
+        const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/s);
+        if (!match) return sendError(400, "Data file tidak valid.");
+        const originalName = String(payload.name || "upload").replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+        const ext = path.extname(originalName) || ".bin";
+        const safeBase = path.basename(originalName, ext) || "upload";
+        const filename = `${Date.now()}-${safeBase}${ext}`;
+        const uploadDir = path.resolve(process.cwd(), "uploads");
+        await fs.promises.mkdir(uploadDir, { recursive: true });
+        const absolutePath = path.join(uploadDir, filename);
+        await fs.promises.writeFile(absolutePath, Buffer.from(match[2], "base64"));
+        return sendJson(201, { ok: true, file: { name: originalName, path: `uploads/${filename}`, mimeType: match[1], size: fs.statSync(absolutePath).size } });
+      } catch (err) {
+        return sendError(400, `Upload gagal: ${err.message}`);
+      }
+    }
+
     // Browser-safe chat proxy: the browser never receives TH_ADMIN_AGENT_API_KEY.
     // It forwards the request internally to the authenticated universal AI endpoint.
     if (pathname === "/api/chat" && req.method === "POST") {
