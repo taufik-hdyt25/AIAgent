@@ -4,6 +4,15 @@ import fs from "node:fs";
 
 const source = fs.readFileSync(new URL("../src/web-server.js", import.meta.url), "utf8");
 
+test("universal AI endpoint exposes one authenticated route for shared generation", () => {
+  assert.match(source, /pathname === "\/api\/ai"/);
+  assert.match(source, /UNIVERSAL_AI_MODES/);
+  assert.match(source, /universalAiPrompt/);
+  assert.match(source, /normalizeUniversalAiResult/);
+  assert.match(source, /mode must be generate or structured/);
+  assert.match(source, /--no-tools/);
+});
+
 test("TH Admin integration exposes authenticated generation and health routes", () => {
   assert.match(source, /\/api\/ai-generate/);
   assert.match(source, /\/api\/ai-generate\/health/);
