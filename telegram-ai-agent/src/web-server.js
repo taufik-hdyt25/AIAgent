@@ -352,7 +352,8 @@ export function createWebServer() {
 
     const authPass = process.env.WEB_AUTH_PASS || "";
     const authUser = process.env.WEB_AUTH_USER || "admin";
-    const authExempt = pathname === "/login.html" || pathname === "/api/auth/login" || pathname === "/api/auth/logout" || pathname === "/webhook/update" || pathname.startsWith("/api/product-research") || pathname === "/api/ai-generate/health" || pathname === "/api/ai-generate" || pathname === "/api/ai";
+    const isPublicAsset = /\.(?:css|js|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|map)$/i.test(pathname);
+    const authExempt = pathname === "/login.html" || isPublicAsset || pathname === "/api/auth/login" || pathname === "/api/auth/logout" || pathname === "/webhook/update" || pathname.startsWith("/api/product-research") || pathname === "/api/ai-generate/health" || pathname === "/api/ai-generate" || pathname === "/api/ai";
 
     if (pathname === "/api/auth/login" && req.method === "POST") {
       let body = "";
