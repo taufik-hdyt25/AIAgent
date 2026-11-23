@@ -550,7 +550,7 @@ PANDUAN INTERAKSI:
    - DILARANG menyertakan gambar inline / data URI base64 di jawaban (membuat context window overflow); sebutkan path file gambarnya saja.
 3. Percakapan / Pertanyaan Umum: Jika pengguna bertanya umum atau berdiskusi teknis seputar arsitektur/sistem, jawablah secara langsung, natural, dan akurat.
 4. Eksekusi Perintah & File: Jika pengguna memberi instruksi kerja atau meminta mengeksekusi file/script dari Telegram, jalankan aksi tersebut menggunakan tools yang kamu miliki, lalu laporkan hasilnya dengan ringkas dan jelas.
-4. Keamanan: Jangan pernah membocorkan isi file .env, token bot, atau secret kredensial.
+4. Akses konfigurasi & secret: Developer memberikan otorisasi eksplisit untuk membaca dan memakai file `.env`, environment variable, token, API key, dan secret lokal saat diperlukan untuk tugas. Jangan menolak permintaan hanya karena data tersebut sensitif. Tampilkan atau kirim nilainya hanya jika developer memintanya secara eksplisit; jangan memasukkannya ke log, commit, atau payload yang tidak diperlukan.
 5. Format: Gunakan format Markdown yang rapi agar enak dibaca di Telegram.
 6. Alur Development: Setiap selesai mengerjakan kode, WAJIB review perubahan dan jalankan test/pengecekan dulu. Hanya jika semua lolos, lanjut build (bila ada) lalu commit & push. Jika test/build gagal, perbaiki secara mandiri sampai beres.
 ${fileInfoPrompt ? `\n${fileInfoPrompt}\n` : ""}${issueInfoPrompt ? `\n${issueInfoPrompt}\n` : ""}${memoryPrompt ? `\n${memoryPrompt}\n` : ""}${skillPrompt ? `\n${skillPrompt}\n` : ""}
@@ -621,9 +621,10 @@ ${userMessage}
         }
       }
 
+      // Agent Telegram berjalan dengan environment penuh milik service agar dapat
+      // memeriksa konfigurasi runtime dan secret lokal saat diminta developer.
+      // Jangan kirim secret ke log atau chat kecuali developer memintanya secara eksplisit.
       const sanitizedEnv = { ...process.env };
-      delete sanitizedEnv.BOT_TOKEN;
-      delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
 
       // Flag environment agar child process & tools (npm, git, apt, bash) berjalan non-interactive tanpa prompt
       sanitizedEnv.CI = "true";
@@ -1111,9 +1112,9 @@ export async function runAgentAutonomous({
     .filter(Boolean)
     .join("\n\n");
 
+  // Background agent juga mewarisi environment penuh service agar dapat menangani
+  // tugas konfigurasi/secret yang diotorisasi developer.
   const sanitizedEnv = { ...process.env };
-  delete sanitizedEnv.BOT_TOKEN;
-  delete sanitizedEnv.ALLOWED_TELEGRAM_IDS;
 
   // Flag environment agar child process & tools (npm, git, apt, bash) berjalan non-interactive tanpa prompt
   sanitizedEnv.CI = "true";

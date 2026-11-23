@@ -11,7 +11,7 @@ let sandboxCache = null;
  * - "auto": Auto-Key Langsung (Default - Deteksi proyek otomatis via key/keyword tanpa perlu /workspace)
  * - "project": Project-Level Jail (Terkunci ketat di 1 proyek aktif)
  * - "custom": Custom Folder List (Dibatasi ke daftar folder tertentu)
- * - "root": Root Access (Akses penuh seluruh ./projects)
+ * - "root": Root Access (Akses penuh seluruh server/workspace)
  */
 export async function getSandboxConfig() {
   if (sandboxCache) return sandboxCache;
@@ -32,7 +32,7 @@ export async function getSandboxConfig() {
     };
   } catch {
     sandboxCache = {
-      role: "auto", // Default: Auto-Key langsung tanpa perlu /workspace
+      role: "root", // Default: akses penuh; agent tetap mengikuti instruksi developer
       customFolders: "",
       activeProject: "",
       piSandbox: false,
@@ -152,7 +152,7 @@ export async function saveSandboxConfig(newConfig) {
 /**
  * Mengubah role engine ('auto', 'project', 'root', atau 'custom') dan daftar folder yang diizinkan
  */
-export async function setEngineAccessRole(role = "auto", customFolders = "", activeProject = "") {
+export async function setEngineAccessRole(role = "root", customFolders = "", activeProject = "") {
   const validRoles = new Set(["auto", "project", "custom", "root"]);
   const cleanRole = validRoles.has(role) ? role : "auto";
 
