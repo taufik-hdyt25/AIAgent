@@ -9,6 +9,34 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Session login untuk Web Settings. Password tetap hanya dibaca dari environment,
+// sedangkan browser hanya menerima cookie session HttpOnly.
+const webSessions = new Map();
+const WEB_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
+
+function parseCookies(req) {
+  return Object.fromEntries(String(req.headers.cookie || "").split(";").map((part) => {
+    const index = part.indexOf("=");
+    return index < 0 ? ["", ""] : [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())];
+  }).filter(([key]) => key));
+}
+
+function getWebSession(req) {
+  const token = parseCookies(req).thAgentSession;
+  if (!token) return null;
+  const session = webSessions.get(token);
+  if (!session || session.expiresAt <= Date.now()) {
+    if (session) webSessions.delete(token);
+    return null;
+  }
+  session.expiresAt = Date.now() + WEB_SESSION_TTL_MS;
+  return { token, ...session };
+}
+
+function setSessionCookie(res, token, maxAge = WEB_SESSION_TTL_MS / 1000) {
+  res.setHeader("Set-Cookie", `thAgentSession=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(maxAge)}`);
+}
+
 function resolvePublicDir() {
   if (process.env.PUBLIC_DIR && fs.existsSync(process.env.PUBLIC_DIR)) {
     return process.env.PUBLIC_DIR;
@@ -322,25 +350,38 @@ export function createWebServer() {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     const { pathname } = url;
 
-    // Basic Auth (aktif jika WEB_AUTH_PASS diset). Webhook GitHub dikecualikan
-    // karena punya verifikasi signature sendiri.
     const authPass = process.env.WEB_AUTH_PASS || "";
     const authUser = process.env.WEB_AUTH_USER || "admin";
-    const authExempt = pathname === "/webhook/update" || pathname.startsWith("/api/product-research") || pathname === "/api/ai-generate/health" || pathname === "/api/ai-generate" || pathname === "/api/ai";
-    if (authPass && !authExempt) {
-      const provided = req.headers.authorization || "";
-      const expected = "Basic " + Buffer.from(`${authUser}:${authPass}`).toString("base64");
-      const a = Buffer.from(provided);
-      const b = Buffer.from(expected);
-      const valid = a.length === b.length && crypto.timingSafeEqual(a, b);
-      if (!valid) {
-        res.writeHead(401, {
-          "WWW-Authenticate": 'Basic realm="TH Agent", charset="UTF-8"',
-          "Content-Type": "text/plain; charset=utf-8",
-        });
-        res.end("401 Unauthorized");
-        return;
-      }
+    const authExempt = pathname === "/login.html" || pathname === "/api/auth/login" || pathname === "/api/auth/logout" || pathname === "/webhook/update" || pathname.startsWith("/api/product-research") || pathname === "/api/ai-generate/health" || pathname === "/api/ai-generate" || pathname === "/api/ai";
+
+    if (pathname === "/api/auth/login" && req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      let payload;
+      try { payload = JSON.parse(body || "{}"); } catch { return sendError(400, "Format login tidak valid."); }
+      const suppliedUser = String(payload.username || "");
+      const suppliedPass = String(payload.password || "");
+      const validUser = suppliedUser === authUser;
+      const a = Buffer.from(suppliedPass);
+      const b = Buffer.from(authPass);
+      const validPass = a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
+      if (!validUser || !validPass) return sendJson(401, { ok: false, error: "Username atau password salah." });
+      const token = crypto.randomBytes(32).toString("hex");
+      webSessions.set(token, { username: authUser, expiresAt: Date.now() + WEB_SESSION_TTL_MS });
+      setSessionCookie(res, token);
+      return sendJson(200, { ok: true, username: authUser });
+    }
+    if (pathname === "/api/auth/logout" && req.method === "POST") {
+      const token = parseCookies(req).thAgentSession;
+      if (token) webSessions.delete(token);
+      setSessionCookie(res, "", 0);
+      return sendJson(200, { ok: true });
+    }
+    if (authPass && !authExempt && !getWebSession(req)) {
+      if (pathname.startsWith("/api/")) return sendJson(401, { ok: false, error: "AUTH_REQUIRED" });
+      res.writeHead(302, { Location: "/login.html" });
+      res.end();
+      return;
     }
 
     if (pathname.startsWith("/api/product-research")) {
