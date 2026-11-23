@@ -11,6 +11,7 @@ test("TH Admin integration exposes authenticated generation and health routes", 
   assert.match(source, /TH_ADMIN_AGENT_API_KEY/);
   assert.match(source, /timingSafeEqual/);
   assert.match(source, /TH_ADMIN_AGENT_API_KEY_FILE/);
+  assert.match(source, /fileKey \|\| process\.env\.TH_ADMIN_AGENT_API_KEY/);
   assert.match(source, /TH_ADMIN_ALLOWED_IPS/);
 });
 

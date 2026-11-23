@@ -135,13 +135,14 @@ const PRODUCT_RESEARCH_RATE_LIMITS = new Map();
 const PRODUCT_RESEARCH_TASKS = new Set(["product_plan", "product_plan_refine"]);
 
 async function getThAdminApiKey() {
-  if (process.env.TH_ADMIN_AGENT_API_KEY) return process.env.TH_ADMIN_AGENT_API_KEY;
   const envPath = process.env.TH_ADMIN_AGENT_API_KEY_FILE || process.env.ENV_FILE || path.join(os.homedir(), ".th-agent", ".env");
   try {
     const contents = await readFile(envPath, "utf8");
-    return contents.match(/^TH_ADMIN_AGENT_API_KEY=(.*)$/m)?.[1]?.trim() || "";
+    const fileKey = contents.match(/^TH_ADMIN_AGENT_API_KEY=(.*)$/m)?.[1]?.trim() || "";
+    // Installer-managed env file is the source of truth; systemd may retain stale env values.
+    return fileKey || process.env.TH_ADMIN_AGENT_API_KEY || "";
   } catch {
-    return "";
+    return process.env.TH_ADMIN_AGENT_API_KEY || "";
   }
 }
 
