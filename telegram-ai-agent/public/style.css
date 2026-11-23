@@ -1175,4 +1175,26 @@ input:checked + .slider::before {
   .header-status{width:100%;display:flex;align-items:center;justify-content:flex-start}
   .header-status .btn{flex:1;text-align:center}
 }
-.sidebar-chat-link{display:block;margin-top:.7rem;padding:.7rem .8rem;border-radius:var(--radius-sm);background:linear-gradient(135deg,rgba(99,102,241,.22),rgba(20,184,166,.16));border:1px solid rgba(129,140,248,.35);color:#e0e7ff;text-decoration:none;font-size:.8rem;font-weight:700;text-align:center}.sidebar-chat-link:hover{background:linear-gradient(135deg,rgba(99,102,241,.35),rgba(20,184,166,.25));color:#fff}
+.sidebar-chat-link{display:block;margin-top:.7rem;padding:.7rem .8rem;border-radius:var(--radius-sm);background:linear-gradient(135deg,rgba(99,102,241,.22),rgba(20,184,184,.16));border:1px solid rgba(129,140,248,.35);color:#e0e7ff;font-size:.8rem;font-weight:700;text-align:center}.sidebar-chat-link:hover{background:linear-gradient(135deg,rgba(99,102,241,.35),rgba(20,184,184,.25));color:#fff}
+
+/* Responsive form system: consistent controls on desktop, tablet, and mobile. */
+#settingsForm{--control-height:clamp(42px,4vw,48px);--control-radius:clamp(9px,1vw,12px)}
+#settingsForm .form-input,#settingsForm .form-select{min-height:var(--control-height);padding:clamp(.65rem,1.2vw,.8rem) clamp(.8rem,1.5vw,1rem);font-size:clamp(.875rem,1.1vw,.98rem);border-radius:var(--control-radius)}
+#settingsForm textarea.form-input{min-height:110px;line-height:1.5}
+#settingsForm button:not(.btn-icon){min-height:44px;border-radius:var(--control-radius);font-size:clamp(.78rem,1vw,.9rem);line-height:1.2;white-space:normal;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
+#settingsForm button:not(.btn-icon):hover{transform:translateY(-1px)}
+#settingsForm .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;padding:.7rem 1rem!important}
+#settingsForm .btn-sm{min-height:40px!important;padding:.55rem .8rem!important}
+#settingsForm .input-action-wrapper{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:clamp(.5rem,1vw,.75rem);align-items:center}
+#settingsForm .input-action-wrapper .form-input{min-width:0}
+#settingsForm .input-action-wrapper .btn-icon{right:clamp(.5rem,1vw,.75rem);top:50%;z-index:2;width:38px;height:38px;min-height:38px;padding:0;border-radius:8px}
+#settingsForm .input-action-wrapper:has(.btn-secondary) .btn-icon{right:calc(clamp(44px,8vw,58px) + clamp(.5rem,1vw,.75rem))}
+#settingsForm .input-action-wrapper:has(.btn-secondary) .form-input{padding-right:3.2rem}
+#settingsForm .input-action-wrapper:not(:has(.btn-secondary)) .form-input{padding-right:3.2rem}
+#settingsForm .label-row{gap:.75rem;flex-wrap:wrap}
+#settingsForm .preset-buttons{display:flex;flex-wrap:wrap;gap:.55rem}
+#settingsForm .preset-buttons button{flex:1 1 130px}
+#settingsForm .card-body [style*="display: flex"]{flex-wrap:wrap}
+#settingsForm .card-body [style*="display: flex"]>.form-input{min-width:min(100%,220px)}
+@media(max-width:700px){#settingsForm .card-header{align-items:flex-start}#settingsForm .card-title{font-size:clamp(1rem,4vw,1.2rem)}#settingsForm .card-description{font-size:.82rem;line-height:1.5}#settingsForm .input-action-wrapper{grid-template-columns:minmax(0,1fr);gap:.6rem}#settingsForm .input-action-wrapper .btn-icon{right:.55rem}#settingsForm .input-action-wrapper:has(.btn-secondary) .btn-icon{right:.55rem}#settingsForm .input-action-wrapper .btn-secondary{width:100%}#settingsForm .preset-buttons button{flex:1 1 calc(50% - .55rem)}#settingsForm .actions-buttons{display:grid;grid-template-columns:1fr;gap:.65rem;width:100%}#settingsForm .actions-buttons .btn{width:100%}}
+@media(max-width:380px){#settingsForm .form-group{margin-bottom:1rem}#settingsForm .preset-buttons button{flex-basis:100%}#settingsForm .form-input,#settingsForm .form-select{font-size:.84rem}}
