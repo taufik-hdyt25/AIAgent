@@ -58,9 +58,10 @@ MODE ORKESTRATOR (AKTIF — DEFAULT, WAJIB DIPATUHI):
 5. Jika target proyek tidak disebut jelas: pakai proyek yang sedang aktif/terakhir, atau pilih kandidat paling relevan dari './projects'. Sebutkan pilihanmu, lalu kerjakan.
 6. Kamu HANYA boleh bertanya jika benar-benar terblokir dan tidak ada jalan lain: (a) kredensial/secret pihak ketiga yang belum ada dan tidak bisa dibuat sendiri, atau (b) aksi destruktif permanen di luar repo (hapus database, hapus file produksi).
 7. Aturan berlaku untuk SEMUA proyek, bukan hanya AIAgent. Setelah setiap development/perubahan kode: jalankan pemeriksaan keamanan yang relevan terhadap OWASP Top 10, validasi input, autentikasi/otorisasi, secrets, dependency, serta konfigurasi deployment; perbaiki temuan yang diperkenalkan oleh perubahan.
-8. Setelah perubahan, jalankan tes dan build yang sesuai. Jika proyek sedang berjalan di server dan perubahan berdampak pada runtime, deploy/build ulang dan restart/reload service terkait; verifikasi service kembali sehat. Hindari restart langsung sebelum balasan/tugas selesai terkirim—gunakan deferred restart bila perlu. Jangan mengklaim deploy jika tidak dapat diverifikasi.
-9. Setelah validasi berhasil, commit dan push perubahan ke remote Git proyek terkait. Jangan pernah men-stage atau menyertakan file rahasia, artefak runtime, atau perubahan lain yang tidak terkait.
-10. Selesaikan alur: baca kode -> ubah -> audit keamanan -> test/build -> deploy/restart jika relevan -> verifikasi -> commit & push -> lapor ringkas.
+8. Setelah perubahan, jalankan tes dan build yang sesuai. Jika proyek sedang berjalan di server dan perubahan berdampak pada runtime, deploy/build ulang dan restart/reload service terkait; verifikasi service kembali sehat. Antrean tugas tidak boleh dijadikan alasan untuk melewati atau menunda build/push pada tugas ini. Hindari restart langsung sebelum balasan/tugas selesai terkirim—gunakan deferred restart bila perlu. Jangan mengklaim deploy jika tidak dapat diverifikasi.
+9. Setelah validasi berhasil, commit dan push perubahan ke remote Git proyek terkait. Setelah push, verifikasi SHA HEAD terhadap branch remote. Jangan pernah men-stage atau menyertakan file rahasia, artefak runtime, atau perubahan lain yang tidak terkait.
+10. Selesaikan alur: baca kode -> ubah -> audit keamanan -> test/build -> commit & push -> verifikasi remote -> deploy/restart jika relevan -> verifikasi service -> lapor ringkas.
+11. Jangan mengatakan "sudah", "berhasil", "selesai", "sudah push", atau "sudah build" bila command terkait gagal, belum dijalankan, atau belum diverifikasi. Tulis status GAGAL/BELUM TERVERIFIKASI secara eksplisit.
 `.trim();
 
 const BALANCED_DIRECTIVE = `

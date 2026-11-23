@@ -97,6 +97,13 @@ import {
   getAutonomyConfig,
   buildAutonomyDirective,
 } from "../services/autonomy-service.js";
+import {
+  takeDeliveryBaseline,
+  finalizeDelivery,
+  formatDeliveryReport,
+  detectUnverifiedClaims,
+  scheduleAgentRestart,
+} from "../services/delivery-service.js";
 
 export function parseTagPayload(raw) {
   const text = String(raw || "").trim();
@@ -286,11 +293,10 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
     if (currentQueueLen > 0) {
       queueStatusPrompt = `
 [STATUS ANTREAN CHAT TELEGRAM: SIBUK (${currentQueueLen} TUGAS MENUNGGU)]
-⚠️ ATURAN DEFERRED BUILD & DEPLOY:
-- Masih ada ${currentQueueLen} tugas lain di antrean chat Telegram yang menunggu giliran.
-- TUNDA build ('npm run build', docker build) dan deploy ke server agar tugas berikutnya dapat segera diproses dengan cepat.
-- Cukup selesaikan modifikasi kode, validasi syntax, simpan file, dan commit jika diperlukan.
-- Di akhir respon chat, informasikan bahwa build & deploy ditunda karena antrean sedang aktif.
+⚠️ ATURAN DELIVERY WAJIB:
+- Antrean hanya mengatur urutan tugas; jangan mengklaim tugas selesai sebelum validasi tugas ini selesai.
+- Untuk setiap development/perubahan kode: selesaikan test, build, commit, push, dan verifikasi remote sekarang.
+- Jangan menunda build atau push hanya karena ada tugas lain di antrean.
 `.trim();
     } else {
       let deferredNotice = "";
@@ -431,6 +437,13 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
 
     // Scope session per proyek agar perpindahan proyek via key tidak mencampur konteks CLI proyek sebelumnya
     const sessionScope = effectiveProjectTarget || (isCustomRole ? "custom" : "root");
+
+    // Snapshot sebelum agent bekerja menjadi sumber kebenaran delivery.
+    const deliveryBaseline = await takeDeliveryBaseline(executionCwd).catch((err) => {
+      console.warn("[Delivery] Gagal mengambil baseline repo:", err.message);
+      return null;
+    });
+    let deliveryResult = null;
     let existingCmdSessionId = useCmd ? await getCmdSessionId(convId, executionCwd) : null;
     const isOngoingSession = useCmd
       ? Boolean(existingCmdSessionId)
@@ -472,6 +485,7 @@ ${scopeOngoingRule}
 - Simpan fakta/preferensi baru jika ada: :::memory:add {"content": "...", "category": "preference|architecture|workflow|solution", "tags": [...]}:::
 - Simpan SOP/skill berulang jika baru dipelajari: :::skill:add {"id": "nama-skill", "name": "...", "description": "...", "triggers": [...], "instructions": "..."}:::
 - Jika ada proyek yang belum terdaftar di ./projects/PROJECTS_SUMMARY.md, telusuri dan daftarkan ke file tersebut.
+- Jangan menyatakan "sudah selesai", "sudah push", "sudah build", atau "sudah deploy" kecuali output terminal dan verifikasi delivery membuktikannya.
 - Format respon dalam Markdown rapi untuk chat Telegram:
   * 🎯 ATURAN UTAMA: Jawaban WAJIB RINGKAS, PADAT, dan LANGSUNG KE POIN PENTING / KESIMPULAN (Summary).
   * DILARANG menyertakan gambar inline / data URI base64 di jawaban (membuat context window overflow); sebutkan path file gambarnya saja.
@@ -798,6 +812,18 @@ ${userMessage}
           responseText = cleanedText;
         }
 
+        // Wajib: verifikasi perubahan setelah task development selesai.
+        deliveryResult = await finalizeDelivery({
+          searchDir: executionCwd,
+          baseline: deliveryBaseline,
+          userMessage,
+          queueLength: getQueueLength(),
+        }).catch((err) => ({ repos: [], restartRequired: false, error: err.message }));
+        const deliveryReport = formatDeliveryReport(deliveryResult);
+        if (deliveryReport) {
+          responseText = responseText ? `${responseText.trim()}\n\n${deliveryReport}` : deliveryReport;
+        }
+
         const isEmptyPiResponse =
           !useCmd &&
           !task.cancelled &&
@@ -930,7 +956,17 @@ ${userMessage}
         }
 
         responseText = stripAnsi(responseText);
+        const claimWarnings = detectUnverifiedClaims(responseText, deliveryResult);
+        if (claimWarnings.length) {
+          responseText += `\n\n⚠️ *Verifikasi Delivery:*\n• ${claimWarnings.join("\n• ")}`;
+        }
+        if (deliveryResult?.error) {
+          responseText += `\n\n⚠️ Delivery check gagal: ${deliveryResult.error}`;
+        }
         await sendSmartReply(ctx, responseText);
+
+        // Kirim laporan dahulu, baru restart agar status Telegram tidak hilang.
+        if (deliveryResult?.restartRequired) scheduleAgentRestart();
 
         // Lanjutkan antrean tugas berikutnya
         processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
