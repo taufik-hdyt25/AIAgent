@@ -1201,7 +1201,10 @@ input:checked + .slider::before {
 
 /* Mobile dashboard layout: keep header actions and cards usable on narrow screens. */
 @media (max-width: 640px) {
-  .app-layout { max-width: none; padding: 1rem .75rem 2rem; }
+  html, body { width: 100%; min-width: 0; }
+  body { padding-bottom: 2rem; }
+  .app-layout { width: 100%; max-width: none; margin: 0; padding: 1rem .75rem 2rem; }
+  .main-content, .tab-content, .tab-content-panel, .card, .metrics-grid, .quick-actions { width: 100%; max-width: none; min-width: 0; }
   .app-header { gap: 1rem; margin-bottom: 1.25rem; padding-bottom: 1rem; }
   .header-brand { width: 100%; gap: .7rem; }
   .brand-logo { width: 42px; height: 42px; border-radius: 12px; }
@@ -1225,6 +1228,7 @@ input:checked + .slider::before {
 }
 
 @media (max-width: 420px) {
+  .app-layout { width: 100%; max-width: none; margin: 0; padding-left: .5rem; padding-right: .5rem; }
   .metrics-grid { grid-template-columns: 1fr; }
   .header-status { grid-template-columns: 1fr; }
   .header-status .status-pill { grid-column: auto; }
