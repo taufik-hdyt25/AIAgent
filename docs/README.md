@@ -6,7 +6,6 @@ Dokumentasi TH Agent dikelompokkan berdasarkan fungsi agar lebih mudah ditemukan
 
 - [Universal AI API](./api/UNIVERSAL-AI-API.md) — endpoint bersama `POST /api/ai` untuk generate teks dan structured JSON dengan provider/model terhubung di TH Agent.
 - [TH Admin Integration](./api/TH-ADMIN-INTEGRATION.md) — endpoint kompatibilitas `POST /api/ai-generate` untuk TH Admin.
-- [Product Research API](./api/PRODUCT-RESEARCH-API.md) — riset kandidat aplikasi, penyimpanan riset, analisis, dan refinement.
 
 > `TH-ADMIN-INTEGRATION.local.md` adalah salinan lokal yang berisi konfigurasi sensitif. File tersebut tidak boleh dipublikasikan atau dibagikan.
 
