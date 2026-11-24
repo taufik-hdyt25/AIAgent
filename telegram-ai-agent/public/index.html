@@ -650,8 +650,11 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
                 <span id="updateStatus" class="label-hint">Belum dicek</span>
               </div>
               <div class="form-help" style="margin-bottom: 10px;">
-                Setelah Anda push ke GitHub, server akan mengecek branch <code>main</code>, melakukan pull, install dependency/build, lalu restart service.
+                Pilih project dari folder <code>/projects</code>. Setelah push ke GitHub, server akan pull repository tersebut, build/deploy, lalu me-restart project sesuai tipe project.
               </div>
+              <select id="projectDeploySelect" class="form-select" style="margin-bottom:10px;">
+                <option value="">Memuat project...</option>
+              </select>
               <div class="actions-buttons" style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button type="button" class="btn btn-secondary" id="btnCheckUpdate">Cek Update</button>
                 <button type="button" class="btn btn-primary" id="btnApplyUpdate">Pull, Build & Restart</button>

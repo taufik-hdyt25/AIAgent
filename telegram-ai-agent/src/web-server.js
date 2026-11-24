@@ -86,6 +86,9 @@ import {
   getDeployConfig,
   saveDeployConfig,
   executeDeployment,
+  listProjectDeployTargets,
+  executeProjectUpdate,
+  checkProjectUpdate,
 } from "./services/deploy-service.js";
 import { getActiveTask, getActiveWorkers } from "./services/cli-runner.js";
 import {
@@ -1431,7 +1434,50 @@ export function createWebServer() {
       return;
     }
 
-    // API: Cek versi GitHub dari Web UI
+    // API: Daftar project Git yang tersedia di /projects
+    if (pathname === "/api/projects" && req.method === "GET") {
+      try {
+        return sendJson(200, { ok: true, projects: await listProjectDeployTargets() });
+      } catch (err) {
+        return sendError(500, `Gagal membaca daftar project: ${err.message}`);
+      }
+    }
+
+    // API: Cek update project tertentu di /projects/<nama>
+    if (pathname === "/api/projects/check" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", async () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          return sendJson(200, { ok: true, result: await checkProjectUpdate(payload.project) });
+        } catch (err) {
+          return sendError(400, `Gagal mengecek project: ${err.message}`);
+        }
+      });
+      return;
+    }
+
+    // API: Pull/build/restart project tertentu di /projects/<nama>
+    if (pathname === "/api/projects/update" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 20 * 1024) req.destroy();
+      });
+      req.on("end", async () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          const result = await executeProjectUpdate({ project: payload.project, restartOnly: Boolean(payload.restartOnly) });
+          return sendJson(200, { ok: true, result });
+        } catch (err) {
+          return sendError(400, `Update project gagal: ${err.message}`);
+        }
+      });
+      return;
+    }
+
+    // API: Cek versi GitHub dari Web UI (project AIAgent)
     if (pathname === "/api/update/check" && req.method === "GET") {
       try {
         const [status, currentCommit] = await Promise.all([checkForUpdates(), getCurrentCommit()]);

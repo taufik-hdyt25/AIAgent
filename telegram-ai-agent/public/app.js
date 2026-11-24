@@ -75,6 +75,7 @@ const btnCheckUpdate = document.getElementById("btnCheckUpdate");
 const btnApplyUpdate = document.getElementById("btnApplyUpdate");
 const btnRestartService = document.getElementById("btnRestartService");
 const updateStatus = document.getElementById("updateStatus");
+const projectDeploySelect = document.getElementById("projectDeploySelect");
 
 // Sentry & Server Health Elements
 const sentryEnabledCheckbox = document.getElementById("sentryEnabled");
@@ -1402,9 +1403,70 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
+async function loadDeployProjects() {
+  if (!projectDeploySelect) return;
+  try {
+    const res = await fetch("/api/projects", { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal membaca project");
+    projectDeploySelect.innerHTML = '<option value="">Pilih project di /projects</option>';
+    for (const project of data.projects || []) {
+      const option = document.createElement("option");
+      option.value = project.name;
+      option.textContent = `${project.name}${project.hasCompose ? " · Docker Compose" : project.hasPackage ? " · Node.js" : ""}`;
+      projectDeploySelect.appendChild(option);
+    }
+  } catch (err) {
+    projectDeploySelect.innerHTML = '<option value="">Gagal memuat project</option>';
+    showToast(`Project gagal dimuat: ${err.message}`, "error");
+  }
+}
+
+async function runSelectedProjectUpdate(restartOnly = false) {
+  const project = projectDeploySelect?.value;
+  if (!project) return showToast("Pilih project di folder /projects terlebih dahulu.", "error");
+  const action = restartOnly ? "restart" : "pull, build/deploy, dan restart";
+  if (!window.confirm(`Jalankan ${action} untuk project ${project}?`)) return;
+  const button = restartOnly ? btnRestartService : btnApplyUpdate;
+  button.disabled = true;
+  try {
+    const res = await fetch("/api/projects/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project, restartOnly }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Operasi project gagal");
+    updateStatus.textContent = `${project}: selesai`;
+    showToast(`✅ ${project} berhasil diproses (${data.result?.durationSec || 0}s).`, "success", 8000);
+  } catch (err) {
+    showToast(`${project} gagal: ${err.message}`, "error", 8000);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // Update dan restart project dari Web UI
 async function checkProjectUpdate() {
   if (!btnCheckUpdate) return;
+  const project = projectDeploySelect?.value;
+  if (project) {
+    btnCheckUpdate.disabled = true;
+    try {
+      const res = await fetch("/api/projects/check", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project }) });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Gagal mengecek project");
+      const result = data.result;
+      updateStatus.textContent = result.hasUpdate ? `${project}: ${result.currentCommit} → ${result.latestCommit}` : `${project}: sudah terbaru (${result.currentCommit})`;
+      showToast(result.hasUpdate ? `Update tersedia untuk ${project}.` : `${project} sudah versi terbaru.`, result.hasUpdate ? "info" : "success");
+    } catch (err) {
+      updateStatus.textContent = "Gagal mengecek";
+      showToast(`Error: ${err.message}`, "error");
+    } finally {
+      btnCheckUpdate.disabled = false;
+    }
+    return;
+  }
   btnCheckUpdate.disabled = true;
   try {
     const res = await fetch("/api/update/check", { cache: "no-store" });
@@ -1427,6 +1489,8 @@ async function applyProjectUpdate() {
   if (!window.confirm("Pull kode terbaru, install/build, lalu restart service sekarang?")) return;
   btnApplyUpdate.disabled = true;
   try {
+    const project = projectDeploySelect?.value;
+    if (project) return runSelectedProjectUpdate(false);
     const res = await fetch("/api/update/apply", { method: "POST" });
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "Update gagal");
@@ -1443,6 +1507,8 @@ async function restartProjectService() {
   if (!btnRestartService || !window.confirm("Restart service project sekarang?")) return;
   btnRestartService.disabled = true;
   try {
+    const project = projectDeploySelect?.value;
+    if (project) return runSelectedProjectUpdate(true);
     const res = await fetch("/api/service/restart", { method: "POST" });
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "Restart gagal");
@@ -1455,6 +1521,7 @@ async function restartProjectService() {
 btnCheckUpdate?.addEventListener("click", checkProjectUpdate);
 btnApplyUpdate?.addEventListener("click", applyProjectUpdate);
 btnRestartService?.addEventListener("click", restartProjectService);
+loadDeployProjects();
 
 // Listener untuk Test Deploy via Web UI
 if (btnTestDeploy) {
