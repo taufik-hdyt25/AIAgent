@@ -640,6 +640,24 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
                 Perintah terminal yang dijalankan saat Anda memicu deployment via chat Telegram (<code>/deploy</code>) atau tombol inline.
               </div>
             </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 20px 0;">
+
+            <!-- Self Update / Restart -->
+            <div class="form-group">
+              <div class="label-row">
+                <label class="form-label">UPDATE & RESTART PROJECT</label>
+                <span id="updateStatus" class="label-hint">Belum dicek</span>
+              </div>
+              <div class="form-help" style="margin-bottom: 10px;">
+                Setelah Anda push ke GitHub, server akan mengecek branch <code>main</code>, melakukan pull, install dependency/build, lalu restart service.
+              </div>
+              <div class="actions-buttons" style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" id="btnCheckUpdate">Cek Update</button>
+                <button type="button" class="btn btn-primary" id="btnApplyUpdate">Pull, Build & Restart</button>
+                <button type="button" class="btn btn-secondary" id="btnRestartService">Restart Saja</button>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -124,6 +124,7 @@ import {
   updateEnvFile,
 } from "./services/env-service.js";
 import { handleWebhookPush } from "./services/auto-update-watcher.js";
+import { applyAutoUpdate, checkForUpdates, getCurrentCommit } from "./services/update-service.js";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { runProcess } from "./services/cli-runner.js";
 import { createPiEventParser } from "./services/pi-event-parser.js";
@@ -1427,6 +1428,33 @@ export function createWebServer() {
           return sendError(400, `Gagal menyimpan otomasi: ${err.message}`);
         }
       });
+      return;
+    }
+
+    // API: Cek versi GitHub dari Web UI
+    if (pathname === "/api/update/check" && req.method === "GET") {
+      try {
+        const [status, currentCommit] = await Promise.all([checkForUpdates(), getCurrentCommit()]);
+        return sendJson(200, { ok: true, ...status, currentCommit });
+      } catch (err) {
+        return sendError(500, `Gagal mengecek update: ${err.message}`);
+      }
+    }
+
+    // API: Pull, install/build, lalu restart service dari Web UI
+    if (pathname === "/api/update/apply" && req.method === "POST") {
+      try {
+        const result = await applyAutoUpdate("web-control-panel", null);
+        return sendJson(200, { ok: true, result });
+      } catch (err) {
+        return sendError(500, `Gagal menerapkan update: ${err.message}`);
+      }
+    }
+
+    // API: Restart service. Supervisor (systemd/launchd/Docker) akan menyalakan kembali proses.
+    if (pathname === "/api/service/restart" && req.method === "POST") {
+      sendJson(200, { ok: true, message: "Service akan direstart dalam 1 detik." });
+      setTimeout(() => process.exit(0), 1000).unref?.();
       return;
     }
 

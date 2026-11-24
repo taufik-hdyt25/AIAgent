@@ -71,6 +71,10 @@ const autoAnalyzeCheckbox = document.getElementById("autoAnalyze");
 const autoFixCheckbox = document.getElementById("autoFix");
 const deployCommandInput = document.getElementById("deployCommand");
 const btnTestDeploy = document.getElementById("btnTestDeploy");
+const btnCheckUpdate = document.getElementById("btnCheckUpdate");
+const btnApplyUpdate = document.getElementById("btnApplyUpdate");
+const btnRestartService = document.getElementById("btnRestartService");
+const updateStatus = document.getElementById("updateStatus");
 
 // Sentry & Server Health Elements
 const sentryEnabledCheckbox = document.getElementById("sentryEnabled");
@@ -1397,6 +1401,60 @@ form.addEventListener("submit", async (e) => {
     saveBtnText.textContent = "Simpan Pengaturan";
   }
 });
+
+// Update dan restart project dari Web UI
+async function checkProjectUpdate() {
+  if (!btnCheckUpdate) return;
+  btnCheckUpdate.disabled = true;
+  try {
+    const res = await fetch("/api/update/check", { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal mengecek update");
+    updateStatus.textContent = data.hasUpdate
+      ? `Update tersedia: ${data.currentCommit} → ${data.latestCommit}`
+      : `Sudah terbaru (${data.currentCommit})`;
+    showToast(data.hasUpdate ? "Update tersedia di GitHub." : "Project sudah versi terbaru.", data.hasUpdate ? "info" : "success");
+  } catch (err) {
+    updateStatus.textContent = "Gagal mengecek";
+    showToast(`Error: ${err.message}`, "error");
+  } finally {
+    btnCheckUpdate.disabled = false;
+  }
+}
+
+async function applyProjectUpdate() {
+  if (!btnApplyUpdate) return;
+  if (!window.confirm("Pull kode terbaru, install/build, lalu restart service sekarang?")) return;
+  btnApplyUpdate.disabled = true;
+  try {
+    const res = await fetch("/api/update/apply", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Update gagal");
+    showToast(data.result?.updated ? "Update berhasil. Service sedang restart..." : (data.result?.reason || "Tidak ada update."), "success", 8000);
+    updateStatus.textContent = data.result?.newCommit ? `Diterapkan: ${data.result.newCommit}` : "Tidak ada update";
+  } catch (err) {
+    showToast(`Update gagal: ${err.message}`, "error", 8000);
+  } finally {
+    btnApplyUpdate.disabled = false;
+  }
+}
+
+async function restartProjectService() {
+  if (!btnRestartService || !window.confirm("Restart service project sekarang?")) return;
+  btnRestartService.disabled = true;
+  try {
+    const res = await fetch("/api/service/restart", { method: "POST" });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Restart gagal");
+    showToast("Service sedang direstart...", "success");
+  } catch (err) {
+    showToast(`Restart gagal: ${err.message}`, "error");
+    btnRestartService.disabled = false;
+  }
+}
+btnCheckUpdate?.addEventListener("click", checkProjectUpdate);
+btnApplyUpdate?.addEventListener("click", applyProjectUpdate);
+btnRestartService?.addEventListener("click", restartProjectService);
 
 // Listener untuk Test Deploy via Web UI
 if (btnTestDeploy) {
