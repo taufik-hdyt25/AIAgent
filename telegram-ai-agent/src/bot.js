@@ -291,17 +291,20 @@ if (
   let shouldRun = true;
   let isPollingActive = false;
   let intentionalStop = false;
+  let pollingResetInProgress = false;
 
-  // Helper untuk menghentikan loop polling grammY dengan bersih dan aman dari dead lock
-  const stopPollingSafely = async (timeoutMs = 2500) => {
+  // Hentikan polling tanpa memanggil bot.stop() setelah pollingRunning dipaksa false.
+  // bot.stop() melakukan getUpdates konfirmasi tanpa AbortSignal; jika socket lama
+  // menggantung, pemanggilan itu dapat tumpang tindih dengan polling baru.
+  const stopPollingSafely = async () => {
+    if (pollingResetInProgress) return;
+    pollingResetInProgress = true;
     try {
-      bot.pollingRunning = false;
       bot.pollingAbortController?.abort();
-      await Promise.race([
-        bot.stop().catch(() => {}),
-        new Promise((r) => setTimeout(r, timeoutMs)),
-      ]);
-    } catch (_) {}
+      bot.pollingRunning = false;
+    } finally {
+      pollingResetInProgress = false;
+    }
   };
 
   // Auto-Recovery Polling Loop (kebal sleep/wake, network drop, dan reboot)
@@ -312,10 +315,11 @@ if (
       let reconnectImmediately = false;
 
       try {
-        // Bersihkan state polling lama jika ada
-        if (bot.pollingRunning) {
+        // Bersihkan state polling lama jika ada. Abort harus selesai sebelum
+        // start berikutnya agar tidak ada dua loop getUpdates dalam satu proses.
+        if (bot.pollingRunning || bot.pollingAbortController) {
           await stopPollingSafely();
-          bot.pollingRunning = false;
+          await new Promise((resolve) => setTimeout(resolve, 50));
           bot.pollingAbortController = undefined;
         }
 
@@ -443,7 +447,7 @@ if (
         processNextQueue().catch(() => {});
       }
 
-      // Abort & stop socket lama yang menggantung saat sleep
+      // Abort socket lama yang menggantung saat sleep
       intentionalStop = true;
       await stopPollingSafely();
 
