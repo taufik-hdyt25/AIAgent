@@ -506,6 +506,39 @@ export function createWebServer() {
       }
     }
 
+    // Hapus file upload/gambar yang direferensikan oleh session Web Chat.
+    if (pathname === "/api/chat/session" && req.method === "DELETE") {
+      try {
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk;
+          if (Buffer.byteLength(body) > 256 * 1024) return sendJson(413, { ok: false, error: { code: "BODY_TOO_LARGE", message: "Daftar file terlalu besar" } });
+        }
+        const payload = JSON.parse(body || "{}");
+        const sessionId = String(payload.sessionId || "");
+        if (!/^[A-Za-z0-9_-]{1,120}$/.test(sessionId)) return sendJson(400, { ok: false, error: { code: "INVALID_SESSION", message: "sessionId tidak valid" } });
+        const files = Array.isArray(payload.files) ? payload.files : [];
+        const deleted = [];
+        for (const value of files) {
+          const relative = String(value || "").replace(/^\/+/, "");
+          if (!relative.startsWith("uploads/") || relative.includes("..")) continue;
+          const filename = path.basename(relative.slice("uploads/".length));
+          if (!filename || filename !== relative.slice("uploads/".length)) continue;
+          const filePath = path.resolve(process.cwd(), "uploads", filename);
+          try {
+            await fs.promises.unlink(filePath);
+            deleted.push(relative);
+          } catch (err) {
+            if (err?.code !== "ENOENT") console.warn(`[chat-cleanup] gagal menghapus ${filename}: ${err.message}`);
+          }
+        }
+        return sendJson(200, { ok: true, sessionId, deletedCount: deleted.length, deleted });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(400, { ok: false, error: { code: "INVALID_JSON", message: "Request body must be valid JSON" } });
+        return sendJson(500, { ok: false, error: { code: "SESSION_CLEANUP_FAILED", message: err.message } });
+      }
+    }
+
     // Image generation memakai koneksi Pi/CLIProxy yang sudah terhubung (Antigravity).
     // Tidak membutuhkan IMAGE_API_KEY atau API key tambahan.
     if (pathname === "/api/chat/image" && req.method === "POST") {
