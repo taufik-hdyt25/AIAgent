@@ -560,16 +560,21 @@ export function createWebServer() {
 
             const events = String(result.stdout || "").split("\n").map((line) => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
             let imagePart = null;
+            let markdownImageData = "";
             for (const event of events) {
               const messages = event?.messages || (event?.message ? [event.message] : []);
               for (const message of messages) {
-                for (const part of Array.isArray(message?.content) ? message.content : []) {
+                const content = Array.isArray(message?.content) ? message.content : [];
+                for (const part of content) {
                   if (part?.type === "image" || part?.type === "image_url" || part?.image_url || part?.source?.media_type) imagePart = part;
+                  const text = typeof part === "string" ? part : (part?.type === "text" ? part.text : "");
+                  const match = String(text || "").match(/!\[[^\]]*\]\((data:[^)]+)\)/i) || String(text || "").match(/(data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=\r\n]+)/i);
+                  if (match) markdownImageData = match[1].replace(/\s+/g, "");
                 }
               }
             }
             const imageUrl = imagePart?.url || imagePart?.image_url?.url || (typeof imagePart?.image_url === "string" ? imagePart.image_url : "");
-            const imageData = imagePart?.data || imagePart?.source?.data || (typeof imagePart?.image_url?.url === "string" && imagePart.image_url.url.startsWith("data:") ? imagePart.image_url.url : "");
+            const imageData = imagePart?.data || imagePart?.source?.data || (typeof imagePart?.image_url?.url === "string" && imagePart.image_url.url.startsWith("data:") ? imagePart.image_url.url : "") || markdownImageData;
             if (imageUrl && !imageUrl.startsWith("data:")) return sendJson(200, { ok: true, image: { url: imageUrl, revisedPrompt: "" }, model: imageModel, provider: provider.id });
             if (imageData.startsWith("data:")) {
               const match = imageData.match(/^data:([^;]+);base64,(.+)$/s);
