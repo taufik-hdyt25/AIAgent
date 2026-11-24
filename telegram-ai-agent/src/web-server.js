@@ -551,7 +551,7 @@ export function createWebServer() {
               cwd: os.homedir(),
               timeoutMs: 240_000,
               maxTimeoutMs: 240_000,
-              maxOutput: 128_000,
+              maxOutput: 8 * 1024 * 1024,
               env: { ...process.env, CI: "true", NONINTERACTIVE: "1" },
               onStdout: (chunk) => parser.push(chunk),
             });
