@@ -76,6 +76,8 @@ const btnApplyUpdate = document.getElementById("btnApplyUpdate");
 const btnRestartService = document.getElementById("btnRestartService");
 const updateStatus = document.getElementById("updateStatus");
 const projectDeploySelect = document.getElementById("projectDeploySelect");
+const projectsList = document.getElementById("projectsList");
+const btnRefreshProjects = document.getElementById("btnRefreshProjects");
 
 // Sentry & Server Health Elements
 const sentryEnabledCheckbox = document.getElementById("sentryEnabled");
@@ -1404,21 +1406,53 @@ form.addEventListener("submit", async (e) => {
 });
 
 async function loadDeployProjects() {
-  if (!projectDeploySelect) return;
+  if (!projectDeploySelect && !projectsList) return;
   try {
     const res = await fetch("/api/projects", { cache: "no-store" });
     const data = await res.json();
     if (!res.ok || !data.ok) throw new Error(data.error || "Gagal membaca project");
-    projectDeploySelect.innerHTML = '<option value="">Pilih project di /projects</option>';
-    for (const project of data.projects || []) {
-      const option = document.createElement("option");
-      option.value = project.name;
-      option.textContent = `${project.name}${project.hasCompose ? " · Docker Compose" : project.hasPackage ? " · Node.js" : ""}`;
-      projectDeploySelect.appendChild(option);
+    if (projectDeploySelect) {
+      projectDeploySelect.innerHTML = '<option value="">Pilih project di /projects</option>';
+      for (const project of data.projects || []) {
+        const option = document.createElement("option");
+        option.value = project.name;
+        option.textContent = `${project.name}${project.hasCompose ? " · Docker Compose" : project.hasPackage ? " · Node.js" : ""}`;
+        projectDeploySelect.appendChild(option);
+      }
+    }
+    if (projectsList) {
+      projectsList.innerHTML = "";
+      if (!data.projects?.length) {
+        projectsList.innerHTML = '<div class="form-help">Belum ada repository Git di folder /projects.</div>';
+      }
+      for (const project of data.projects || []) {
+        const row = document.createElement("div");
+        row.className = "project-row";
+        row.innerHTML = `<div><strong>${escapeHtml(project.name)}</strong><small>${project.hasCompose ? "Docker Compose" : project.hasPackage ? "Node.js" : "Git project"} · ${escapeHtml(project.path)}</small></div><button type="button" class="btn btn-primary btn-project-update" data-project="${escapeHtml(project.name)}">Update</button>`;
+        row.querySelector("button").addEventListener("click", () => updateProjectFromList(project.name, row.querySelector("button")));
+        projectsList.appendChild(row);
+      }
     }
   } catch (err) {
     projectDeploySelect.innerHTML = '<option value="">Gagal memuat project</option>';
     showToast(`Project gagal dimuat: ${err.message}`, "error");
+  }
+}
+
+async function updateProjectFromList(project, button) {
+  if (!window.confirm(`Update project ${project}?\n\nServer akan pull, install/build, dan menjalankan deploy project.`)) return;
+  button.disabled = true;
+  button.textContent = "Updating...";
+  try {
+    const res = await fetch("/api/projects/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project }) });
+    const data = await res.json();
+    if (!res.ok || !data.ok || !data.result?.success) throw new Error(data.error || data.result?.output || "Update gagal");
+    showToast(`✅ ${project} berhasil di-update (${data.result.durationSec || 0}s).`, "success", 8000);
+  } catch (err) {
+    showToast(`❌ ${project}: ${err.message}`, "error", 8000);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Update";
   }
 }
 
@@ -1521,6 +1555,7 @@ async function restartProjectService() {
 btnCheckUpdate?.addEventListener("click", checkProjectUpdate);
 btnApplyUpdate?.addEventListener("click", applyProjectUpdate);
 btnRestartService?.addEventListener("click", restartProjectService);
+btnRefreshProjects?.addEventListener("click", loadDeployProjects);
 loadDeployProjects();
 
 // Listener untuk Test Deploy via Web UI

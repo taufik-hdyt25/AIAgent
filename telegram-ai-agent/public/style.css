@@ -1179,6 +1179,7 @@ input:checked + .slider::before {
 
 /* Responsive form system: consistent controls on desktop, tablet, and mobile. */
 #settingsForm{--control-height:clamp(42px,4vw,48px);--control-radius:clamp(9px,1vw,12px)}
+.projects-list{display:flex;flex-direction:column;gap:.75rem}.project-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem;border:1px solid var(--border-subtle);border-radius:12px;background:rgba(15,23,42,.28)}.project-row>div{min-width:0}.project-row strong{display:block;color:var(--text-primary);font-size:.95rem}.project-row small{display:block;color:var(--text-muted);font-family:monospace;font-size:.75rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:.3rem}.project-row .btn{flex:0 0 auto;min-width:90px}@media(max-width:600px){.project-row{align-items:flex-start;flex-direction:column}.project-row .btn{width:100%}}
 #settingsForm .form-input,#settingsForm .form-select{min-height:var(--control-height);padding:clamp(.65rem,1.2vw,.8rem) clamp(.8rem,1.5vw,1rem);font-size:clamp(.875rem,1.1vw,.98rem);border-radius:var(--control-radius)}
 #settingsForm textarea.form-input{min-height:110px;line-height:1.5}
 #settingsForm button:not(.btn-icon){min-height:44px;border-radius:var(--control-radius);font-size:clamp(.78rem,1vw,.9rem);line-height:1.2;white-space:normal;transition:transform .18s ease,box-shadow .18s ease,background .18s ease}
