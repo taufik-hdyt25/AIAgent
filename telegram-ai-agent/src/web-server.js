@@ -700,6 +700,7 @@ export function createWebServer() {
           if (payload.task !== undefined && (typeof payload.task !== "string" || payload.task.length > 160)) return sendJson(400, { ok: false, error: { code: "INVALID_TASK", message: "task must be a short string" } });
           if (payload.model !== undefined && (typeof payload.model !== "string" || payload.model.length > 200)) return sendJson(400, { ok: false, error: { code: "INVALID_MODEL", message: "model must be a valid model ID" } });
           if (payload.provider !== undefined && (typeof payload.provider !== "string" || payload.provider.length > 120)) return sendJson(400, { ok: false, error: { code: "INVALID_PROVIDER", message: "provider must be a valid provider ID" } });
+          if (payload.sessionId !== undefined && (typeof payload.sessionId !== "string" || !/^[A-Za-z0-9_-]{1,120}$/.test(payload.sessionId))) return sendJson(400, { ok: false, error: { code: "INVALID_SESSION", message: "sessionId must be a valid chat session ID" } });
           const { parsed: universalSettings } = await readEnvFile();
           const universalEngine = universalSettings.CLI_ENGINE || process.env.CLI_ENGINE || "pi";
           if (universalEngine !== "pi") return sendJson(503, { ok: false, error: { code: "ENGINE_UNSUPPORTED", message: "Universal AI currently requires the Pi engine" } });
@@ -724,7 +725,7 @@ export function createWebServer() {
             // Universal/browser chat memakai agent penuh: tools, context files, session,
             // dan environment lokal tersedia agar developer dapat meminta inspeksi atau
             // perubahan konfigurasi seperti .env secara langsung.
-            const args = ["--mode", "json", "--print", universalAiPrompt(payload), "--approve", ...modelArgs];
+            const args = ["--mode", "json", "--print", universalAiPrompt(payload), "--approve", ...(payload.sessionId ? ["--session-id", payload.sessionId] : []), ...modelArgs];
             const result = await runProcess({ command: process.env.PI_BIN || universalSettings.PI_BIN || "pi", args, cwd: os.homedir(), timeoutMs, maxTimeoutMs: timeoutMs, maxOutput: 64_000, signal: controller.signal, env: { ...process.env, CI: "true", NONINTERACTIVE: "1" }, onStdout: (chunk) => parser.push(chunk) });
             if (result.timedOut || result.cancelled) throw new Error("Generation timed out");
             if (result.error || result.code !== 0) throw new Error("Active model failed");
