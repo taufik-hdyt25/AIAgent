@@ -44,12 +44,21 @@ export function getQuickReply(rawText) {
  * forum topic lain) tetap diproses tanpa menunggu task ini selesai.
  */
 function dispatchToAgent(message, ctx, fileInfo = null) {
-  sendToAgent(message, ctx, fileInfo).catch((err) => {
-    console.error("[Agent] Gagal memproses instruksi:", err?.message || err);
-    ctx
-      .reply(`❌ Gagal memproses instruksi: ${err?.message || err}`, buildReplyOptions(ctx))
-      .catch(() => {});
-  });
+  console.log(
+    `[Agent] Dispatch dimulai chat=${ctx.chat?.id ?? "-"} message_id=${ctx.message?.message_id ?? "-"} text=${JSON.stringify(message.slice(0, 160))}`
+  );
+  sendToAgent(message, ctx, fileInfo)
+    .then((result) => {
+      console.log(
+        `[Agent] Dispatch selesai chat=${ctx.chat?.id ?? "-"} message_id=${ctx.message?.message_id ?? "-"} result=${JSON.stringify(result ?? null)}`
+      );
+    })
+    .catch((err) => {
+      console.error("[Agent] Gagal memproses instruksi:", err?.stack || err?.message || err);
+      ctx
+        .reply(`❌ Gagal memproses instruksi: ${err?.message || err}`, buildReplyOptions(ctx))
+        .catch((replyErr) => console.error("[Agent] Gagal mengirim error ke Telegram:", replyErr?.stack || replyErr?.message || replyErr));
+    });
 }
 
 export function registerMessageHandlers(bot) {

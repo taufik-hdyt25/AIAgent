@@ -96,12 +96,22 @@ bot.api.config.use(async (prev, method, payload, signal) => {
     const res = await prev(method, payload, signal);
     if (method === "getUpdates") {
       lastPollingActivity = Date.now();
+    } else if (["sendMessage", "editMessageText", "sendChatAction", "sendPhoto", "sendDocument"].includes(method)) {
+      const result = res?.result;
+      console.log(
+        `[Telegram API OK] method=${method} chat=${payload?.chat_id ?? "-"} message_id=${result?.message_id ?? "-"}`
+      );
     }
     return res;
   } catch (err) {
     if (method === "getUpdates" && (err?.error_code || err?.response?.ok !== undefined)) {
       // Telegram server memberikan respon (misal error HTTP / rate limit), socket fisik masih aktif
       lastPollingActivity = Date.now();
+    }
+    if (method !== "getUpdates") {
+      console.error(
+        `[Telegram API Error] method=${method}: ${err?.stack || err?.message || String(err)}`
+      );
     }
     throw err;
   }
