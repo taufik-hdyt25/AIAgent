@@ -1018,6 +1018,11 @@ ${userMessage}
   } catch (err) {
     clearInterval(typingInterval);
     clearActiveTask(taskId);
+    console.error(
+      `[Dispatcher] executeTaskInternal gagal task=${taskId} chat=${ctx.chat?.id ?? "-"} ` +
+        `message_id=${ctx.message?.message_id ?? "-"} error=${err?.message || err}`
+    );
+    console.error("[Dispatcher] executeTaskInternal stack:", err?.stack || err);
     await ctx.reply(`❌ Terjadi error: ${err.message}`, buildReplyOptions(ctx));
     processNextQueue().catch((err) => console.error("[Queue] Error next:", err));
   }
