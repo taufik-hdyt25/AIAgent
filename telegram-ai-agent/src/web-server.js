@@ -506,6 +506,110 @@ export function createWebServer() {
       }
     }
 
+    // Image generation memakai koneksi Pi/CLIProxy yang sudah terhubung (Antigravity).
+    // Tidak membutuhkan IMAGE_API_KEY atau API key tambahan.
+    if (pathname === "/api/chat/image" && req.method === "POST") {
+      try {
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk;
+          if (Buffer.byteLength(body) > 16 * 1024) return sendJson(413, { ok: false, error: { code: "BODY_TOO_LARGE", message: "Prompt gambar terlalu besar" } });
+        }
+        const payload = JSON.parse(body || "{}");
+        const promptText = String(payload.prompt || "").trim();
+        if (!promptText || promptText.length > 4000) return sendJson(400, { ok: false, error: { code: "INVALID_PROMPT", message: "Prompt gambar wajib diisi dan maksimal 4.000 karakter" } });
+
+        const { parsed: imageSettings } = await readEnvFile();
+        const activeProviderId = imageSettings.PI_PROVIDER || process.env.PI_PROVIDER || "local-pi";
+        const providers = await listPiProviders();
+        const toModels = (item) => (item?.models || []).map((model) => typeof model === "string" ? { id: model, name: model } : model).filter((model) => model?.id);
+        const isImageModel = (model) => /image|imagen|nano-banana/i.test(`${model.id} ${model.name || ""}`);
+        const hasImageModel = (item) => toModels(item).some(isImageModel);
+        const imageProviders = [
+          providers.find((item) => item.id === "a2-codex" && hasImageModel(item)),
+          providers.find((item) => /antigravity/i.test(`${item.id} ${item.name || ""}`) && hasImageModel(item)),
+          providers.find((item) => item.id === activeProviderId && hasImageModel(item)),
+          ...providers.filter(hasImageModel),
+        ].filter((item, index, list) => item && list.findIndex((candidate) => candidate.id === item.id) === index);
+        if (!imageProviders.length) return sendJson(503, { ok: false, error: { code: "IMAGE_PROVIDER_UNAVAILABLE", message: "Provider OpenAI maupun Antigravity belum menyediakan model image generation" } });
+
+        const requestedModel = String(payload.model || "").trim();
+        let lastError = "";
+        for (const provider of imageProviders) {
+          const models = toModels(provider);
+          const imageModel = requestedModel && models.some((item) => item.id === requestedModel)
+            ? requestedModel
+            : models.find(isImageModel)?.id;
+          if (!imageModel) continue;
+
+          try {
+            const parser = createPiEventParser();
+            const args = ["--mode", "json", "--print", "--no-session", "--no-tools", "--approve", "--provider", provider.id, "--model", imageModel, promptText];
+            const result = await runProcess({
+              command: process.env.PI_BIN || imageSettings.PI_BIN || "pi",
+              args,
+              cwd: os.homedir(),
+              timeoutMs: 240_000,
+              maxTimeoutMs: 240_000,
+              maxOutput: 128_000,
+              env: { ...process.env, CI: "true", NONINTERACTIVE: "1" },
+              onStdout: (chunk) => parser.push(chunk),
+            });
+            if (result.timedOut) throw new Error("Generate gambar melewati batas waktu");
+            if (result.error || result.code !== 0) throw new Error(parser.getError() || "Model image generation gagal");
+
+            const events = String(result.stdout || "").split("\n").map((line) => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
+            let imagePart = null;
+            for (const event of events) {
+              const messages = event?.messages || (event?.message ? [event.message] : []);
+              for (const message of messages) {
+                for (const part of Array.isArray(message?.content) ? message.content : []) {
+                  if (part?.type === "image" || part?.type === "image_url" || part?.image_url || part?.source?.media_type) imagePart = part;
+                }
+              }
+            }
+            const imageUrl = imagePart?.url || imagePart?.image_url?.url || (typeof imagePart?.image_url === "string" ? imagePart.image_url : "");
+            const imageData = imagePart?.data || imagePart?.source?.data || (typeof imagePart?.image_url?.url === "string" && imagePart.image_url.url.startsWith("data:") ? imagePart.image_url.url : "");
+            if (imageUrl && !imageUrl.startsWith("data:")) return sendJson(200, { ok: true, image: { url: imageUrl, revisedPrompt: "" }, model: imageModel, provider: provider.id });
+            if (imageData.startsWith("data:")) {
+              const match = imageData.match(/^data:([^;]+);base64,(.+)$/s);
+              if (match) {
+                const uploadDir = path.resolve(process.cwd(), "uploads");
+                await fs.promises.mkdir(uploadDir, { recursive: true });
+                const ext = match[1].split("/")[1] || "png";
+                const filename = `${Date.now()}-generated-${randomUUID()}.${ext}`;
+                await fs.promises.writeFile(path.join(uploadDir, filename), Buffer.from(match[2], "base64"));
+                return sendJson(200, { ok: true, image: { url: `/uploads/${filename}`, revisedPrompt: "" }, model: imageModel, provider: provider.id });
+              }
+            }
+            throw new Error("Model tidak mengembalikan attachment gambar");
+          } catch (err) {
+            lastError = `${provider.id}: ${err.message}`;
+            console.warn(`[image-generation] ${lastError}; mencoba fallback berikutnya`);
+          }
+        }
+        return sendJson(502, { ok: false, error: { code: "IMAGE_GENERATION_FAILED", message: lastError || "Semua provider image generation gagal" } });
+      } catch (err) {
+        if (err instanceof SyntaxError) return sendJson(400, { ok: false, error: { code: "INVALID_JSON", message: "Request body must be valid JSON" } });
+        console.error("[image-generation]", err);
+        return sendJson(502, { ok: false, error: { code: "IMAGE_GENERATION_FAILED", message: err.message || "Tidak dapat menjalankan model image generation" } });
+      }
+    }
+
+    // Serve generated images saved outside public/.
+    if (pathname.startsWith("/uploads/") && req.method === "GET") {
+      const filename = path.basename(pathname.slice("/uploads/".length));
+      if (!filename || filename !== pathname.slice("/uploads/".length)) return sendError(404, "File tidak ditemukan.");
+      try {
+        const filePath = path.resolve(process.cwd(), "uploads", filename);
+        const content = await readFile(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream", "Cache-Control": "public, max-age=86400" });
+        res.end(content);
+      } catch { return sendError(404, "File tidak ditemukan."); }
+      return;
+    }
+
     // Browser-safe chat proxy: the browser never receives TH_ADMIN_AGENT_API_KEY.
     // It forwards the request internally to the authenticated universal AI endpoint.
     if (pathname === "/api/chat" && req.method === "POST") {

@@ -44,8 +44,9 @@
       <footer class="composer-wrap">
         <form id="composer" class="composer">
           <div id="attachmentPreview" class="attachment-preview"></div>
+          <div class="tools-bar"><span class="tools-label">Tools</span><label class="attach-btn" title="Lampirkan file">📎 File<input id="fileInput" type="file" hidden></label><label class="attach-btn" title="Lampirkan gambar">🖼️ Gambar<input id="imageInput" type="file" accept="image/*" hidden></label><button class="tool-btn" id="imageTool" type="button" title="Generate gambar dari prompt">🎨 Generate gambar</button></div>
           <textarea id="prompt" rows="1" placeholder="Kirim pesan ke TH Agent..." autocomplete="off"></textarea>
-          <div class="composer-footer"><div class="composer-tools"><label class="attach-btn" title="Lampirkan file">📎<input id="fileInput" type="file" hidden></label><label class="attach-btn" title="Lampirkan gambar">🖼️<input id="imageInput" type="file" accept="image/*" hidden></label><span>Enter untuk kirim · Shift+Enter untuk baris baru</span></div><button id="sendBtn" type="submit">Kirim <span>➤</span></button></div>
+          <div class="composer-footer"><div class="composer-tools"><span>Enter untuk kirim · Shift+Enter untuk baris baru</span></div><button id="sendBtn" type="submit">Kirim <span>➤</span></button></div>
         </form>
         <small class="disclaimer">TH Agent dapat membuat kesalahan. Periksa kembali informasi penting.</small>
       </footer>
