@@ -8,6 +8,7 @@ import { pathToFileURL } from 'node:url';
 
 const autonomyUrl = pathToFileURL(path.resolve('src/services/autonomy-service.js')).href;
 const swarmUrl = pathToFileURL(path.resolve('src/services/swarm-service.js')).href;
+const deliveryUrl = pathToFileURL(path.resolve('src/services/delivery-service.js')).href;
 
 test('autonomy mode defaults to orchestrator and forbids confirmation questions', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'th-autonomy-test-'));
@@ -75,6 +76,26 @@ test('autonomy mode persists to data dir and rejects unknown modes', async () =>
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('delivery report hides untouched repositories', async () => {
+  const code = `
+    const m = await import(${JSON.stringify(deliveryUrl)});
+    const report = m.formatDeliveryReport({ repos: [
+      { repo: '/tmp/th-studio', changed: false },
+      { repo: '/tmp/target-project', changed: true, committed: 'abc1234', branch: 'main', pushVerified: true }
+    ] });
+    if (report.includes('th-studio')) throw new Error('untouched repo leaked into report');
+    if (!report.includes('target-project')) throw new Error('changed repo missing from report');
+    if (m.formatDeliveryReport({ repos: [{ repo: '/tmp/th-studio', changed: false }] }) !== '') {
+      throw new Error('report should be empty when nothing changed');
+    }
+  `;
+  const res = spawnSync(process.execPath, ['--input-type=module', '-e', code], {
+    cwd: process.cwd(),
+    encoding: 'utf8',
+  });
+  assert.equal(res.status, 0, res.stderr);
 });
 
 test('numbered instructions are not auto-promoted to swarm', async () => {

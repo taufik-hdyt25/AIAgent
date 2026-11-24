@@ -478,15 +478,14 @@ function shortRepoName(dir) {
 
 export function formatDeliveryReport(result) {
   if (!result || result.disabled) return "";
-  const repos = (result.repos || []).filter((r) => !r.skipped);
+  // Hanya tampilkan repo yang benar-benar disentuh oleh tugas ini. Repo lain
+  // (termasuk repo agent/workspace yang tidak berubah) tidak boleh muncul sebagai
+  // noise "tidak ada perubahan" di Telegram.
+  const repos = (result.repos || []).filter((r) => !r.skipped && (r.changed || r.error || r.deliveryVerified === false));
   const lines = [];
 
   for (const repo of repos) {
     const name = shortRepoName(repo.repo);
-    if (!repo.changed) {
-      lines.push(`• \`${name}\`: tidak ada perubahan (tidak ada commit/push).`);
-      continue;
-    }
 
     const bits = [];
     if (repo.error) {

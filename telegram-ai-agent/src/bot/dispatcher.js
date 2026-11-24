@@ -306,7 +306,7 @@ PANDUAN EKSEKUSI & PENANGANAN FILE:
       queueStatusPrompt = `
 [STATUS ANTREAN CHAT TELEGRAM: KOSONG / TUGAS TERAKHIR]
 🟢 ATURAN BUILD & DEPLOY:
-- JIKA DAN HANYA JIKA tugas/instruksi pengguna saat ini meminta pembuatan atau modifikasi kode yang membutuhkan build/deploy, lakukan build dan deploy sekarang sampai selesai dan live!${deferredNotice}
+- Untuk setiap tugas/instruksi pengguna yang meminta pembuatan, update, atau perbaikan kode: kerjakan langsung sampai live — test, build, commit, push, deploy/restart, dan verifikasi runtime sekarang!${deferredNotice}
 - DILARANG KERAS menjalankan git commit, git push, build, atau perintah terminal yang tidak diminta jika pengguna hanya bertanya, berkonsultasi, meminta penjelasan, atau mengobrol.
 `.trim();
     }
