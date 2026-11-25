@@ -533,6 +533,23 @@ gemini-3.8-flash | Gemini Flash" style="width: 100%; margin-bottom: 8px; resize:
           </div>
 
           <div class="card-body">
+            <div class="form-group">
+              <div class="label-row">
+                <label for="projectUpdateSelect" class="form-label">PROJECT UPDATE & BUILD AGENT</label>
+                <span class="label-hint">Audit perubahan + penyesuaian otomatis</span>
+              </div>
+              <div class="input-action-wrapper">
+                <select id="projectUpdateSelect" class="form-select">
+                  <option value="">Memuat project...</option>
+                </select>
+                <button type="button" class="btn btn-primary" id="btnProjectUpdate">Update &amp; Build</button>
+              </div>
+              <div id="projectUpdateStatus" class="form-help">Agent akan mengecek diff Git, field/schema/API yang terdampak, menyesuaikan kode, lalu menjalankan test/lint/build.</div>
+              <pre id="projectUpdateReport" class="form-help" style="display:none;white-space:pre-wrap;max-height:260px;overflow:auto;margin-top:12px"></pre>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-subtle); margin: 20px 0;">
+
             <!-- GITHUB_TOKEN -->
             <div class="form-group">
               <div class="label-row">

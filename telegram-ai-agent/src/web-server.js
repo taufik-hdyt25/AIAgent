@@ -128,6 +128,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import { runProcess } from "./services/cli-runner.js";
 import { createPiEventParser } from "./services/pi-event-parser.js";
 import { searchPlay, getPlayApp, listResearch, saveResearch, updateResearch, deleteResearch } from "./services/product-research-service.js";
+import { listWorkspaceProjects, getProjectUpdateStatus, runProjectUpdate } from "./services/project-update-service.js";
 
 // MIME Types untuk file statis
 const MIME_TYPES = {
@@ -1282,6 +1283,48 @@ export function createWebServer() {
           });
         } catch (err) {
           return sendError(400, `Gagal menyimpan otomasi: ${err.message}`);
+        }
+      });
+      return;
+    }
+
+    // API: Daftar project workspace untuk Update & Build Agent
+    if (pathname === "/api/projects" && req.method === "GET") {
+      try {
+        return sendJson(200, { ok: true, projects: await listWorkspaceProjects() });
+      } catch (err) {
+        return sendError(500, `Gagal membaca project: ${err.message}`);
+      }
+    }
+
+    // API: Status/history Update & Build Agent
+    if (pathname === "/api/projects/update/status" && req.method === "GET") {
+      try {
+        return sendJson(200, { ok: true, ...(await getProjectUpdateStatus()) });
+      } catch (err) {
+        return sendError(500, `Gagal membaca status update: ${err.message}`);
+      }
+    }
+
+    // API: Update repository, audit dampak perubahan, sesuaikan kode, test, dan build
+    if (pathname === "/api/projects/update" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+        if (body.length > 50 * 1024) req.destroy();
+      });
+      req.on("end", async () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          if (!payload.project) return sendError(400, "Project wajib dipilih.");
+          const result = await runProjectUpdate({
+            project: payload.project,
+            model: payload.model || null,
+            force: Boolean(payload.force),
+          });
+          return sendJson(200, { ok: true, result });
+        } catch (err) {
+          return sendError(400, `Update project gagal: ${err.message}`);
         }
       });
       return;

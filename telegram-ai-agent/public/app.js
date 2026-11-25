@@ -71,6 +71,10 @@ const autoAnalyzeCheckbox = document.getElementById("autoAnalyze");
 const autoFixCheckbox = document.getElementById("autoFix");
 const deployCommandInput = document.getElementById("deployCommand");
 const btnTestDeploy = document.getElementById("btnTestDeploy");
+const projectUpdateSelect = document.getElementById("projectUpdateSelect");
+const btnProjectUpdate = document.getElementById("btnProjectUpdate");
+const projectUpdateStatus = document.getElementById("projectUpdateStatus");
+const projectUpdateReport = document.getElementById("projectUpdateReport");
 
 // Sentry & Server Health Elements
 const sentryEnabledCheckbox = document.getElementById("sentryEnabled");
@@ -1397,6 +1401,68 @@ form.addEventListener("submit", async (e) => {
     saveBtnText.textContent = "Simpan Pengaturan";
   }
 });
+
+async function loadWorkspaceProjects() {
+  if (!projectUpdateSelect) return;
+  try {
+    const res = await fetch("/api/projects");
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Gagal membaca project");
+    projectUpdateSelect.innerHTML = '<option value="">Pilih project...</option>';
+    data.projects.forEach((project) => {
+      const option = document.createElement("option");
+      option.value = project.name;
+      option.textContent = `${project.name}${project.packageName ? ` · ${project.packageName}` : ""}`;
+      projectUpdateSelect.appendChild(option);
+    });
+  } catch (err) {
+    projectUpdateSelect.innerHTML = '<option value="">Project gagal dimuat</option>';
+    if (projectUpdateStatus) projectUpdateStatus.textContent = `Gagal memuat project: ${err.message}`;
+  }
+}
+
+if (btnProjectUpdate) {
+  btnProjectUpdate.addEventListener("click", async () => {
+    const project = projectUpdateSelect?.value;
+    if (!project) return showToast("Pilih project terlebih dahulu.", "error");
+    btnProjectUpdate.disabled = true;
+    projectUpdateStatus.textContent = `Agent sedang mengecek perubahan pada ${project}...`;
+    if (projectUpdateReport) projectUpdateReport.style.display = "none";
+    try {
+      const res = await fetch("/api/projects/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Update project gagal");
+      const result = data.result;
+      const verification = result.verification?.results || [];
+      projectUpdateStatus.textContent = result.success
+        ? `✅ ${project} selesai. Perubahan: ${result.changed ? "ditemukan" : "tidak ada"}. Verifikasi berhasil.`
+        : `⚠️ ${project} belum selesai — periksa laporan agent dan hasil verifikasi.`;
+      if (projectUpdateReport) {
+        projectUpdateReport.style.display = "block";
+        projectUpdateReport.textContent = [
+          `Commit: ${result.before} → ${result.after}`,
+          `File terdampak: ${(result.update?.files || []).join(", ") || "tidak ada"}`,
+          `Sinyal field/schema/API: ${(result.update?.fieldSignals || []).length}`,
+          `Agent: ${result.agent?.ok ? "PASS" : "FAIL"}`,
+          ...verification.map((item) => `${item.ok ? "✅" : "❌"} ${item.command}`),
+          "\nRingkasan agent:\n" + (result.agent?.output || result.agent?.error || "-").slice(-6000),
+        ].join("\n");
+      }
+      showToast(result.success ? "✅ Update & Build berhasil diverifikasi." : "⚠️ Update selesai tetapi verifikasi gagal.", result.success ? "success" : "error", 8000);
+    } catch (err) {
+      projectUpdateStatus.textContent = `❌ Update gagal: ${err.message}`;
+      showToast(`Update project gagal: ${err.message}`, "error", 8000);
+    } finally {
+      btnProjectUpdate.disabled = false;
+    }
+  });
+}
+
+loadWorkspaceProjects();
 
 // Listener untuk Test Deploy via Web UI
 if (btnTestDeploy) {
