@@ -15,6 +15,12 @@ import { initGithubWatcher } from "./services/github-watcher.js";
 import { initNotionWatcher } from "./services/notion-watcher.js";
 import { initDailyCleanup } from "./services/cleanup-service.js";
 import { initServerSentry } from "./services/sentry-service.js";
+import { initMorningBriefing } from "./services/morning-briefing-service.js";
+import { initReleasePromoWatcher } from "./services/release-promo-service.js";
+import { initErrorDiagnoseWatcher } from "./services/error-diagnose-service.js";
+import { initWeeklyContentPlanner } from "./services/weekly-content-service.js";
+import { initPlayConsoleWatcher } from "./services/play-console-watcher-service.js";
+import { initDailyBackup } from "./services/daily-backup-service.js";
 import {
   getActiveTasks,
   clearActiveTask,
@@ -335,6 +341,12 @@ if (
               initNotionWatcher(bot);
               initDailyCleanup(bot);
               initServerSentry(bot);
+              initMorningBriefing(bot);
+              initReleasePromoWatcher(bot);
+              initErrorDiagnoseWatcher(bot);
+              initWeeklyContentPlanner(bot);
+              initPlayConsoleWatcher(bot);
+              initDailyBackup(bot);
               initAutoUpdateWatcher(bot);
             }
           },

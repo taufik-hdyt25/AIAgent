@@ -33,6 +33,20 @@ const idChipsContainer = document.getElementById("idChipsContainer");
 const cliEngineSelect = document.getElementById("cliEngine");
 const cmdMaxTurnsInput = document.getElementById("cmdMaxTurns");
 const piModelSelect = document.getElementById("piModel");
+const piAutoSpecialistCheckbox = document.getElementById("piAutoSpecialist");
+const piCoderProviderInput = document.getElementById("piCoderProvider");
+const piCoderModelInput = document.getElementById("piCoderModel");
+const piWriterProviderInput = document.getElementById("piWriterProvider");
+const piWriterModelInput = document.getElementById("piWriterModel");
+const specialistStatusBadge = document.getElementById("specialistStatusBadge");
+
+function refreshSpecialistBadge() {
+  if (!specialistStatusBadge) return;
+  const active = piAutoSpecialistCheckbox ? piAutoSpecialistCheckbox.checked : true;
+  const c = `${piCoderProviderInput?.value || "a2-codex"}/${piCoderModelInput?.value || "gemini-4-hydrogen-xhigh"}`;
+  const w = `${piWriterProviderInput?.value || "a2-antigravity"}/${piWriterModelInput?.value || "gemini-2.5-flash"}`;
+  specialistStatusBadge.textContent = active ? `Coder: ${c} | Writer: ${w}` : "Nonaktif (pakai model utama)";
+}
 const piServerUrlInput = document.getElementById("piServerUrl");
 const btnGetPiModels = document.getElementById("btnGetPiModels");
 const groupPiModel = document.getElementById("groupPiModel");
@@ -214,6 +228,12 @@ async function loadSettings() {
 
     // Populate inputs
     botTokenInput.value = currentSettings.BOT_TOKEN || "";
+    if (piAutoSpecialistCheckbox) piAutoSpecialistCheckbox.checked = String(currentSettings.PI_AUTO_SPECIALIST ?? "true") !== "false";
+    if (piCoderProviderInput) piCoderProviderInput.value = currentSettings.PI_CODER_PROVIDER || "a2-codex";
+    if (piCoderModelInput) piCoderModelInput.value = currentSettings.PI_CODER_MODEL || "gemini-4-hydrogen-xhigh";
+    if (piWriterProviderInput) piWriterProviderInput.value = currentSettings.PI_WRITER_PROVIDER || "a2-antigravity";
+    if (piWriterModelInput) piWriterModelInput.value = currentSettings.PI_WRITER_MODEL || "gemini-2.5-flash";
+    refreshSpecialistBadge();
     allowedIdsInput.value = currentSettings.ALLOWED_TELEGRAM_IDS || "";
     renderIdChips(currentSettings.ALLOWED_TELEGRAM_IDS);
 
@@ -1327,6 +1347,11 @@ form.addEventListener("submit", async (e) => {
     CLI_ENGINE: cliEngineSelect ? cliEngineSelect.value : (currentSettings.CLI_ENGINE || "pi"),
     CMD_MAX_TURNS: cmdMaxTurnsInput ? (cmdMaxTurnsInput.value.trim() || "300") : (currentSettings.CMD_MAX_TURNS || "300"),
     PI_MODEL: piModelSelect ? piModelSelect.value : (currentSettings.PI_MODEL || "openai/gpt-oss-120b"),
+    PI_AUTO_SPECIALIST: piAutoSpecialistCheckbox ? (piAutoSpecialistCheckbox.checked ? "true" : "false") : "true",
+    PI_CODER_PROVIDER: piCoderProviderInput ? (piCoderProviderInput.value.trim() || "a2-codex") : "a2-codex",
+    PI_CODER_MODEL: piCoderModelInput ? (piCoderModelInput.value.trim() || "gemini-4-hydrogen-xhigh") : "gemini-4-hydrogen-xhigh",
+    PI_WRITER_PROVIDER: piWriterProviderInput ? (piWriterProviderInput.value.trim() || "a2-antigravity") : "a2-antigravity",
+    PI_WRITER_MODEL: piWriterModelInput ? (piWriterModelInput.value.trim() || "gemini-2.5-flash") : "gemini-2.5-flash",
     PI_SERVER_API_KEY: piServerApiKeyInput ? piServerApiKeyInput.value.trim() : "",
     PI_SERVER_URL: piServerUrlInput ? piServerUrlInput.value.trim() : "",
     scopeRole: scopeRoleCustomRadio?.checked ? "custom" : "auto",

@@ -31,6 +31,7 @@
 
       <div class="header-status">
         <a href="/chat" class="btn btn-primary" style="text-decoration:none; margin-right:10px;">✦ Buka Chat AI</a>
+        <a href="/office.html" class="btn btn-secondary" style="text-decoration:none;border-color:rgba(16,185,129,0.4);color:#34d399;" title="Buka Kantor 3D">🏢 3D Office</a>
         <button type="button" class="btn btn-secondary" id="btnLogout" title="Keluar dari Web Settings">↪ Logout</button>
         <div class="status-pill" id="statusPill">
           <span class="status-dot"></span>
@@ -291,6 +292,32 @@
               </div>
               <div class="select-wrapper">
                 <select id="piModel" name="PI_MODEL" class="form-select font-mono"></select>
+              </div>
+            </div>
+
+            <!-- Auto Specialist Router -->
+            <div class="form-group" id="groupSpecialistRouter" style="margin-top: 1.25rem; padding: 1rem; background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.22); border-radius: 8px;">
+              <div class="label-row" style="margin-bottom: 0.45rem;">
+                <label class="form-label" style="font-weight: 600; color: #34d399; display: flex; align-items: center; gap: 8px;">
+                  <input type="checkbox" id="piAutoSpecialist" checked style="width: 16px; height: 16px; accent-color: #10b981;">
+                  🤖 Auto Specialist Router (Coder + Writer)
+                </label>
+                <span id="specialistStatusBadge" class="font-mono" style="font-size: 0.72rem; color: #a7f3d0;">Aktif</span>
+              </div>
+              <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.75rem;">
+                Chat Telegram otomatis diarahkan ke spesialis tanpa perintah tambahan: teknis/server ke <strong>Coder</strong>, caption/artikel/SEO ke <strong>Writer</strong>.
+              </p>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px;">
+                <div style="padding: 8px 10px; border-radius: 6px; background: rgba(15,23,42,0.5); border: 1px solid rgba(148,163,184,0.16);">
+                  <div style="font-size: 0.75rem; font-weight: 600; color: #60a5fa; margin-bottom: 6px;">💻 Agent Coder</div>
+                  <input type="text" id="piCoderProvider" class="form-input font-mono" placeholder="a2-codex" style="font-size: 0.8rem; padding: 6px 8px; margin-bottom: 6px;">
+                  <input type="text" id="piCoderModel" class="form-input font-mono" placeholder="gemini-4-hydrogen-xhigh" style="font-size: 0.8rem; padding: 6px 8px;">
+                </div>
+                <div style="padding: 8px 10px; border-radius: 6px; background: rgba(15,23,42,0.5); border: 1px solid rgba(148,163,184,0.16);">
+                  <div style="font-size: 0.75rem; font-weight: 600; color: #f472b6; margin-bottom: 6px;">✍️ Agent Writer</div>
+                  <input type="text" id="piWriterProvider" class="form-input font-mono" placeholder="a2-antigravity" style="font-size: 0.8rem; padding: 6px 8px; margin-bottom: 6px;">
+                  <input type="text" id="piWriterModel" class="form-input font-mono" placeholder="gemini-2.5-flash" style="font-size: 0.8rem; padding: 6px 8px;">
+                </div>
               </div>
             </div>
 

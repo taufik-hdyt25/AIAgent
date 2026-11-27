@@ -1,3 +1,8 @@
+import { resolveSpecialist } from "./services/specialist-router.js";
+import { runReleasePromoPipeline } from "./services/release-promo-service.js";
+import { generateWeeklyContentBrief } from "./services/weekly-content-service.js";
+import { checkPlayConsoleStatus } from "./services/play-console-watcher-service.js";
+import { runDailyBackup } from "./services/daily-backup-service.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -716,6 +721,199 @@ export function createWebServer() {
     }
 
     // API: Ambil Pengaturan
+    if (pathname === "/api/office/play-console-check" && req.method === "POST") {
+      try {
+        const result = await checkPlayConsoleStatus(null);
+        return sendJson(200, result);
+      } catch (err) {
+        return sendJson(500, { ok: false, error: err?.message || "Play Console check gagal" });
+      }
+    }
+
+    if (pathname === "/api/office/backup-now" && req.method === "POST") {
+      try {
+        const body = await readJsonBody(req).catch(() => ({}));
+        const result = await runDailyBackup({ force: Boolean(body?.force), dryRun: Boolean(body?.dryRun), bot: null });
+        return sendJson(result.ok ? 200 : 500, result);
+      } catch (err) {
+        return sendJson(500, { ok: false, error: err?.message || "Backup gagal" });
+      }
+    }
+
+    if (pathname === "/api/office/weekly-content" && req.method === "POST") {
+      try {
+        const content = await generateWeeklyContentBrief(null);
+        return sendJson(200, { ok: true, content });
+      } catch (err) {
+        return sendJson(500, { ok: false, error: err?.message || "Weekly content gagal" });
+      }
+    }
+
+    if (pathname === "/api/office/release-promo" && req.method === "POST") {
+      try {
+        const body = await readBody(req);
+        const payload = JSON.parse(body || "{}");
+        const repoName = String(payload.repoName || "TH Studio App").trim();
+        const commitsText = String(payload.commitsText || "").trim();
+        if (!commitsText) return sendJson(400, { ok: false, error: "commitsText wajib diisi" });
+        const result = await runReleasePromoPipeline({ repoName, commitsText, bot: null });
+        return sendJson(200, { ok: true, ...result });
+      } catch (err) {
+        return sendJson(500, { ok: false, error: err?.message || "Pipeline gagal" });
+      }
+    }
+
+    if (pathname === "/api/office/state" && req.method === "GET") {
+      try {
+        const { parsed } = await readEnvFile();
+        const logPath = path.join(os.homedir(), ".th-agent", "logs", "bot.log");
+        let lines = [];
+        try {
+          const rawLog = await fs.promises.readFile(logPath, "utf8");
+          lines = rawLog.trim().split(/\r?\n/).slice(-120);
+        } catch {}
+
+        const events = [];
+        let lastRole = "coder";
+        let lastIncoming = "";
+        let lastSentry = "";
+        for (let idx = 0; idx < lines.length; idx++) {
+          const line = lines[idx];
+          if (line.includes("[SpecialistRouter]")) {
+            const mRole = line.match(/role=(\S+)/);
+            const mModel = line.match(/model=(\S+)/);
+            if (mRole) lastRole = mRole[1];
+            events.push({ key: `${idx}:${line.slice(0, 64)}`, type: "route", role: lastRole, text: `CEO → ${lastRole.toUpperCase()} (${mModel?.[1] || "-"})` });
+          } else if (line.includes("[Pesan Masuk]")) {
+            lastIncoming = line.replace(/^.*\[Pesan Masuk\]\s*/, "").slice(0, 120);
+            events.push({ key: `${idx}:${line.slice(0, 64)}`, type: "telegram", role: "ceo", text: `Telegram: ${lastIncoming}` });
+          } else if (line.includes("[th-admin-integration]")) {
+            const mTask = line.match(/task=(\S+)/);
+            const mStatus = line.match(/status=(\S+)/);
+            events.push({ key: `${idx}:${line.slice(0, 64)}`, type: "studio", role: "writer", text: `TH Studio ${mTask?.[1] || "task"} (${mStatus?.[1] || "ok"})` });
+          } else if (line.includes("[Server Sentry]")) {
+            lastSentry = line.replace(/^.*\[Server Sentry\]\s*/, "").slice(0, 120);
+            events.push({ key: `${idx}:${line.slice(0, 64)}`, type: "sentry", role: "sentry", text: `Sentry: ${lastSentry}` });
+          } else if (line.includes("[Agent] Dispatch selesai")) {
+            events.push({ key: `${idx}:${line.slice(0, 64)}`, type: "done", role: lastRole, text: `${lastRole.toUpperCase()} selesai bertugas ✓` });
+          } else if (line.includes("[OfficeCommand]")) {
+            events.push({ key: `${idx}:${line.slice(0, 64)}`, type: "office", role: "ceo", text: line.replace(/^.*\[OfficeCommand\]\s*/, "").slice(0, 120) });
+          }
+        }
+
+        const totalMem = os.totalmem();
+        const freeMem = os.freemem();
+        const usedPct = Math.round(((totalMem - freeMem) / totalMem) * 100);
+
+        return sendJson(200, {
+          ok: true,
+          office: {
+            autoSpecialist: String(parsed.PI_AUTO_SPECIALIST ?? process.env.PI_AUTO_SPECIALIST ?? "true") !== "false",
+            uptimeSec: Math.round(process.uptime()),
+            ramUsedPct: usedPct,
+            loadAvg: os.loadavg()[0].toFixed(2),
+            agents: {
+              ceo: { name: "TH Agent (CEO)", status: "online", model: "Auto-Router Gateway", lastTask: lastIncoming || "Siap menerima arahan Owner" },
+              coder: {
+                name: "Agent Coder",
+                provider: parsed.PI_CODER_PROVIDER || process.env.PI_CODER_PROVIDER || "a2-codex",
+                model: parsed.PI_CODER_MODEL || process.env.PI_CODER_MODEL || "gemini-4-hydrogen-xhigh",
+                status: lastRole === "coder" ? "active" : "standby",
+              },
+              writer: {
+                name: "Agent Writer",
+                provider: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-antigravity",
+                model: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-2.5-flash",
+                status: lastRole === "writer" ? "active" : "standby",
+              },
+              sentry: {
+                name: "Server Sentry",
+                provider: "Proactive Monitor",
+                model: "5m Interval",
+                status: "monitoring",
+                lastTask: lastSentry || "Monitoring VPS & service",
+              },
+            },
+            events: events.slice(-15).reverse(),
+          },
+        });
+      } catch (err) {
+        return sendJson(500, { ok: false, error: err?.message || "Failed to read office state" });
+      }
+    }
+
+    if (pathname === "/api/office/command" && req.method === "POST") {
+      try {
+        const body = await readBody(req);
+        const payload = JSON.parse(body || "{}");
+        const prompt = String(payload.prompt || "").trim();
+        const target = String(payload.target || "auto").trim().toLowerCase();
+        if (!prompt) return sendJson(400, { ok: false, error: "Perintah tidak boleh kosong" });
+
+        const { parsed } = await readEnvFile();
+        let specialist = resolveSpecialist({ userMessage: prompt });
+        if (target === "coder") {
+          specialist = {
+            role: "coder",
+            provider: parsed.PI_CODER_PROVIDER || process.env.PI_CODER_PROVIDER || "a2-codex",
+            model: parsed.PI_CODER_MODEL || process.env.PI_CODER_MODEL || "gemini-4-hydrogen-xhigh",
+            systemHint: "",
+          };
+        } else if (target === "writer") {
+          specialist = {
+            role: "writer",
+            provider: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-antigravity",
+            model: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-2.5-flash",
+            systemHint: "[Specialist Mode: Content & Marketing Writer] Fokus pada copywriting, SEO, caption, dan komunikasi natural berbahasa Indonesia.",
+          };
+        }
+
+        console.log(`[OfficeCommand] target=${specialist.role} prompt=${prompt.slice(0, 80)}`);
+        console.log(`[SpecialistRouter] role=${specialist.role} provider=${specialist.provider} model=${specialist.model}`);
+
+        const finalPrompt = specialist.systemHint ? `${specialist.systemHint}\n\n${prompt}` : prompt;
+        const parser = createPiEventParser();
+        const args = [
+          "--mode", "json",
+          "--print", finalPrompt,
+          "--no-session",
+          "--no-tools",
+          "--no-mcp",
+          "--no-extensions",
+          "--no-skills",
+          "--no-prompt-templates",
+          "--no-context-files",
+          "--thinking", "off",
+          "--provider", specialist.provider,
+          "--model", specialist.model,
+        ];
+        const result = await runProcess({
+          command: process.env.PI_BIN || parsed.PI_BIN || "pi",
+          args,
+          cwd: os.homedir(),
+          timeoutMs: 55_000,
+          maxTimeoutMs: 55_000,
+          maxOutput: 48_000,
+          env: { ...process.env, CI: "true", NONINTERACTIVE: "1" },
+          onStdout: (chunk) => parser.push(chunk),
+        });
+        if (result.timedOut || result.cancelled) return sendJson(504, { ok: false, error: "Agent timeout" });
+        if (result.error || result.code !== 0) {
+          return sendJson(502, { ok: false, error: String(result.stderr || result.error || "Agent gagal").slice(0, 300) });
+        }
+        const reply = (parser.getFinalText?.() || result.stdout || "").trim();
+        return sendJson(200, {
+          ok: true,
+          role: specialist.role,
+          provider: specialist.provider,
+          model: specialist.model,
+          reply,
+        });
+      } catch (err) {
+        return sendJson(500, { ok: false, error: err?.message || "Office command failed" });
+      }
+    }
+
     if (pathname === "/api/settings" && req.method === "GET") {
       try {
         const { parsed } = await readEnvFile();
@@ -738,6 +936,11 @@ export function createWebServer() {
             BOT_TOKEN: parsed.BOT_TOKEN || process.env.BOT_TOKEN || "",
             ALLOWED_TELEGRAM_IDS: parsed.ALLOWED_TELEGRAM_IDS || process.env.ALLOWED_TELEGRAM_IDS || "",
             PI_MODEL: parsed.PI_MODEL || process.env.PI_MODEL || "openai/gpt-oss-120b",
+            PI_AUTO_SPECIALIST: parsed.PI_AUTO_SPECIALIST ?? process.env.PI_AUTO_SPECIALIST ?? "true",
+            PI_CODER_PROVIDER: parsed.PI_CODER_PROVIDER || process.env.PI_CODER_PROVIDER || "a2-codex",
+            PI_CODER_MODEL: parsed.PI_CODER_MODEL || process.env.PI_CODER_MODEL || "gemini-4-hydrogen-xhigh",
+            PI_WRITER_PROVIDER: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-antigravity",
+            PI_WRITER_MODEL: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-2.5-flash",
             CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "pi",
             CMD_MAX_TURNS: parsed.CMD_MAX_TURNS || process.env.CMD_MAX_TURNS || "300",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
@@ -1395,6 +1598,21 @@ export function createWebServer() {
             updates.PI_MODEL = String(payload.PI_MODEL).trim();
             if (updates.PI_MODEL !== process.env.PI_MODEL) await clearUserPiModels();
           }
+          if (payload.PI_AUTO_SPECIALIST !== undefined) {
+            updates.PI_AUTO_SPECIALIST = String(payload.PI_AUTO_SPECIALIST).trim().toLowerCase() === "false" ? "false" : "true";
+          }
+          if (payload.PI_CODER_PROVIDER !== undefined) {
+            updates.PI_CODER_PROVIDER = String(payload.PI_CODER_PROVIDER).trim() || "a2-codex";
+          }
+          if (payload.PI_CODER_MODEL !== undefined) {
+            updates.PI_CODER_MODEL = String(payload.PI_CODER_MODEL).trim() || "gemini-4-hydrogen-xhigh";
+          }
+          if (payload.PI_WRITER_PROVIDER !== undefined) {
+            updates.PI_WRITER_PROVIDER = String(payload.PI_WRITER_PROVIDER).trim() || "a2-antigravity";
+          }
+          if (payload.PI_WRITER_MODEL !== undefined) {
+            updates.PI_WRITER_MODEL = String(payload.PI_WRITER_MODEL).trim() || "gemini-2.5-flash";
+          }
           if (payload.CLI_ENGINE !== undefined) {
             const rawEngine = String(payload.CLI_ENGINE).trim().toLowerCase();
             const engine = rawEngine === "commandcode" || rawEngine === "command-code" || rawEngine === "cmd"
@@ -1586,7 +1804,7 @@ export function createWebServer() {
 
     // Sajikan File Statis dari folder public/
     const currentPublicDir = resolvePublicDir();
-    let safePath = pathname === "/" ? "/index.html" : (pathname === "/chat" ? "/chat.html" : pathname);
+    let safePath = pathname === "/" || pathname === "/office" ? "/office.html" : (pathname === "/chat" ? "/chat.html" : pathname);
     safePath = path.normalize(safePath).replace(/^(\.\.[/\\])+/, "");
     const filePath = path.join(currentPublicDir, safePath);
 

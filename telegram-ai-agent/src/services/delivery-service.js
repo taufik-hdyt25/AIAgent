@@ -477,6 +477,7 @@ function shortRepoName(dir) {
 }
 
 export function formatDeliveryReport(result) {
+  return "";
   if (!result || result.disabled) return "";
   const repos = (result.repos || []).filter((r) => !r.skipped);
   const lines = [];

@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TH Agent — 3D Virtual Office</title>
+  <style>
+    :root {
+      --bg: #121826;
+      --panel: rgba(15, 23, 42, 0.72);
+      --border: rgba(255, 255, 255, 0.14);
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --cyan: #38bdf8;
+      --blue: #60a5fa;
+      --pink: #f472b6;
+      --emerald: #34d399;
+      --amber: #facc15;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, sans-serif; }
+    #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+    .name-pill {
+      position: absolute; transform: translate(-50%, -100%);
+      background: rgba(15, 23, 42, 0.82); border: 1px solid rgba(255,255,255,0.16);
+      backdrop-filter: blur(8px); border-radius: 999px; padding: 4px 11px;
+      font-size: 11.5px; font-weight: 600; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 6px;
+      pointer-events: auto; cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.32);
+      transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+    }
+    .name-pill:hover { transform: translate(-50%, -110%) scale(1.04); border-color: var(--cyan); }
+    .name-pill.working { border-color: rgba(52, 211, 153, 0.75); background: rgba(6, 78, 59, 0.85); }
+    .done-float {
+      position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
+      background: #10b981; color: #052e16; font-weight: 800; font-size: 11px;
+      padding: 2px 8px; border-radius: 999px; pointer-events: none;
+      animation: floatDone 2.2s ease-out forwards;
+    }
+    @keyframes floatDone {
+      0% { opacity: 0; transform: translate(-50%, 4px) scale(0.8); }
+      18% { opacity: 1; transform: translate(-50%, -6px) scale(1.05); }
+      100% { opacity: 0; transform: translate(-50%, -26px) scale(0.95); }
+    }
+    .name-pill .hover-tip {
+      display: none; position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
+      background: rgba(10, 15, 28, 0.94); border: 1px solid rgba(56, 189, 248, 0.35);
+      border-radius: 10px; padding: 7px 10px; min-width: 190px; max-width: 260px;
+      white-space: normal; text-align: left; font-weight: 400; font-size: 11px; line-height: 1.4;
+      color: #cbd5e1; box-shadow: 0 10px 28px rgba(0,0,0,0.45); pointer-events: none; z-index: 40;
+    }
+    .name-pill:hover .hover-tip, .name-pill.hovered .hover-tip { display: block; }
+    .hover-tip .ht-model { font-family: ui-monospace, monospace; font-size: 10px; color: #38bdf8; margin-bottom: 3px; }
+    .hover-tip .ht-task { color: #e2e8f0; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+    .topbar {
+      position: fixed; top: 14px; left: 14px; right: 14px; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+      pointer-events: none;
+    }
+    .topbar > * { pointer-events: auto; }
+    .pill-bar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(12px);
+      padding: 8px 14px; border-radius: 12px;
+    }
+    .brand { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+    .chip { font-size: 11px; padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border); background: rgba(255,255,255,0.06); color: #cbd5e1; font-family: ui-monospace, monospace; }
+    .btn-link {
+      font-size: 12px; font-weight: 600; color: var(--text); text-decoration: none;
+      background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(12px);
+      padding: 8px 12px; border-radius: 10px; cursor: pointer; transition: border-color 0.2s;
+    }
+    .btn-link:hover { border-color: var(--cyan); }
+
+    .side-panel {
+      position: fixed; top: 70px; right: 14px; width: 300px; max-height: calc(100vh - 175px);
+      display: flex; flex-direction: column; gap: 10px; z-index: 20; pointer-events: none;
+    }
+    .card {
+      pointer-events: auto; background: var(--panel); border: 1px solid var(--border);
+      backdrop-filter: blur(12px); border-radius: 12px; padding: 12px;
+    }
+    .card h3 { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+    .feed { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; font-size: 11px; }
+    .feed-item { padding: 6px 8px; border-radius: 8px; background: rgba(255,255,255,0.04); border-left: 2px solid var(--cyan); line-height: 1.35; }
+    .feed-item.writer { border-left-color: var(--pink); }
+    .feed-item.coder { border-left-color: var(--blue); }
+    .feed-item.sentry { border-left-color: var(--emerald); }
+
+    .command-dock {
+      position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+      width: min(780px, calc(100vw - 28px)); z-index: 25;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .reply-drawer {
+      background: rgba(15, 23, 42, 0.92); border: 1px solid rgba(56, 189, 248, 0.35);
+      backdrop-filter: blur(14px); border-radius: 12px; padding: 12px 14px;
+      max-height: 210px; overflow-y: auto; font-size: 12.5px; line-height: 1.5; display: none;
+    }
+    .reply-drawer.open { display: block; }
+    .reply-meta { font-size: 11px; color: var(--cyan); font-weight: 600; margin-bottom: 6px; display: flex; justify-content: space-between; }
+    .cmd-bar {
+      display: flex; gap: 8px; align-items: center;
+      background: var(--panel); border: 1px solid var(--border); backdrop-filter: blur(14px);
+      padding: 8px; border-radius: 14px; box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    }
+    .cmd-select {
+      background: rgba(15, 23, 42, 0.85); color: var(--text); border: 1px solid var(--border);
+      border-radius: 9px; padding: 9px 10px; font-size: 12px; font-weight: 600; outline: none;
+    }
+    .cmd-input {
+      flex: 1; background: rgba(15, 23, 42, 0.65); color: var(--text); border: 1px solid var(--border);
+      border-radius: 9px; padding: 10px 12px; font-size: 13px; outline: none;
+    }
+    .cmd-input:focus { border-color: var(--cyan); }
+    .cmd-btn {
+      background: linear-gradient(135deg, #0284c7, #10b981); color: #fff; border: none;
+      border-radius: 9px; padding: 10px 16px; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .cmd-btn:disabled { opacity: 0.55; cursor: wait; }
+
+    @media (max-width: 760px) {
+      .side-panel { display: none; }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://esm.sh/three@0.170.0",
+        "three/addons/": "https://esm.sh/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="labels"></div>
+
+  <div class="topbar">
+    <div class="pill-bar">
+      <div class="brand">🏢 TH Studio — 3D Virtual Office</div>
+      <span class="chip" id="chipVps">VPS: memuat...</span>
+      <span class="chip" id="chipRouter">Router: Auto</span>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button type="button" id="btnSound" class="btn-link">🔊 Sound: ON</button>
+      <a href="/chat.html" class="btn-link">💬 Chat</a>
+      <a href="/index.html" class="btn-link">⚙️ Web Settings</a>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <div class="card">
+      <h3>Inspektur Agent</h3>
+      <div id="inspectorBody" style="font-size:12px; line-height:1.5; color:#cbd5e1;">
+        Klik nama atau karakter 3D untuk melihat detail peran &amp; modelnya.
+      </div>
+    </div>
+    <div class="card">
+      <h3>Aktivitas Kantor Live</h3>
+      <div class="feed" id="activityFeed">
+        <div class="feed-item">Memuat aktivitas kantor...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="command-dock">
+    <div class="reply-drawer" id="replyDrawer">
+      <div class="reply-meta">
+        <span id="replyMeta">CEO → Delegasi</span>
+        <button type="button" onclick="document.getElementById('replyDrawer').classList.remove('open')" style="background:none;border:none;color:#94a3b8;cursor:pointer;">✕ Tutup</button>
+      </div>
+      <pre id="replyText" style="white-space:pre-wrap;font-family:inherit;"></pre>
+    </div>
+    <form class="cmd-bar" id="cmdForm">
+      <select id="cmdTarget" class="cmd-select">
+        <option value="auto">👑 CEO (Auto)</option>
+        <option value="coder">💻 Coder</option>
+        <option value="writer">✍️ Writer</option>
+      </select>
+      <input id="cmdInput" class="cmd-input" placeholder="Beri perintah ke CEO sebagai Owner / Orkestrator..." autocomplete="off" />
+      <button type="submit" id="cmdBtn" class="cmd-btn">Kirim Misi</button>
+    </form>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+    const canvas = document.getElementById("scene");
+    const labelsRoot = document.getElementById("labels");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+
+    const scene = new THREE.Scene();
+
+    // Warm sunset/twilight city sky background
+    const skyCanvas = document.createElement("canvas");
+    skyCanvas.width = 32; skyCanvas.height = 512;
+    const sctx = skyCanvas.getContext("2d");
+    const grad = sctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0.0, "#0f172a");
+    grad.addColorStop(0.45, "#1e293b");
+    grad.addColorStop(0.78, "#334155");
+    grad.addColorStop(1.0, "#1e1b4b");
+    sctx.fillStyle = grad;
+    sctx.fillRect(0, 0, 32, 512);
+    const skyTex = new THREE.CanvasTexture(skyCanvas);
+    skyTex.colorSpace = THREE.SRGBColorSpace;
+    scene.background = skyTex;
+    scene.fog = new THREE.FogExp2(0x162033, 0.012);
+
+    const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 120);
+    camera.position.set(0, 9.8, 14.2);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.045;
+    controls.rotateSpeed = 0.65;
+    controls.zoomSpeed = 0.8;
+    controls.maxPolarAngle = Math.PI / 2.15;
+    controls.minDistance = 6.5;
+    controls.maxDistance = 24;
+    controls.target.set(0, 1.0, 0.2);
+
+    // Warm Office Lighting
+    scene.add(new THREE.HemisphereLight(0xe2e8f0, 0x334155, 1.05));
+    const sunLight = new THREE.DirectionalLight(0xfff1d6, 1.55);
+    sunLight.position.set(7, 13, 9);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(2048, 2048);
+    sunLight.shadow.bias = -0.0005;
+    scene.add(sunLight);
+
+    const warmFill = new THREE.PointLight(0xfbbf24, 1.3, 18);
+    warmFill.position.set(-5, 4.2, 2);
+    scene.add(warmFill);
+
+    const coolFill = new THREE.PointLight(0x38bdf8, 1.2, 18);
+    coolFill.position.set(5, 4.2, -1);
+    scene.add(coolFill);
+
+    // Warm Wooden Office Floor + Carpet
+    const floor = new THREE.Mesh(
+      new THREE.BoxGeometry(20, 0.3, 15),
+      new THREE.MeshStandardMaterial({ color: 0x3f3228, roughness: 0.72, metalness: 0.05 })
+    );
+    floor.position.set(0, -0.15, 0);
+    floor.receiveShadow = true;
+    scene.add(floor);
+
+    const ceoRug = new THREE.Mesh(
+      new THREE.BoxGeometry(6.4, 0.03, 4.2),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 })
+    );
+    ceoRug.position.set(0, 0.015, -1.0);
+    ceoRug.receiveShadow = true;
+    scene.add(ceoRug);
+
+    // Office Walls + Panoramic Window
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x293548, roughness: 0.75 });
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, 4.6, 15), wallMat);
+    leftWall.position.set(-10, 2.3, 0);
+    leftWall.receiveShadow = true;
+    scene.add(leftWall);
+
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, 4.6, 15), wallMat);
+    rightWall.position.set(10, 2.3, 0);
+    rightWall.receiveShadow = true;
+    scene.add(rightWall);
+
+    // Back wall with large glass window
+    const backBottom = new THREE.Mesh(new THREE.BoxGeometry(20, 1.0, 0.25), wallMat);
+    backBottom.position.set(0, 0.5, -7.4);
+    const backTop = new THREE.Mesh(new THREE.BoxGeometry(20, 0.6, 0.25), wallMat);
+    backTop.position.set(0, 4.3, -7.4);
+    const backLeftPillar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.0, 0.25), wallMat);
+    backLeftPillar.position.set(-8.7, 2.5, -7.4);
+    const backRightPillar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.0, 0.25), wallMat);
+    backRightPillar.position.set(8.7, 2.5, -7.4);
+    const glassPane = new THREE.Mesh(
+      new THREE.PlaneGeometry(14.8, 2.8),
+      new THREE.MeshPhysicalMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.16, roughness: 0.1, metalness: 0.1 })
+    );
+    glassPane.position.set(0, 2.5, -7.4);
+    scene.add(backBottom, backTop, backLeftPillar, backRightPillar, glassPane);
+
+    // City Skyline outside window
+    const buildingMat = new THREE.MeshStandardMaterial({ color: 0x162032, roughness: 0.8 });
+    const winMat = new THREE.MeshBasicMaterial({ color: 0xfde68a });
+    for (let i = -14; i <= 14; i += 2.6) {
+      const h = 3.5 + ((Math.abs(i * 17) % 5) * 1.1);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(1.8, h, 1.8), buildingMat);
+      b.position.set(i, h / 2 - 0.5, -13 - (Math.abs(i) % 3) * 2.2);
+      scene.add(b);
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(1.1, h * 0.55), winMat);
+      w.position.set(i, h / 2, b.position.z + 0.92);
+      w.material = new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xfde68a : 0x7dd3fc, transparent: true, opacity: 0.28 });
+      scene.add(w);
+    }
+
+    // Office Furniture: Bookshelf, Whiteboard, Lounge Sofa & Coffee Table
+    function addBookshelf(x, z, rotY = 0) {
+      const g = new THREE.Group();
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(1.8, 2.4, 0.45), new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.7 }));
+      frame.position.y = 1.2;
+      frame.castShadow = true;
+      g.add(frame);
+      const colors = [0x38bdf8, 0xf472b6, 0x34d399, 0xfacc15];
+      for (let row = 0; row < 3; row++) {
+        for (let b = 0; b < 4; b++) {
+          const book = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.36, 0.32), new THREE.MeshStandardMaterial({ color: colors[(row + b) % colors.length] }));
+          book.position.set(-0.55 + b * 0.32, 0.65 + row * 0.65, 0.1);
+          g.add(book);
+        }
+      }
+      g.position.set(x, 0, z);
+      g.rotation.y = rotY;
+      scene.add(g);
+    }
+    addBookshelf(-9.5, -2.5, Math.PI / 2);
+    addBookshelf(9.5, -2.5, -Math.PI / 2);
+
+    // Kanban / Whiteboard on left wall
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 2.8), new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 }));
+    board.position.set(-9.8, 2.4, 1.8);
+    scene.add(board);
+
+    // Lounge Sofa & Coffee Table on right side
+    const sofaGroup = new THREE.Group();
+    const sofaBase = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.45, 2.4), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 }));
+    sofaBase.position.y = 0.225;
+    const sofaBack = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.85, 2.4), new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 }));
+    sofaBack.position.set(0.46, 0.55, 0);
+    sofaGroup.add(sofaBase, sofaBack);
+    sofaGroup.position.set(8.6, 0, 2.2);
+    scene.add(sofaGroup);
+
+    const coffeeTable = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.42, 20), new THREE.MeshStandardMaterial({ color: 0x6b4f3b, roughness: 0.6 }));
+    coffeeTable.position.set(7.2, 0.21, 2.2);
+    coffeeTable.castShadow = true;
+    scene.add(coffeeTable);
+
+    // Potted office plants
+    function addPlant(x, z) {
+      const g = new THREE.Group();
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.24, 0.52, 12), new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.5 }));
+      pot.position.y = 0.26;
+      const leaves = new THREE.Mesh(new THREE.DodecahedronGeometry(0.52, 1), new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.65 }));
+      leaves.position.y = 0.86;
+      leaves.castShadow = true;
+      g.add(pot, leaves);
+      g.position.set(x, 0, z);
+      scene.add(g);
+    }
+    addPlant(-8.8, -6.2);
+    addPlant(8.8, -6.2);
+    addPlant(-8.8, 5.4);
+    addPlant(8.8, 5.4);
+
+    // Server rack for Sentry
+    const rack = new THREE.Group();
+    const rackBody = new THREE.Mesh(new THREE.BoxGeometry(1.1, 2.5, 0.85), new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.5, roughness: 0.4 }));
+    rackBody.position.y = 1.25;
+    rackBody.castShadow = true;
+    rack.add(rackBody);
+    const leds = [];
+    for (let i = 0; i < 6; i++) {
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.07, 0.05), new THREE.MeshBasicMaterial({ color: 0x34d399 }));
+      led.position.set(0, 0.55 + i * 0.34, 0.44);
+      rack.add(led);
+      leds.push(led);
+    }
+    rack.position.set(2.4, 0, -5.4);
+    scene.add(rack);
+
+    // Stations & Characters
+    const agents = {};
+    const clickableMeshes = [];
+
+    function createLiveScreenTexture(mode = "code") {
+      const c = document.createElement("canvas");
+      c.width = 256; c.height = 160;
+      const ctx = c.getContext("2d");
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const codeLines = [
+        "import { route } from './router';",
+        "export async function run(task) {",
+        "  const spec = classify(task);",
+        "  if (spec === 'coder') {",
+        "    return await execCodex(task);",
+        "  }",
+        "  const draft = await write(task);",
+        "  return { ok: true, draft };",
+        "}",
+        "// ✓ build & tests passed"
+      ];
+      const writerLines = [
+        "# Draft Artikel & Caption",
+        "Hook: Bikin Konten Makin Cepat!",
+        "• Gunakan tone santai & jelas",
+        "• Tambah CTA di akhir paragraf",
+        "Tags: #umkm #promosi #ai",
+        "SEO Score: 96/100 (Optimal)",
+        "✓ Siap publish ke TH Blog"
+      ];
+      let scroll = 0;
+      function draw(t, isWorking, isDone = false) {
+        ctx.fillStyle = "#090f1d";
+        ctx.fillRect(0, 0, 256, 160);
+        // Top window bar
+        ctx.fillStyle = "#162033";
+        ctx.fillRect(0, 0, 256, 16);
+        for (const [bx, col] of [[10, "#ef4444"], [20, "#facc15"], [30, "#22c55e"]]) {
+          ctx.fillStyle = col; ctx.beginPath(); ctx.arc(bx, 8, 3, 0, Math.PI * 2); ctx.fill();
+        }
+        if (mode === "sentry") {
+          ctx.strokeStyle = "#34d399"; ctx.lineWidth = 2; ctx.beginPath();
+          for (let x = 10; x < 246; x += 8) {
+            const y = 86 + Math.sin(x * 0.08 + t * (isWorking ? 6 : 2.5)) * 22;
+            if (x === 10) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+          ctx.fillStyle = "#34d399"; ctx.font = "bold 12px monospace";
+          ctx.fillText("SYS OK | RAM LIVE", 14, 36);
+        } else {
+          const lines = mode === "writer" ? writerLines : codeLines;
+          const speed = isWorking ? 2.4 : 0.45;
+          scroll += speed * 0.04;
+          ctx.font = "11px monospace";
+          const startIdx = Math.floor(scroll) % lines.length;
+          for (let i = 0; i < 8; i++) {
+            const line = lines[(startIdx + i) % lines.length];
+            const y = 34 + i * 16;
+            const isLast = i === 7;
+            const chars = isLast && isWorking ? Math.floor(((t * 18) % (line.length + 3))) : line.length;
+            const txt = line.slice(0, chars);
+            ctx.fillStyle = txt.startsWith("import") || txt.startsWith("export") || txt.startsWith("#") ? "#f472b6"
+              : txt.includes("return") || txt.includes("if") || txt.includes("✓") ? "#34d399"
+              : txt.includes("//") || txt.includes("Tags") ? "#38bdf8" : "#cbd5e1";
+            ctx.fillText(txt, 10, y);
+            if (isLast && Math.sin(t * 8) > 0) {
+              ctx.fillStyle = "#38bdf8";
+              ctx.fillRect(12 + ctx.measureText(txt).width, y - 9, 6, 11);
+            }
+          }
+        }
+        if (isDone) {
+          ctx.fillStyle = "rgba(6, 78, 59, 0.82)";
+          ctx.fillRect(46, 56, 164, 48);
+          ctx.strokeStyle = "#34d399";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(46, 56, 164, 48);
+          ctx.fillStyle = "#a7f3d0";
+          ctx.font = "bold 18px sans-serif";
+          ctx.fillText("✓ DONE", 92, 86);
+        }
+        tex.needsUpdate = true;
+      }
+      draw(0, false);
+      return { tex, draw };
+    }
+    const screenUpdaters = [];
+
+    function buildHumanCharacter({ colorHex, skinHex = 0xf1c27d, hairHex = 0x1e293b, isOwner = false, hasGlasses = false }) {
+      const charGroup = new THREE.Group();
+      const suitMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.55, metalness: 0.08 });
+      const skinMat = new THREE.MeshStandardMaterial({ color: skinHex, roughness: 0.65 });
+      const hairMat = new THREE.MeshStandardMaterial({ color: hairHex, roughness: 0.7 });
+      const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.75 });
+      const chairMat = new THREE.MeshStandardMaterial({ color: isOwner ? 0x292524 : 0x1e293b, roughness: 0.5 });
+
+      // Ergonomic Office Chair behind character
+      const chair = new THREE.Group();
+      const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.08, 20), chairMat);
+      seat.position.set(0, 0.52, 0.06);
+      const back = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, isOwner ? 0.48 : 0.34, 8, 16), chairMat);
+      back.scale.set(1.05, 1, 0.32);
+      back.position.set(0, isOwner ? 0.98 : 0.9, 0.32);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.45, 12), new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.6 }));
+      stem.position.set(0, 0.28, 0.06);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.06, 16), new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.5 }));
+      base.position.set(0, 0.04, 0.06);
+      chair.add(seat, back, stem, base);
+      charGroup.add(chair);
+
+      // Seated Legs
+      for (const lx of [-0.12, 0.12]) {
+        const thigh = new THREE.Mesh(new THREE.CapsuleGeometry(0.085, 0.28, 6, 12), pantsMat);
+        thigh.rotation.x = Math.PI / 2;
+        thigh.position.set(lx, 0.58, -0.1);
+        const shin = new THREE.Mesh(new THREE.CapsuleGeometry(0.072, 0.34, 6, 12), pantsMat);
+        shin.position.set(lx, 0.3, -0.26);
+        const shoe = new THREE.Mesh(new THREE.SphereGeometry(0.085, 12, 10), new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 }));
+        shoe.scale.set(0.9, 0.55, 1.4);
+        shoe.position.set(lx, 0.06, -0.3);
+        charGroup.add(thigh, shin, shoe);
+      }
+
+      // Smooth Torso + Shoulders + Neck
+      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.23, 0.34, 10, 20), suitMat);
+      torso.scale.set(1.12, 1, 0.72);
+      torso.position.set(0, 0.96, 0.04);
+      torso.castShadow = true;
+      charGroup.add(torso);
+
+      const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.16, 16), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+      shirt.position.set(0, 1.24, 0.02);
+      charGroup.add(shirt);
+
+      if (isOwner) {
+        const tie = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.32, 10), new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xfacc15, emissiveIntensity: 0.2 }));
+        tie.rotation.x = Math.PI;
+        tie.position.set(0, 1.02, -0.14);
+        charGroup.add(tie);
+      }
+
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.085, 0.14, 14), skinMat);
+      neck.position.set(0, 1.33, 0.02);
+      charGroup.add(neck);
+
+      // Realistic Rounded Head + Hair + Eyes
+      const headGroup = new THREE.Group();
+      headGroup.position.set(0, 1.54, 0.02);
+
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.19, 24, 24), skinMat);
+      head.scale.set(0.95, 1.06, 0.98);
+      head.castShadow = true;
+      headGroup.add(head);
+
+      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.198, 22, 18, 0, Math.PI * 2, 0, Math.PI * 0.56), hairMat);
+      hair.rotation.x = -0.22;
+      hair.position.set(0, 0.02, 0.01);
+      headGroup.add(hair);
+
+      for (const ex of [-0.068, 0.068]) {
+        const eye = new THREE.Mesh(new THREE.SphereGeometry(0.022, 10, 10), new THREE.MeshBasicMaterial({ color: 0x0f172a }));
+        eye.position.set(ex, 0.01, -0.175);
+        headGroup.add(eye);
+      }
+
+      if (hasGlasses) {
+        const glassMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.7, roughness: 0.2 });
+        for (const gx of [-0.068, 0.068]) {
+          const rim = new THREE.Mesh(new THREE.TorusGeometry(0.038, 0.007, 8, 20), glassMat);
+          rim.position.set(gx, 0.01, -0.185);
+          headGroup.add(rim);
+        }
+      }
+
+      if (isOwner) {
+        const crown = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.11, 0.14, 0.1, 8),
+          new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xf59e0b, emissiveIntensity: 0.3, metalness: 0.85, roughness: 0.2 })
+        );
+        crown.position.set(0, 0.23, 0);
+        headGroup.add(crown);
+      }
+
+      charGroup.add(headGroup);
+
+      // Smooth Articulated Arms + Hands
+      function makeArm(side) {
+        const arm = new THREE.Group();
+        arm.position.set(side * 0.29, 1.14, 0.02);
+        const upper = new THREE.Mesh(new THREE.CapsuleGeometry(0.065, 0.22, 8, 12), suitMat);
+        upper.position.set(0, -0.12, -0.06);
+        upper.rotation.x = Math.PI / 3;
+        const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 12, 12), skinMat);
+        hand.position.set(0, -0.22, -0.22);
+        arm.add(upper, hand);
+        arm.rotation.x = 0.2;
+        return arm;
+      }
+      const leftArm = makeArm(-1);
+      const rightArm = makeArm(1);
+      charGroup.add(leftArm, rightArm);
+
+      return { charGroup, torso, head: headGroup, leftArm, rightArm };
+    }
+
+    function createAgentStation({ id, shortName, roleTitle, colorHex, pos, modelLabel }) {
+      const group = new THREE.Group();
+      group.position.set(pos[0], 0, pos[2]);
+
+      // Warm wood/slate office desk
+      const desk = new THREE.Mesh(
+        new THREE.BoxGeometry(2.5, 0.12, 1.25),
+        new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.45, metalness: 0.2 })
+      );
+      desk.position.set(0, 0.86, 0);
+      desk.castShadow = true;
+      desk.receiveShadow = true;
+      group.add(desk);
+
+      for (const lx of [-1.1, 1.1]) {
+        for (const lz of [-0.48, 0.48]) {
+          const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.86, 0.07), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+          leg.position.set(lx, 0.43, lz);
+          group.add(leg);
+        }
+      }
+
+      // Monitor with Live Screen Texture + Mug
+      const screenMode = id === "writer" ? "writer" : (id === "sentry" ? "sentry" : "code");
+      const liveScreen = createLiveScreenTexture(screenMode);
+      const monitor = new THREE.Mesh(
+        new THREE.BoxGeometry(1.15, 0.66, 0.06),
+        new THREE.MeshStandardMaterial({
+          map: liveScreen.tex,
+          emissiveMap: liveScreen.tex,
+          emissive: 0xffffff,
+          emissiveIntensity: 0.85,
+          roughness: 0.3
+        })
+      );
+      monitor.position.set(0, 1.35, -0.34);
+      group.add(monitor);
+      screenUpdaters.push({ draw: liveScreen.draw, getWorking: () => agents[id]?.state === "working" || agents[id]?.state === "active", getDone: () => (agents[id]?.doneUntil || 0) > performance.now() });
+
+      const mug = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.14, 12), new THREE.MeshStandardMaterial({ color: 0xf8fafc }));
+      mug.position.set(0.85, 0.99, 0.18);
+      group.add(mug);
+
+      // Soft floor indicator ring
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(1.12, 1.24, 36),
+        new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.35 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.025;
+      group.add(ring);
+
+      const { charGroup, torso, head, leftArm, rightArm } = buildHumanCharacter({
+        colorHex,
+        skinHex: id === "writer" ? 0xf5cba7 : 0xf1c27d,
+        hairHex: id === "writer" ? 0x3b2f2f : (id === "ceo" ? 0x0f172a : 0x1e293b),
+        hasGlasses: id === "coder" || id === "ceo",
+      });
+      charGroup.position.set(0, 0, 0.58);
+      group.add(charGroup);
+      scene.add(group);
+
+      desk.userData.agentId = id;
+      torso.userData.agentId = id;
+      head.userData.agentId = id;
+      clickableMeshes.push(desk, torso, head);
+
+      // Clean Name-Only Pill
+      const el = document.createElement("div");
+      el.className = "name-pill";
+      el.innerHTML = `<span class="dot" style="background:#${colorHex.toString(16).padStart(6,'0')}"></span><span>${shortName}</span><div class="hover-tip"><div class="ht-model">${modelLabel}</div><div class="ht-task">Standby</div></div>`;
+      el.addEventListener("click", () => selectAgent(id));
+      labelsRoot.appendChild(el);
+
+      agents[id] = {
+        id, shortName, roleTitle, colorHex, modelLabel, group, charGroup, head, leftArm, rightArm, ring, monitor,
+        el, state: "idle", anchor: new THREE.Vector3(pos[0], 2.28, pos[2] + 0.32),
+        posVec: new THREE.Vector3(pos[0], 1.45, pos[2]),
+        lastTask: "Standby",
+        animIntensity: 0
+      };
+    }
+
+    // VIP Executive Suite & Owner Character
+    const ownerVip = new THREE.Group();
+    ownerVip.position.set(0, 0, 5.1);
+
+    // Elevated VIP Marble Platform + Gold Trim
+    const vipFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(5.2, 0.22, 3.6),
+      new THREE.MeshStandardMaterial({ color: 0x1e1b2e, roughness: 0.25, metalness: 0.35 })
+    );
+    vipFloor.position.y = 0.11;
+    vipFloor.receiveShadow = true;
+    ownerVip.add(vipFloor);
+
+    const vipTrim = new THREE.Mesh(
+      new THREE.BoxGeometry(5.32, 0.06, 3.72),
+      new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3, metalness: 0.7 })
+    );
+    vipTrim.position.y = 0.03;
+    ownerVip.add(vipTrim);
+
+    const vipCarpet = new THREE.Mesh(
+      new THREE.BoxGeometry(3.8, 0.02, 2.5),
+      new THREE.MeshStandardMaterial({ color: 0x7f1d1d, roughness: 0.85 })
+    );
+    vipCarpet.position.y = 0.23;
+    ownerVip.add(vipCarpet);
+
+    // VIP Glass Partitions (Left & Right)
+    const vipGlassMat = new THREE.MeshPhysicalMaterial({ color: 0xfef08a, transparent: true, opacity: 0.14, roughness: 0.1, metalness: 0.1 });
+    for (const gx of [-2.55, 2.55]) {
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.2, 3.5), vipGlassMat);
+      glass.position.set(gx, 1.32, 0);
+      ownerVip.add(glass);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, 3.55), new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.7, roughness: 0.3 }));
+      rail.position.set(gx, 2.42, 0);
+      ownerVip.add(rail);
+    }
+
+    // VIP Warm Overhead Light
+    const vipLight = new THREE.PointLight(0xfde68a, 1.6, 8);
+    vipLight.position.set(0, 2.8, 0);
+    ownerVip.add(vipLight);
+
+    // VIP Executive Desk
+    const vipDesk = new THREE.Mesh(
+      new THREE.BoxGeometry(2.9, 0.14, 1.25),
+      new THREE.MeshStandardMaterial({ color: 0x3b261d, roughness: 0.35, metalness: 0.2 })
+    );
+    vipDesk.position.set(0, 1.08, -0.35);
+    vipDesk.castShadow = true;
+    ownerVip.add(vipDesk);
+
+    for (const lx of [-1.25, 1.25]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.86, 1.0), new THREE.MeshStandardMaterial({ color: 0x1e293b }));
+      leg.position.set(lx, 0.65, -0.35);
+      ownerVip.add(leg);
+    }
+
+    // Triple Command Monitors with Live Screens
+    for (const [mx, rotY, mode] of [[-0.85, 0.25, "code"], [0, 0, "sentry"], [0.85, -0.25, "writer"]]) {
+      const scr = createLiveScreenTexture(mode);
+      const mon = new THREE.Mesh(
+        new THREE.BoxGeometry(0.75, 0.46, 0.05),
+        new THREE.MeshStandardMaterial({ map: scr.tex, emissiveMap: scr.tex, emissive: 0xffffff, emissiveIntensity: 0.85, roughness: 0.3 })
+      );
+      mon.position.set(mx, 1.48, -0.68 + Math.abs(mx) * 0.08);
+      mon.rotation.y = rotY;
+      ownerVip.add(mon);
+      screenUpdaters.push({ draw: scr.draw, getWorking: () => true });
+    }
+
+    const { charGroup: ownerChar, torso: ownerSuit, head: ownerHead, leftArm: ownerLeftArm, rightArm: ownerRightArm } = buildHumanCharacter({
+      colorHex: 0x0f172a,
+      skinHex: 0xf1c27d,
+      hairHex: 0x111827,
+      isOwner: true,
+      hasGlasses: false,
+    });
+    ownerChar.position.set(0, 0.22, 0.52);
+
+    ownerVip.add(ownerChar);
+    scene.add(ownerVip);
+
+    vipDesk.userData.agentId = "owner";
+    ownerSuit.userData.agentId = "owner";
+    ownerHead.userData.agentId = "owner";
+    clickableMeshes.push(vipDesk, ownerSuit, ownerHead);
+
+    const ownerLabel = document.createElement("div");
+    ownerLabel.className = "name-pill";
+    ownerLabel.innerHTML = `<span class="dot" style="background:#facc15"></span><span>👑 Owner (VIP)</span><div class="hover-tip"><div class="ht-model">VIP Executive Suite</div><div class="ht-task">Orkestrator utama</div></div>`;
+    ownerLabel.addEventListener("click", () => selectAgent("owner"));
+    labelsRoot.appendChild(ownerLabel);
+
+    createAgentStation({ id: "ceo", shortName: "TH Agent (CEO)", roleTitle: "TH Agent (CEO)", colorHex: 0x38bdf8, pos: [0, 0, -1.2], modelLabel: "Auto-Router Gateway" });
+    createAgentStation({ id: "coder", shortName: "💻 Coder", roleTitle: "Agent Coder", colorHex: 0x60a5fa, pos: [-4.8, 0, 1.2], modelLabel: "a2-codex/gemini-4-hydrogen-xhigh" });
+    createAgentStation({ id: "writer", shortName: "✍️ Writer", roleTitle: "Agent Writer", colorHex: 0xf472b6, pos: [4.8, 0, 1.2], modelLabel: "a2-antigravity/gemini-2.5-flash" });
+    createAgentStation({ id: "sentry", shortName: "🛡️ Sentry", roleTitle: "Server Sentry", colorHex: 0x34d399, pos: [0, 0, -5.2], modelLabel: "Proactive Monitor (5m)" });
+
+    // Energy packets & expanding pulse rings for Telegram + CEO delegation
+    const packets = [];
+    const pulses = [];
+    function spawnPulseRing(posVec, colorHex) {
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.3, 0.48, 32),
+        new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(posVec.x, 0.05, posVec.z);
+      scene.add(ring);
+      pulses.push({ ring, t: 0 });
+    }
+    function spawnDelegationArc(fromVec, toVec, colorHex) {
+      const orb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.17, 16, 16),
+        new THREE.MeshBasicMaterial({ color: colorHex })
+      );
+      scene.add(orb);
+      packets.push({ orb, from: fromVec.clone(), to: toVec.clone(), t: 0, colorHex, toVec: toVec.clone() });
+    }
+    function triggerCeoDelegation(role) {
+      const targetAgent = agents[role] || agents.coder;
+      agents.ceo.state = "working";
+      agents.ceo.el.classList.add("working");
+      agents.ceo.lookTargetY = role === "coder" ? -0.7 : (role === "writer" ? 0.7 : 0);
+      spawnPulseRing(agents.ceo.posVec, 0x38bdf8);
+      spawnDelegationArc(agents.ceo.posVec, targetAgent.posVec, targetAgent.colorHex);
+      setTimeout(() => {
+        targetAgent.state = "working";
+        targetAgent.el.classList.add("working");
+        spawnPulseRing(targetAgent.posVec, targetAgent.colorHex);
+      }, 450);
+      clearTimeout(agents.ceo._idleTimer);
+      agents.ceo._idleTimer = setTimeout(() => {
+        agents.ceo.state = "idle";
+        agents.ceo.lookTargetY = 0;
+        agents.ceo.el.classList.remove("working");
+      }, 4500);
+      clearTimeout(targetAgent._idleTimer);
+      targetAgent._idleTimer = setTimeout(() => {
+        targetAgent.state = "active";
+        targetAgent.el.classList.remove("working");
+      }, 6500);
+    }
+    let soundEnabled = true;
+    const btnSound = document.getElementById("btnSound");
+    btnSound.addEventListener("click", () => {
+      soundEnabled = !soundEnabled;
+      btnSound.textContent = soundEnabled ? "🔊 Sound: ON" : "🔇 Sound: OFF";
+    });
+    function playSoftChime() {
+      if (!soundEnabled) return;
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const now = ctx.currentTime;
+        for (const [freq, offset] of [[659.25, 0], [880, 0.11]]) {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(freq, now + offset);
+          gain.gain.setValueAtTime(0.001, now + offset);
+          gain.gain.exponentialRampToValueAtTime(0.08, now + offset + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.35);
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.start(now + offset); osc.stop(now + offset + 0.36);
+        }
+      } catch {}
+    }
+
+    function showDoneBadge(agent) {
+      const b = document.createElement("span");
+      b.className = "done-float";
+      b.textContent = "✓ Selesai";
+      agent.el.appendChild(b);
+      setTimeout(() => b.remove(), 2250);
+    }
+
+    function triggerTaskComplete(role) {
+      const worker = agents[role] || agents.coder;
+      worker.celebratingUntil = performance.now() + 1600;
+      worker.doneUntil = performance.now() + 2600;
+      worker.lookTargetY = role === "coder" ? 0.65 : (role === "writer" ? -0.65 : 0);
+      showDoneBadge(worker);
+      spawnPulseRing(worker.posVec, 0x34d399);
+      spawnDelegationArc(worker.posVec, agents.ceo.posVec, 0x34d399);
+      playSoftChime();
+
+      setTimeout(() => {
+        agents.ceo.celebratingUntil = performance.now() + 1100;
+        agents.ceo.lookTargetY = 0;
+        showDoneBadge(agents.ceo);
+        spawnDelegationArc(agents.ceo.posVec, new THREE.Vector3(0, 1.3, 5.1), 0xfacc15);
+      }, 650);
+
+      setTimeout(() => {
+        worker.lookTargetY = 0;
+        worker.state = "idle";
+        worker.el.classList.remove("working");
+      }, 2100);
+    }
+
+    function triggerTelegramIncoming() {
+      const skySource = new THREE.Vector3(-2.5, 4.2, -5.8);
+      spawnDelegationArc(skySource, agents.ceo.posVec, 0x38bdf8);
+      agents.ceo.state = "working";
+      agents.ceo.el.classList.add("working");
+      spawnPulseRing(agents.ceo.posVec, 0x38bdf8);
+    }
+
+    function selectAgent(id) {
+      if (id === "owner") {
+        document.getElementById("inspectorBody").innerHTML = `
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px;">👑 Owner / Orkestrator</div>
+          <div style="font-family:monospace;font-size:11px;color:#facc15;margin-bottom:6px;">VIP Executive Suite</div>
+          <div>Status: <strong>ACTIVE COMMANDER</strong></div>
+          <div style="margin-top:6px;color:#94a3b8;">Memberi misi &amp; mengorkestrasi CEO beserta tim spesialis.</div>
+        `;
+        return;
+      }
+      const a = agents[id];
+      if (!a) return;
+      document.getElementById("inspectorBody").innerHTML = `
+        <div style="font-weight:700;font-size:14px;margin-bottom:4px;">${a.roleTitle}</div>
+        <div style="font-family:monospace;font-size:11px;color:#38bdf8;margin-bottom:6px;">${a.modelLabel}</div>
+        <div>Status: <strong>${a.state.toUpperCase()}</strong></div>
+        <div style="margin-top:6px;color:#94a3b8;">Tugas terakhir:<br>${a.lastTask}</div>
+      `;
+    }
+    selectAgent("ceo");
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let lastHoveredId = null;
+    canvas.addEventListener("mousemove", (ev) => {
+      pointer.x = (ev.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(ev.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(clickableMeshes, false);
+      const hitId = hits.length > 0 ? hits[0].object.userData.agentId : null;
+      if (hitId !== lastHoveredId) {
+        for (const a of Object.values(agents)) a.el.classList.remove("hovered");
+        ownerLabel.classList.remove("hovered");
+        if (hitId === "owner") ownerLabel.classList.add("hovered");
+        else if (hitId && agents[hitId]) agents[hitId].el.classList.add("hovered");
+        canvas.style.cursor = hitId ? "pointer" : "default";
+        lastHoveredId = hitId;
+      }
+    });
+
+    canvas.addEventListener("click", (ev) => {
+      pointer.x = (ev.clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(ev.clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(clickableMeshes, false);
+      if (hits.length > 0 && hits[0].object.userData.agentId) {
+        selectAgent(hits[0].object.userData.agentId);
+      }
+    });
+
+    async function pollOfficeState() {
+      try {
+        const res = await fetch("/api/office/state", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.ok || !data.office) return;
+        const o = data.office;
+        document.getElementById("chipVps").textContent = `RAM: ${o.ramUsedPct}% | Load: ${o.loadAvg}`;
+        document.getElementById("chipRouter").textContent = o.autoSpecialist ? "Auto-Router: ON" : "Auto-Router: OFF";
+
+        for (const key of ["ceo", "coder", "writer", "sentry"]) {
+          const info = o.agents?.[key];
+          const a = agents[key];
+          if (!info || !a) continue;
+          a.modelLabel = info.provider ? `${info.provider}/${info.model}` : info.model;
+          if (info.lastTask) a.lastTask = info.lastTask;
+          const htM = a.el.querySelector(".ht-model");
+          const htT = a.el.querySelector(".ht-task");
+          if (htM) htM.textContent = a.modelLabel;
+          if (htT) htT.textContent = a.lastTask || "Standby";
+          if (a.state !== "working") {
+            a.state = info.status === "active" || info.status === "monitoring" ? "active" : "idle";
+          }
+          a.el.classList.toggle("working", a.state === "working");
+        }
+
+        const feed = document.getElementById("activityFeed");
+        if (Array.isArray(o.events) && o.events.length) {
+          feed.innerHTML = o.events.map((e) => `<div class="feed-item ${e.role || ''}">${e.text}</div>`).join("");
+          const latest = o.events[0];
+          const latestKey = latest.key || latest.text;
+          if (!window.__officeInitDone) {
+            window.__lastEventKey = latestKey;
+            window.__officeInitDone = true;
+          } else if (latestKey !== window.__lastEventKey) {
+            window.__lastEventKey = latestKey;
+            if (latest.type === "telegram") triggerTelegramIncoming();
+            else if (latest.type === "route" || latest.type === "studio") triggerCeoDelegation(latest.role || "coder");
+            else if (latest.type === "done") triggerTaskComplete(latest.role || "coder");
+          }
+        }
+      } catch {}
+    }
+    pollOfficeState();
+    setInterval(pollOfficeState, 2500);
+
+    const cmdForm = document.getElementById("cmdForm");
+    const cmdInput = document.getElementById("cmdInput");
+    const cmdTarget = document.getElementById("cmdTarget");
+    const cmdBtn = document.getElementById("cmdBtn");
+    const replyDrawer = document.getElementById("replyDrawer");
+    const replyMeta = document.getElementById("replyMeta");
+    const replyText = document.getElementById("replyText");
+
+    cmdForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const prompt = cmdInput.value.trim();
+      const target = cmdTarget.value;
+      if (!prompt) return;
+
+      cmdBtn.disabled = true;
+      cmdBtn.textContent = "Memproses...";
+      agents.ceo.state = "working";
+      agents.ceo.el.classList.add("working");
+      spawnDelegationArc(new THREE.Vector3(0, 1.1, 5.0), agents.ceo.posVec, 0xfacc15);
+
+      const guessedRole = target === "auto"
+        ? (/(caption|artikel|blog|seo|konten|promo|iklan|marketing|deskripsi)/i.test(prompt) ? "writer" : "coder")
+        : target;
+
+      setTimeout(() => {
+        agents[guessedRole].state = "working";
+        agents[guessedRole].el.classList.add("working");
+        spawnDelegationArc(agents.ceo.posVec, agents[guessedRole].posVec, agents[guessedRole].colorHex);
+      }, 420);
+
+      try {
+        const res = await fetch("/api/office/command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, target }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Gagal menjalankan perintah");
+
+        const role = data.role || guessedRole;
+        agents[role].lastTask = prompt;
+        const rHt = agents[role].el.querySelector(".ht-task");
+        if (rHt) rHt.textContent = prompt;
+        const oHt = ownerLabel.querySelector(".ht-task");
+        if (oHt) oHt.textContent = prompt;
+        triggerTaskComplete(role);
+
+        replyMeta.textContent = `CEO → ${role.toUpperCase()} (${data.provider}/${data.model})`;
+        replyText.textContent = data.reply || "(Kosong)";
+        replyDrawer.classList.add("open");
+        cmdInput.value = "";
+        pollOfficeState();
+      } catch (err) {
+        replyMeta.textContent = "Error";
+        replyText.textContent = err.message || "Gagal";
+        replyDrawer.classList.add("open");
+      } finally {
+        cmdBtn.disabled = false;
+        cmdBtn.textContent = "Kirim Misi";
+        setTimeout(() => {
+          for (const k of ["ceo", "coder", "writer"]) {
+            agents[k].state = "idle";
+            agents[k].el.classList.remove("working");
+          }
+        }, 2000);
+      }
+    });
+
+    const clock = new THREE.Clock();
+    const projVec = new THREE.Vector3();
+
+    function projectToScreen(vec3, el) {
+      projVec.copy(vec3).project(camera);
+      if (projVec.z > 1) { el.style.display = "none"; return; }
+      el.style.display = "inline-flex";
+      el.style.left = `${(projVec.x * 0.5 + 0.5) * window.innerWidth}px`;
+      el.style.top = `${(-projVec.y * 0.5 + 0.5) * window.innerHeight}px`;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      for (const su of screenUpdaters) su.draw(t, su.getWorking(), su.getDone ? su.getDone() : false);
+      leds.forEach((led, idx) => {
+        led.material.color.setHex(Math.sin(t * 3.5 + idx * 1.1) > 0 ? 0x34d399 : 0x065f46);
+      });
+
+      // Smooth interpolation for character animations & glow
+      for (const a of Object.values(agents)) {
+        const targetIntensity = a.state === "working" ? 1 : (a.state === "active" ? 0.35 : 0);
+        a.animIntensity += (targetIntensity - a.animIntensity) * 0.08;
+
+        const bobAmp = 0.012 + a.animIntensity * 0.018;
+        const bobFreq = 2.0 + a.animIntensity * 7.5;
+        a.head.position.y = 1.54 + Math.sin(t * bobFreq) * bobAmp;
+
+        const isCelebrating = (a.celebratingUntil || 0) > performance.now();
+        if (isCelebrating) {
+          a.leftArm.rotation.x += (-2.2 - a.leftArm.rotation.x) * 0.18;
+          a.rightArm.rotation.x += (-2.2 - a.rightArm.rotation.x) * 0.18;
+          a.head.position.y = 1.54 + Math.abs(Math.sin(t * 7)) * 0.04;
+        } else {
+          const armAmp = 0.03 + a.animIntensity * 0.2;
+          const armFreq = 2.0 + a.animIntensity * 11.0;
+          a.leftArm.rotation.x += ((0.2 + Math.sin(t * armFreq) * armAmp) - a.leftArm.rotation.x) * 0.2;
+          a.rightArm.rotation.x += ((0.2 + Math.cos(t * armFreq) * armAmp) - a.rightArm.rotation.x) * 0.2;
+        }
+
+        if (typeof a.lookTargetY === "number") {
+          a.charGroup.rotation.y += (a.lookTargetY - a.charGroup.rotation.y) * 0.08;
+        }
+        a.ring.material.opacity = 0.24 + a.animIntensity * 0.55;
+        a.monitor.material.emissiveIntensity = 0.32 + a.animIntensity * 0.52;
+        projectToScreen(a.anchor, a.el);
+      }
+      ownerHead.position.y = 1.54 + Math.sin(t * 2.0) * 0.012;
+      ownerLeftArm.rotation.x = 0.2 + Math.sin(t * 2.2) * 0.03;
+      ownerRightArm.rotation.x = 0.2 + Math.cos(t * 2.2) * 0.03;
+      projectToScreen(new THREE.Vector3(0, 2.55, 5.25), ownerLabel);
+
+      for (let i = packets.length - 1; i >= 0; i--) {
+        const p = packets[i];
+        p.t += 0.025;
+        if (p.t >= 1) {
+          spawnPulseRing(p.toVec, p.colorHex || 0x38bdf8);
+          scene.remove(p.orb);
+          packets.splice(i, 1);
+          continue;
+        }
+        const ease = p.t * p.t * (3 - 2 * p.t);
+        p.orb.position.lerpVectors(p.from, p.to, ease);
+        p.orb.position.y += Math.sin(ease * Math.PI) * 1.7;
+      }
+
+      for (let i = pulses.length - 1; i >= 0; i--) {
+        const pr = pulses[i];
+        pr.t += 0.03;
+        if (pr.t >= 1) {
+          scene.remove(pr.ring);
+          pulses.splice(i, 1);
+          continue;
+        }
+        const scale = 1 + pr.t * 3.2;
+        pr.ring.scale.set(scale, scale, 1);
+        pr.ring.material.opacity = (1 - pr.t) * 0.85;
+      }
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
