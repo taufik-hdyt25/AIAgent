@@ -31,7 +31,8 @@
       box-shadow: 0 4px 14px rgba(0,0,0,0.32);
       transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
     }
-    .name-pill:hover, .name-pill.hovered { z-index: 999; transform: translate(-50%, -110%) scale(1.04); border-color: var(--cyan); }
+    #labels.has-hover .name-pill:not(:hover):not(.hovered) { opacity: 0.35; z-index: 1; }
+    .name-pill:hover, .name-pill.hovered { z-index: 9999; opacity: 1; transform: translate(-50%, -110%) scale(1.05); border-color: var(--cyan); }
     .name-pill.working { border-color: rgba(52, 211, 153, 0.75); background: rgba(6, 78, 59, 0.85); }
     .done-float {
       position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);
@@ -220,19 +221,19 @@
     scene.background = skyTex;
     scene.fog = new THREE.FogExp2(0x162033, 0.012);
 
-    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 120);
-    camera.position.set(0, 5.3, 8.6);
+    const camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.1, 120);
+    camera.position.set(0, 6.2, 9.8);
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.rotateSpeed = 0.6;
     controls.zoomSpeed = 0.75;
-    controls.minPolarAngle = 0.35;
+    controls.minPolarAngle = 0.32;
     controls.maxPolarAngle = Math.PI / 2.08;
     controls.minDistance = 4.2;
-    controls.maxDistance = 13.5;
-    controls.target.set(0, 1.35, 0.4);
+    controls.maxDistance = 16.5;
+    controls.target.set(0, 1.2, -0.2);
 
     // Warm Office Lighting
     scene.add(new THREE.HemisphereLight(0xe2e8f0, 0x334155, 1.05));
@@ -253,10 +254,10 @@
 
     // Warm Wooden Office Floor + Carpet (Fully Enclosed 1-Room Studio)
     const floor = new THREE.Mesh(
-      new THREE.BoxGeometry(20, 0.3, 16.6),
+      new THREE.BoxGeometry(22, 0.3, 18.2),
       new THREE.MeshStandardMaterial({ color: 0x3f3228, roughness: 0.72, metalness: 0.05 })
     );
-    floor.position.set(0, -0.15, 0.8);
+    floor.position.set(0, -0.15, 1.6);
     floor.receiveShadow = true;
     scene.add(floor);
 
@@ -272,57 +273,57 @@
     const wallMat = new THREE.MeshStandardMaterial({ color: 0x243042, roughness: 0.72, metalness: 0.08 });
     const trimMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.5 });
 
-    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, 6.2, 16.6), wallMat);
-    leftWall.position.set(-10, 3.1, 0.8);
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, 7.6, 18.2), wallMat);
+    leftWall.position.set(-11, 3.8, 1.6);
     leftWall.receiveShadow = true;
     scene.add(leftWall);
 
-    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, 6.2, 16.6), wallMat);
-    rightWall.position.set(10, 3.1, 0.8);
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.25, 7.6, 18.2), wallMat);
+    rightWall.position.set(11, 3.8, 1.6);
     rightWall.receiveShadow = true;
     scene.add(rightWall);
 
     // Front wall (behind Owner VIP suite) with sleek double glass/wood door
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(20, 6.2, 0.28), wallMat);
-    frontWall.position.set(0, 3.1, 9.0);
+    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(22, 7.6, 0.28), wallMat);
+    frontWall.position.set(0, 3.8, 10.6);
     frontWall.receiveShadow = true;
     scene.add(frontWall);
 
     const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(3.2, 3.3, 0.14), trimMat);
-    doorFrame.position.set(-5.8, 1.65, 8.84);
+    doorFrame.position.set(-5.8, 1.65, 10.44);
     const doorGlass = new THREE.Mesh(
       new THREE.BoxGeometry(2.8, 3.0, 0.06),
       new THREE.MeshPhysicalMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.22, roughness: 0.15, metalness: 0.2 })
     );
-    doorGlass.position.set(-5.8, 1.6, 8.83);
+    doorGlass.position.set(-5.8, 1.6, 10.43);
     scene.add(doorFrame, doorGlass);
 
     // Architectural Ceiling with Cinematic Recessed LED Strips
     const ceiling = new THREE.Mesh(
-      new THREE.BoxGeometry(20.2, 0.25, 16.8),
+      new THREE.BoxGeometry(22.2, 0.25, 18.4),
       new THREE.MeshStandardMaterial({ color: 0x162030, roughness: 0.85 })
     );
-    ceiling.position.set(0, 6.25, 0.8);
+    ceiling.position.set(0, 7.65, 1.6);
     scene.add(ceiling);
 
     const ledStripMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
-    for (const cz of [-4.2, 0.6, 5.2]) {
+    for (const cz of [-4.2, 1.2, 6.6]) {
       const beam = new THREE.Mesh(new THREE.BoxGeometry(18.6, 0.16, 0.36), trimMat);
-      beam.position.set(0, 6.06, cz);
+      beam.position.set(0, 7.46, cz);
       const led = new THREE.Mesh(new THREE.BoxGeometry(15.5, 0.04, 0.12), ledStripMat);
-      led.position.set(0, 5.97, cz);
+      led.position.set(0, 7.37, cz);
       scene.add(beam, led);
     }
 
     // Back wall with large glass window
-    const backBottom = new THREE.Mesh(new THREE.BoxGeometry(20, 1.0, 0.25), wallMat);
+    const backBottom = new THREE.Mesh(new THREE.BoxGeometry(22, 1.0, 0.25), wallMat);
     backBottom.position.set(0, 0.5, -7.4);
-    const backTop = new THREE.Mesh(new THREE.BoxGeometry(20, 1.8, 0.25), wallMat);
-    backTop.position.set(0, 5.3, -7.4);
-    const backLeftPillar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.4, 0.25), wallMat);
-    backLeftPillar.position.set(-8.7, 2.7, -7.4);
-    const backRightPillar = new THREE.Mesh(new THREE.BoxGeometry(2.6, 3.4, 0.25), wallMat);
-    backRightPillar.position.set(8.7, 2.7, -7.4);
+    const backTop = new THREE.Mesh(new THREE.BoxGeometry(22, 3.2, 0.25), wallMat);
+    backTop.position.set(0, 6.0, -7.4);
+    const backLeftPillar = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.4, 0.25), wallMat);
+    backLeftPillar.position.set(-9.2, 2.7, -7.4);
+    const backRightPillar = new THREE.Mesh(new THREE.BoxGeometry(3.6, 3.4, 0.25), wallMat);
+    backRightPillar.position.set(9.2, 2.7, -7.4);
     const glassPane = new THREE.Mesh(
       new THREE.PlaneGeometry(14.8, 3.4),
       new THREE.MeshPhysicalMaterial({ color: 0x7dd3fc, transparent: true, opacity: 0.16, roughness: 0.1, metalness: 0.1 })
@@ -802,6 +803,8 @@
       const el = document.createElement("div");
       el.className = "name-pill";
       el.innerHTML = `<span class="dot" style="background:#${colorHex.toString(16).padStart(6,'0')}"></span><span>${shortName}</span><div class="hover-tip"><div class="ht-model">${modelLabel}</div><div class="ht-task">Standby</div></div>`;
+      el.addEventListener("mouseenter", () => labelsRoot.classList.add("has-hover"));
+      el.addEventListener("mouseleave", () => labelsRoot.classList.remove("has-hover"));
       el.addEventListener("click", () => selectAgent(id));
       labelsRoot.appendChild(el);
 
@@ -905,6 +908,8 @@
     const ownerLabel = document.createElement("div");
     ownerLabel.className = "name-pill";
     ownerLabel.innerHTML = `<span class="dot" style="background:#facc15"></span><span>👑 Owner (VIP)</span><div class="hover-tip"><div class="ht-model">VIP Executive Suite</div><div class="ht-task">Orkestrator utama</div></div>`;
+    ownerLabel.addEventListener("mouseenter", () => labelsRoot.classList.add("has-hover"));
+    ownerLabel.addEventListener("mouseleave", () => labelsRoot.classList.remove("has-hover"));
     ownerLabel.addEventListener("click", () => selectAgent("owner"));
     labelsRoot.appendChild(ownerLabel);
 
@@ -1114,6 +1119,7 @@
         ownerLabel.classList.remove("hovered");
         if (hitId === "owner") ownerLabel.classList.add("hovered");
         else if (hitId && agents[hitId]) agents[hitId].el.classList.add("hovered");
+        labelsRoot.classList.toggle("has-hover", Boolean(hitId));
         canvas.style.cursor = hitId ? "pointer" : "default";
         lastHoveredId = hitId;
       }
@@ -1354,9 +1360,9 @@
       controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0.8, 3.2);
       controls.target.z = THREE.MathUtils.clamp(controls.target.z, -5.0, 5.2);
       controls.update();
-      camera.position.x = THREE.MathUtils.clamp(camera.position.x, -9.1, 9.1);
-      camera.position.y = THREE.MathUtils.clamp(camera.position.y, 1.1, 5.65);
-      camera.position.z = THREE.MathUtils.clamp(camera.position.z, -6.2, 8.65);
+      camera.position.x = THREE.MathUtils.clamp(camera.position.x, -10.0, 10.0);
+      camera.position.y = THREE.MathUtils.clamp(camera.position.y, 1.1, 6.95);
+      camera.position.z = THREE.MathUtils.clamp(camera.position.z, -6.2, 10.05);
       renderer.render(scene, camera);
     }
     animate();
