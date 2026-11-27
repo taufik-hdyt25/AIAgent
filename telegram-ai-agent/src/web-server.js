@@ -39,8 +39,18 @@ function getWebSession(req) {
   return { token, ...session };
 }
 
-function setSessionCookie(res, token, maxAge = WEB_SESSION_TTL_MS / 1000) {
-  res.setHeader("Set-Cookie", `thAgentSession=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(maxAge)}`);
+const LOGIN_RATE_LIMITS = new Map();
+const LOGIN_RATE_WINDOW_MS = 5 * 60 * 1000;
+const LOGIN_MAX_ATTEMPTS = 10;
+
+function isHttpsRequest(req) {
+  const proto = String(req?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  return proto === "https" || Boolean(req?.socket?.encrypted);
+}
+
+function setSessionCookie(res, token, maxAge = WEB_SESSION_TTL_MS / 1000, req = null) {
+  const secureFlag = isHttpsRequest(req) ? "; Secure" : "";
+  res.setHeader("Set-Cookie", `thAgentSession=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax${secureFlag}; Max-Age=${Math.floor(maxAge)}`);
 }
 
 function resolvePublicDir() {
@@ -383,6 +393,12 @@ export function createWebServer() {
     const authExempt = pathname === "/login.html" || isPublicAsset || pathname === "/api/auth/login" || pathname === "/api/auth/logout" || pathname === "/webhook/update" || pathname.startsWith("/api/product-research") || pathname === "/api/ai-generate/health" || pathname === "/api/ai-generate" || pathname === "/api/ai";
 
     if (pathname === "/api/auth/login" && req.method === "POST") {
+      const clientIp = getClientIp(req);
+      const nowMs = Date.now();
+      const entry = LOGIN_RATE_LIMITS.get(clientIp);
+      if (entry && nowMs - entry.startedAt < LOGIN_RATE_WINDOW_MS && entry.count >= LOGIN_MAX_ATTEMPTS) {
+        return sendJson(429, { ok: false, error: "Terlalu banyak percobaan login. Coba lagi dalam 5 menit." });
+      }
       let body = "";
       for await (const chunk of req) body += chunk;
       let payload;
@@ -393,16 +409,25 @@ export function createWebServer() {
       const a = Buffer.from(suppliedPass);
       const b = Buffer.from(authPass);
       const validPass = a.length === b.length && a.length > 0 && crypto.timingSafeEqual(a, b);
-      if (!validUser || !validPass) return sendJson(401, { ok: false, error: "Username atau password salah." });
+      if (!validUser || !validPass) {
+        const current = entry && nowMs - entry.startedAt < LOGIN_RATE_WINDOW_MS ? entry : { count: 0, startedAt: nowMs };
+        current.count += 1;
+        LOGIN_RATE_LIMITS.set(clientIp, current);
+        if (LOGIN_RATE_LIMITS.size > 500) {
+          for (const [k, v] of LOGIN_RATE_LIMITS) if (nowMs - v.startedAt >= LOGIN_RATE_WINDOW_MS) LOGIN_RATE_LIMITS.delete(k);
+        }
+        return sendJson(401, { ok: false, error: "Username atau password salah." });
+      }
+      LOGIN_RATE_LIMITS.delete(clientIp);
       const token = crypto.randomBytes(32).toString("hex");
-      webSessions.set(token, { username: authUser, expiresAt: Date.now() + WEB_SESSION_TTL_MS });
-      setSessionCookie(res, token);
+      webSessions.set(token, { username: authUser, expiresAt: nowMs + WEB_SESSION_TTL_MS });
+      setSessionCookie(res, token, WEB_SESSION_TTL_MS / 1000, req);
       return sendJson(200, { ok: true, username: authUser });
     }
     if (pathname === "/api/auth/logout" && req.method === "POST") {
       const token = parseCookies(req).thAgentSession;
       if (token) webSessions.delete(token);
-      setSessionCookie(res, "", 0);
+      setSessionCookie(res, "", 0, req);
       return sendJson(200, { ok: true });
     }
     if (authPass && !authExempt && !getWebSession(req)) {
@@ -1870,7 +1895,7 @@ export function startWebServer(
 ) {
   const server = createWebServer();
   const PORT = Number(port);
-  const HOST = host || "0.0.0.0";
+  const HOST = host || process.env.WEB_HOST || "127.0.0.1";
 
   server.listen(PORT, HOST, () => {
     const shown = HOST === "0.0.0.0" || HOST === "::" ? "localhost" : HOST;
