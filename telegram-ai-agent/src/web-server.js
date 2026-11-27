@@ -921,7 +921,7 @@ export function createWebServer() {
         if (result.error || result.code !== 0) {
           return sendJson(502, { ok: false, error: String(result.stderr || result.error || "Agent gagal").slice(0, 300) });
         }
-        const reply = (parser.getFinalText?.() || result.stdout || "").trim();
+        const reply = (parser.getText?.() || result.stdout || "").trim();
         return sendJson(200, {
           ok: true,
           role: specialist.role,
