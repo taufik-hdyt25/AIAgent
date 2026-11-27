@@ -784,26 +784,80 @@
       scene.add(ring);
       pulses.push({ ring, t: 0 });
     }
-    function spawnDelegationArc(fromVec, toVec, colorHex) {
-      const orb = new THREE.Mesh(
-        new THREE.SphereGeometry(0.17, 16, 16),
+    const beams = [];
+    const ownerAnim = { delegatingUntil: 0, lookTargetY: 0 };
+
+    function createTaskDocumentMesh(colorHex) {
+      const docGroup = new THREE.Group();
+      const card = new THREE.Mesh(
+        new THREE.BoxGeometry(0.36, 0.04, 0.46),
+        new THREE.MeshStandardMaterial({
+          color: 0xf8fafc,
+          emissive: colorHex,
+          emissiveIntensity: 0.75,
+          roughness: 0.2,
+          metalness: 0.1,
+        })
+      );
+      const stripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38, 0.048, 0.1),
         new THREE.MeshBasicMaterial({ color: colorHex })
       );
-      scene.add(orb);
-      packets.push({ orb, from: fromVec.clone(), to: toVec.clone(), t: 0, colorHex, toVec: toVec.clone() });
+      stripe.position.z = -0.14;
+      const halo = new THREE.Mesh(
+        new THREE.RingGeometry(0.26, 0.34, 24),
+        new THREE.MeshBasicMaterial({ color: colorHex, side: THREE.DoubleSide, transparent: true, opacity: 0.65 })
+      );
+      halo.rotation.x = -Math.PI / 2;
+      docGroup.add(card, stripe, halo);
+      return docGroup;
     }
+
+    function spawnBeamPath(fromVec, toVec, colorHex) {
+      const mid = new THREE.Vector3().addVectors(fromVec, toVec).multiplyScalar(0.5);
+      mid.y += 1.35;
+      const curve = new THREE.QuadraticBezierCurve3(fromVec.clone(), mid, toVec.clone());
+      const geo = new THREE.TubeGeometry(curve, 24, 0.032, 8, false);
+      const mat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 0.75 });
+      const mesh = new THREE.Mesh(geo, mat);
+      scene.add(mesh);
+      beams.push({ mesh, mat, t: 0 });
+    }
+
+    function spawnDelegationArc(fromVec, toVec, colorHex) {
+      const doc = createTaskDocumentMesh(colorHex);
+      scene.add(doc);
+      spawnBeamPath(fromVec, toVec, colorHex);
+      packets.push({ orb: doc, from: fromVec.clone(), to: toVec.clone(), t: 0, colorHex, toVec: toVec.clone() });
+    }
+
+    function triggerOwnerToCeo(role) {
+      const now = performance.now();
+      ownerAnim.delegatingUntil = now + 1200;
+      ownerAnim.lookTargetY = 0;
+      const ownerPos = new THREE.Vector3(0, 1.55, 5.05);
+      spawnPulseRing(new THREE.Vector3(0, 0.25, 5.1), 0xfacc15);
+      spawnDelegationArc(ownerPos, agents.ceo.posVec, 0xfacc15);
+      agents.ceo.state = "working";
+      agents.ceo.el.classList.add("working");
+      setTimeout(() => {
+        triggerCeoDelegation(role);
+      }, 580);
+    }
+
     function triggerCeoDelegation(role) {
       const targetAgent = agents[role] || agents.coder;
       agents.ceo.state = "working";
       agents.ceo.el.classList.add("working");
-      agents.ceo.lookTargetY = role === "coder" ? -0.7 : (role === "writer" ? 0.7 : 0);
+      agents.ceo.delegatingUntil = performance.now() + 1150;
+      agents.ceo.lookTargetY = role === "coder" ? -0.75 : (role === "writer" ? 0.75 : 0);
       spawnPulseRing(agents.ceo.posVec, 0x38bdf8);
       spawnDelegationArc(agents.ceo.posVec, targetAgent.posVec, targetAgent.colorHex);
       setTimeout(() => {
         targetAgent.state = "working";
         targetAgent.el.classList.add("working");
         spawnPulseRing(targetAgent.posVec, targetAgent.colorHex);
-      }, 450);
+      }, 520);
       clearTimeout(agents.ceo._idleTimer);
       agents.ceo._idleTimer = setTimeout(() => {
         agents.ceo.state = "idle";
@@ -995,19 +1049,11 @@
 
       cmdBtn.disabled = true;
       cmdBtn.textContent = "Memproses...";
-      agents.ceo.state = "working";
-      agents.ceo.el.classList.add("working");
-      spawnDelegationArc(new THREE.Vector3(0, 1.1, 5.0), agents.ceo.posVec, 0xfacc15);
-
       const guessedRole = target === "auto"
         ? (/(caption|artikel|blog|seo|konten|promo|iklan|marketing|deskripsi)/i.test(prompt) ? "writer" : "coder")
         : target;
 
-      setTimeout(() => {
-        agents[guessedRole].state = "working";
-        agents[guessedRole].el.classList.add("working");
-        spawnDelegationArc(agents.ceo.posVec, agents[guessedRole].posVec, agents[guessedRole].colorHex);
-      }, 420);
+      triggerOwnerToCeo(guessedRole);
 
       try {
         const res = await fetch("/api/office/command", {
@@ -1076,11 +1122,19 @@
         const bobFreq = 2.0 + a.animIntensity * 7.5;
         a.head.position.y = 1.54 + Math.sin(t * bobFreq) * bobAmp;
 
-        const isCelebrating = (a.celebratingUntil || 0) > performance.now();
+        const nowMs = performance.now();
+        const isCelebrating = (a.celebratingUntil || 0) > nowMs;
+        const isDelegating = (a.delegatingUntil || 0) > nowMs;
+        const targetStandY = isDelegating ? 0.18 : 0;
+        a.charGroup.position.y += (targetStandY - a.charGroup.position.y) * 0.16;
+
         if (isCelebrating) {
           a.leftArm.rotation.x += (-2.2 - a.leftArm.rotation.x) * 0.18;
           a.rightArm.rotation.x += (-2.2 - a.rightArm.rotation.x) * 0.18;
           a.head.position.y = 1.54 + Math.abs(Math.sin(t * 7)) * 0.04;
+        } else if (isDelegating) {
+          a.rightArm.rotation.x += (-1.15 - a.rightArm.rotation.x) * 0.2;
+          a.leftArm.rotation.x += (0.15 - a.leftArm.rotation.x) * 0.2;
         } else {
           const armAmp = 0.03 + a.animIntensity * 0.2;
           const armFreq = 2.0 + a.animIntensity * 11.0;
@@ -1089,20 +1143,28 @@
         }
 
         if (typeof a.lookTargetY === "number") {
-          a.charGroup.rotation.y += (a.lookTargetY - a.charGroup.rotation.y) * 0.08;
+          a.charGroup.rotation.y += (a.lookTargetY - a.charGroup.rotation.y) * 0.12;
         }
         a.ring.material.opacity = 0.24 + a.animIntensity * 0.55;
         a.monitor.material.emissiveIntensity = 0.32 + a.animIntensity * 0.52;
         projectToScreen(a.anchor, a.el);
       }
+
+      const ownerDelegating = ownerAnim.delegatingUntil > performance.now();
+      ownerChar.position.y += ((ownerDelegating ? 0.22 : 0) - ownerChar.position.y) * 0.16;
       ownerHead.position.y = 1.54 + Math.sin(t * 2.0) * 0.012;
-      ownerLeftArm.rotation.x = 0.2 + Math.sin(t * 2.2) * 0.03;
-      ownerRightArm.rotation.x = 0.2 + Math.cos(t * 2.2) * 0.03;
+      if (ownerDelegating) {
+        ownerRightArm.rotation.x += (-1.2 - ownerRightArm.rotation.x) * 0.22;
+        ownerLeftArm.rotation.x += (0.15 - ownerLeftArm.rotation.x) * 0.2;
+      } else {
+        ownerLeftArm.rotation.x += ((0.2 + Math.sin(t * 2.2) * 0.03) - ownerLeftArm.rotation.x) * 0.18;
+        ownerRightArm.rotation.x += ((0.2 + Math.cos(t * 2.2) * 0.03) - ownerRightArm.rotation.x) * 0.18;
+      }
       projectToScreen(new THREE.Vector3(0, 2.55, 5.25), ownerLabel);
 
       for (let i = packets.length - 1; i >= 0; i--) {
         const p = packets[i];
-        p.t += 0.025;
+        p.t += 0.022;
         if (p.t >= 1) {
           spawnPulseRing(p.toVec, p.colorHex || 0x38bdf8);
           scene.remove(p.orb);
@@ -1111,7 +1173,22 @@
         }
         const ease = p.t * p.t * (3 - 2 * p.t);
         p.orb.position.lerpVectors(p.from, p.to, ease);
-        p.orb.position.y += Math.sin(ease * Math.PI) * 1.7;
+        p.orb.position.y += Math.sin(ease * Math.PI) * 1.45;
+        p.orb.rotation.y += 0.08;
+        p.orb.rotation.x = Math.sin(ease * Math.PI) * 0.25;
+      }
+
+      for (let i = beams.length - 1; i >= 0; i--) {
+        const b = beams[i];
+        b.t += 0.016;
+        if (b.t >= 1) {
+          scene.remove(b.mesh);
+          b.mesh.geometry.dispose();
+          b.mat.dispose();
+          beams.splice(i, 1);
+          continue;
+        }
+        b.mat.opacity = (1 - b.t) * 0.72;
       }
 
       for (let i = pulses.length - 1; i >= 0; i--) {
