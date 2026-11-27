@@ -3,6 +3,7 @@ import { runReleasePromoPipeline } from "./services/release-promo-service.js";
 import { generateWeeklyContentBrief } from "./services/weekly-content-service.js";
 import { checkPlayConsoleStatus } from "./services/play-console-watcher-service.js";
 import { runDailyBackup } from "./services/daily-backup-service.js";
+import { runThBlogAutoPost } from "./services/th-blog-autopost-service.js";
 import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -757,6 +758,15 @@ export function createWebServer() {
         return sendJson(result.ok ? 200 : 500, result);
       } catch (err) {
         return sendJson(500, { ok: false, error: err?.message || "Backup gagal" });
+      }
+    }
+
+    if (pathname === "/api/office/th-blog-autopost" && req.method === "POST") {
+      try {
+        const result = await runThBlogAutoPost({ bot: null, manual: true });
+        return sendJson(result.ok ? 200 : 500, result);
+      } catch (err) {
+        return sendJson(500, { ok: false, error: err?.message || "TH Blog auto-post gagal" });
       }
     }
 

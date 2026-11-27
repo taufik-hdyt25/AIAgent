@@ -21,6 +21,7 @@ import { initErrorDiagnoseWatcher } from "./services/error-diagnose-service.js";
 import { initWeeklyContentPlanner } from "./services/weekly-content-service.js";
 import { initPlayConsoleWatcher } from "./services/play-console-watcher-service.js";
 import { initDailyBackup } from "./services/daily-backup-service.js";
+import { initThBlogAutoPost } from "./services/th-blog-autopost-service.js";
 import {
   getActiveTasks,
   clearActiveTask,
@@ -347,6 +348,7 @@ if (
               initWeeklyContentPlanner(bot);
               initPlayConsoleWatcher(bot);
               initDailyBackup(bot);
+              initThBlogAutoPost(bot);
               initAutoUpdateWatcher(bot);
             }
           },
