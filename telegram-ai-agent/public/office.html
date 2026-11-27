@@ -335,6 +335,106 @@
     board.position.set(-9.8, 2.4, 1.8);
     scene.add(board);
 
+    // Large Live Activity Board in front of the back panoramic window
+    function createActivityWallBoard() {
+      const canvasEl = document.createElement("canvas");
+      canvasEl.width = 1024;
+      canvasEl.height = 352;
+      const ctx = canvasEl.getContext("2d");
+      const tex = new THREE.CanvasTexture(canvasEl);
+      tex.colorSpace = THREE.SRGBColorSpace;
+
+      const group = new THREE.Group();
+      const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(6.6, 2.25, 0.12),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.35, metalness: 0.6 })
+      );
+      const glowTrim = new THREE.Mesh(
+        new THREE.BoxGeometry(6.7, 2.34, 0.06),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35 })
+      );
+      glowTrim.position.z = -0.02;
+      const screen = new THREE.Mesh(
+        new THREE.PlaneGeometry(6.36, 2.04),
+        new THREE.MeshBasicMaterial({ map: tex })
+      );
+      screen.position.z = 0.07;
+
+      const legMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.3 });
+      for (const lx of [-2.9, 2.9]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 2.85, 12), legMat);
+        leg.position.set(lx, -1.425, 0);
+        group.add(leg);
+      }
+      group.add(glowTrim, frame, screen);
+      group.position.set(0, 2.85, -6.7);
+      scene.add(group);
+
+      const roleColor = {
+        coder: "#60a5fa",
+        writer: "#f472b6",
+        ceo: "#38bdf8",
+        sentry: "#34d399",
+      };
+
+      function draw(events = [], meta = {}) {
+        ctx.fillStyle = "#080f1e";
+        ctx.fillRect(0, 0, 1024, 352);
+
+        // Header bar
+        ctx.fillStyle = "#0f172a";
+        ctx.fillRect(0, 0, 1024, 58);
+        ctx.fillStyle = "#38bdf8";
+        ctx.fillRect(0, 56, 1024, 3);
+
+        ctx.fillStyle = "#34d399";
+        ctx.beginPath();
+        ctx.arc(30, 29, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#f8fafc";
+        ctx.font = "bold 22px system-ui, sans-serif";
+        ctx.fillText("TH STUDIO — LIVE ACTIVITY BOARD", 52, 37);
+
+        const statsText = `RAM ${meta.ramUsedPct ?? "-"}%  |  LOAD ${meta.loadAvg ?? "-"}  |  UP ${meta.uptimeSec ? Math.floor(meta.uptimeSec / 60) + "m" : "-"}`;
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "16px monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(statsText, 996, 35);
+        ctx.textAlign = "left";
+
+        const rows = Array.isArray(events) && events.length
+          ? events.slice(0, 6)
+          : [{ role: "ceo", text: "Menunggu aktivitas agent..." }];
+
+        rows.forEach((ev, idx) => {
+          const y = 78 + idx * 43;
+          ctx.fillStyle = idx === 0 ? "rgba(56, 189, 248, 0.14)" : "rgba(30, 41, 59, 0.55)";
+          ctx.fillRect(24, y, 976, 36);
+
+          const accent = ev.type === "done" ? "#34d399" : (roleColor[ev.role] || "#38bdf8");
+          ctx.fillStyle = accent;
+          ctx.fillRect(24, y, 6, 36);
+
+          const badge = (ev.role || "ceo").toUpperCase();
+          ctx.fillStyle = accent;
+          ctx.font = "bold 15px monospace";
+          ctx.fillText(badge, 42, y + 23);
+
+          ctx.fillStyle = "#e2e8f0";
+          ctx.font = "17px system-ui, sans-serif";
+          const cleanText = String(ev.text || "").slice(0, 82);
+          ctx.fillText(cleanText, 128, y + 24);
+        });
+
+        tex.needsUpdate = true;
+      }
+
+      draw([], {});
+      return { draw };
+    }
+    const activityBoard = createActivityWallBoard();
+
     // Lounge Sofa & Coffee Table on right side
     const sofaGroup = new THREE.Group();
     const sofaBase = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.45, 2.4), new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 }));
@@ -1013,6 +1113,7 @@
           a.el.classList.toggle("working", a.state === "working");
         }
 
+        activityBoard.draw(o.events || [], o);
         const feed = document.getElementById("activityFeed");
         if (Array.isArray(o.events) && o.events.length) {
           feed.innerHTML = o.events.map((e) => `<div class="feed-item ${e.role || ''}">${e.text}</div>`).join("");
