@@ -372,18 +372,18 @@
     board.position.set(-9.8, 2.4, 1.8);
     scene.add(board);
 
-    // Full-Wall Floor-to-Ceiling Panoramic Command Center LED Board
+    // Full-Wall Floor-to-Ceiling Panoramic Command Center LED Board (Crisp Un-mipmapped 2048x1024)
     function createActivityWallBoard() {
-      const W = 2560;
-      const H = 1200;
+      const W = 2048;
+      const H = 1024;
       const canvasEl = document.createElement("canvas");
       canvasEl.width = W;
       canvasEl.height = H;
       const ctx = canvasEl.getContext("2d");
       const tex = new THREE.CanvasTexture(canvasEl);
       tex.colorSpace = THREE.SRGBColorSpace;
-      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
-      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.generateMipmaps = false;
+      tex.minFilter = THREE.LinearFilter;
       tex.magFilter = THREE.LinearFilter;
 
       const group = new THREE.Group();
@@ -393,12 +393,12 @@
       );
       const glowTrim = new THREE.Mesh(
         new THREE.BoxGeometry(15.4, 7.46, 0.06),
-        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45 })
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45, fog: false })
       );
       glowTrim.position.z = -0.04;
       const screen = new THREE.Mesh(
         new THREE.PlaneGeometry(14.8, 6.95),
-        new THREE.MeshBasicMaterial({ map: tex })
+        new THREE.MeshBasicMaterial({ map: tex, fog: false, toneMapped: false })
       );
       screen.position.z = 0.09;
 
@@ -415,95 +415,100 @@
       };
 
       function draw(events = [], meta = {}) {
-        ctx.fillStyle = "#060b16";
+        ctx.fillStyle = "#040812";
         ctx.fillRect(0, 0, W, H);
 
         // Header bar
-        ctx.fillStyle = "#0f172a";
-        ctx.fillRect(0, 0, W, 130);
+        ctx.fillStyle = "#0b1326";
+        ctx.fillRect(0, 0, W, 126);
         ctx.fillStyle = "#38bdf8";
-        ctx.fillRect(0, 126, W, 5);
+        ctx.fillRect(0, 122, W, 5);
 
         ctx.fillStyle = "#34d399";
         ctx.beginPath();
-        ctx.arc(58, 65, 16, 0, Math.PI * 2);
+        ctx.arc(54, 63, 15, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = "#ffffff";
         ctx.font = "bold 46px system-ui, sans-serif";
-        ctx.fillText("TH STUDIO — COMMAND CENTER & LIVE ACTIVITY", 98, 81);
+        ctx.fillText("TH STUDIO — LIVE COMMAND CENTER", 90, 79);
 
-        const statsText = `RAM ${meta.ramUsedPct ?? "-"}%   |   LOAD ${meta.loadAvg ?? "-"}   |   UPTIME ${meta.uptimeSec ? Math.floor(meta.uptimeSec / 60) + "m" : "-"}`;
-        ctx.fillStyle = "#cbd5e1";
+        const statsText = `RAM ${meta.ramUsedPct ?? "-"}%  |  LOAD ${meta.loadAvg ?? "-"}  |  UP ${meta.uptimeSec ? Math.floor(meta.uptimeSec / 60) + "m" : "-"}`;
+        ctx.fillStyle = "#e2e8f0";
         ctx.font = "bold 32px monospace";
         ctx.textAlign = "right";
-        ctx.fillText(statsText, W - 52, 77);
+        ctx.fillText(statsText, W - 44, 75);
         ctx.textAlign = "left";
 
-        // Left Panel: Live Activity Feed (8 rows)
+        // Left Panel: 5 Large High-Contrast Activity Rows
         const rows = Array.isArray(events) && events.length
-          ? events.slice(0, 8)
+          ? events.slice(0, 5)
           : [{ role: "ceo", text: "Menunggu aktivitas agent..." }];
 
         rows.forEach((ev, idx) => {
-          const y = 166 + idx * 122;
-          ctx.fillStyle = idx === 0 ? "rgba(56, 189, 248, 0.22)" : "rgba(30, 41, 59, 0.74)";
-          ctx.fillRect(46, y, 1676, 102);
+          const y = 160 + idx * 166;
+          ctx.fillStyle = idx === 0 ? "rgba(56, 189, 248, 0.24)" : "rgba(22, 33, 54, 0.88)";
+          ctx.fillRect(40, y, 1300, 142);
 
           const accent = ev.type === "done" ? "#34d399" : (roleColor[ev.role] || "#38bdf8");
           ctx.fillStyle = accent;
-          ctx.fillRect(46, y, 14, 102);
+          ctx.fillRect(40, y, 16, 142);
 
           const badge = (ev.role || "ceo").toUpperCase();
           ctx.fillStyle = accent;
-          ctx.font = "bold 30px monospace";
-          ctx.fillText(badge, 82, y + 62);
+          ctx.font = "bold 34px monospace";
+          ctx.fillText(badge, 76, y + 52);
 
-          ctx.fillStyle = "#f8fafc";
-          ctx.font = "600 34px system-ui, sans-serif";
-          const cleanText = String(ev.text || "").slice(0, 82);
-          ctx.fillText(cleanText, 250, y + 63);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 38px system-ui, sans-serif";
+          const raw = String(ev.text || "");
+          const line1 = raw.slice(0, 48);
+          const line2 = raw.length > 48 ? raw.slice(48, 96) : "";
+          ctx.fillText(line1, 76, y + 104);
+          if (line2) {
+            ctx.fillStyle = "#cbd5e1";
+            ctx.font = "600 30px system-ui, sans-serif";
+            ctx.fillText(line2, 240, y + 52);
+          }
         });
 
-        // Right Panel: Active Agents & Automations
-        ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
-        ctx.fillRect(1758, 166, 756, 976);
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
+        // Right Panel: Active Agents & Automations (6 Large Cards)
+        ctx.fillStyle = "rgba(11, 19, 38, 0.92)";
+        ctx.fillRect(1372, 160, 636, 828);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
         ctx.lineWidth = 4;
-        ctx.strokeRect(1758, 166, 756, 976);
+        ctx.strokeRect(1372, 160, 636, 828);
 
         ctx.fillStyle = "#38bdf8";
-        ctx.font = "bold 32px system-ui, sans-serif";
-        ctx.fillText("TIM & AUTOMATION AKTIF", 1796, 224);
+        ctx.font = "bold 34px system-ui, sans-serif";
+        ctx.fillText("TIM & AUTOMATION", 1404, 218);
 
         const items = [
           ["CEO Router", "Auto-Router Gateway", "#38bdf8"],
           ["Agent Coder", meta.agents?.coder?.model || "gemini-4-hydrogen-xhigh", "#60a5fa"],
           ["Agent Writer", meta.agents?.writer?.model || "gemini-3-flash", "#f472b6"],
           ["Server Sentry", "Monitor 5m + Auto-Diagnose", "#34d399"],
-          ["TH Blog Auto-Post", "Cek Slot 15m (08/13/19 WIB)", "#facc15"],
-          ["Release & Promo", "GitHub Watcher (10m)", "#fb923c"],
-          ["Play Console", "TH Studio App Status (6h)", "#38bdf8"],
-          ["Briefing & Backup", "08:00 WIB • Backup 02:00 WIB", "#a78bfa"],
+          ["TH Blog & Promo", "Blog 15m • Release 10m", "#facc15"],
+          ["Briefing & Backup", "08:00 WIB • Backup 02:00", "#a78bfa"],
         ];
 
         items.forEach(([title, sub, col], i) => {
-          const iy = 266 + i * 108;
-          ctx.fillStyle = "rgba(30, 41, 59, 0.55)";
-          ctx.fillRect(1790, iy, 692, 88);
+          const iy = 252 + i * 120;
+          ctx.fillStyle = "rgba(30, 41, 59, 0.78)";
+          ctx.fillRect(1400, iy, 580, 102);
 
           ctx.fillStyle = col;
           ctx.beginPath();
-          ctx.arc(1822, iy + 44, 10, 0, Math.PI * 2);
+          ctx.arc(1434, iy + 51, 12, 0, Math.PI * 2);
           ctx.fill();
 
-          ctx.fillStyle = "#f8fafc";
-          ctx.font = "bold 28px system-ui, sans-serif";
-          ctx.fillText(title, 1852, iy + 38);
+          ctx.fillStyle = "#ffffff";
+          ctx.font = "bold 32px system-ui, sans-serif";
+          ctx.fillText(title, 1466, iy + 46);
 
-          ctx.fillStyle = "#94a3b8";
-          ctx.font = "23px monospace";
-          ctx.fillText(String(sub).slice(0, 36), 1852, iy + 68);
+          ctx.fillStyle = "#cbd5e1";
+          ctx.font = "25px monospace";
+          ctx.fillText(String(sub).slice(0, 30), 1466, iy + 82);
         });
 
         tex.needsUpdate = true;
