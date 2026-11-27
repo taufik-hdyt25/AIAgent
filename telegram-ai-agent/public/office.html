@@ -219,8 +219,8 @@
     scene.background = skyTex;
     scene.fog = new THREE.FogExp2(0x162033, 0.012);
 
-    const camera = new THREE.PerspectiveCamera(54, window.innerWidth / window.innerHeight, 0.1, 120);
-    camera.position.set(0, 4.35, 7.9);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 120);
+    camera.position.set(0, 5.3, 8.6);
 
     const controls = new OrbitControls(camera, canvas);
     controls.enableDamping = true;
@@ -230,8 +230,8 @@
     controls.minPolarAngle = 0.35;
     controls.maxPolarAngle = Math.PI / 2.08;
     controls.minDistance = 4.2;
-    controls.maxDistance = 11.2;
-    controls.target.set(0, 1.45, -1.2);
+    controls.maxDistance = 13.5;
+    controls.target.set(0, 1.35, 0.4);
 
     // Warm Office Lighting
     scene.add(new THREE.HemisphereLight(0xe2e8f0, 0x334155, 1.05));
@@ -815,7 +815,7 @@
 
     // VIP Executive Suite & Owner Character
     const ownerVip = new THREE.Group();
-    ownerVip.position.set(0, 0, 5.1);
+    ownerVip.position.set(0, 0, 4.4);
 
     // Elevated VIP Marble Platform + Gold Trim
     const vipFloor = new THREE.Mesh(
@@ -976,8 +976,8 @@
       const now = performance.now();
       ownerAnim.delegatingUntil = now + 1200;
       ownerAnim.lookTargetY = 0;
-      const ownerPos = new THREE.Vector3(0, 1.55, 5.05);
-      spawnPulseRing(new THREE.Vector3(0, 0.25, 5.1), 0xfacc15);
+      const ownerPos = new THREE.Vector3(0, 1.55, 4.35);
+      spawnPulseRing(new THREE.Vector3(0, 0.25, 4.4), 0xfacc15);
       spawnDelegationArc(ownerPos, agents.ceo.posVec, 0xfacc15);
       agents.ceo.state = "working";
       agents.ceo.el.classList.add("working");
@@ -1060,7 +1060,7 @@
         agents.ceo.celebratingUntil = performance.now() + 1100;
         agents.ceo.lookTargetY = 0;
         showDoneBadge(agents.ceo);
-        spawnDelegationArc(agents.ceo.posVec, new THREE.Vector3(0, 1.3, 5.1), 0xfacc15);
+        spawnDelegationArc(agents.ceo.posVec, new THREE.Vector3(0, 1.3, 4.4), 0xfacc15);
       }, 650);
 
       setTimeout(() => {
@@ -1302,7 +1302,7 @@
         ownerLeftArm.rotation.x += ((0.2 + Math.sin(t * 2.2) * 0.03) - ownerLeftArm.rotation.x) * 0.18;
         ownerRightArm.rotation.x += ((0.2 + Math.cos(t * 2.2) * 0.03) - ownerRightArm.rotation.x) * 0.18;
       }
-      projectToScreen(new THREE.Vector3(0, 2.55, 5.25), ownerLabel);
+      projectToScreen(new THREE.Vector3(0, 2.55, 4.55), ownerLabel);
 
       for (let i = packets.length - 1; i >= 0; i--) {
         const p = packets[i];
@@ -1352,7 +1352,7 @@
       controls.update();
       camera.position.x = THREE.MathUtils.clamp(camera.position.x, -9.1, 9.1);
       camera.position.y = THREE.MathUtils.clamp(camera.position.y, 1.1, 5.65);
-      camera.position.z = THREE.MathUtils.clamp(camera.position.z, -6.2, 8.2);
+      camera.position.z = THREE.MathUtils.clamp(camera.position.z, -6.2, 8.65);
       renderer.render(scene, camera);
     }
     animate();
