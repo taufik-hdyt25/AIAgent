@@ -891,13 +891,15 @@ export function createWebServer() {
         console.log(`[OfficeCommand] target=${specialist.role} prompt=${prompt.slice(0, 80)}`);
         console.log(`[SpecialistRouter] role=${specialist.role} provider=${specialist.provider} model=${specialist.model}`);
 
-        const finalPrompt = specialist.systemHint ? `${specialist.systemHint}\n\n${prompt}` : prompt;
+        const projectsCwd = fs.existsSync("/home/th-agent/projects") ? "/home/th-agent/projects" : os.homedir();
+        const officeContext = `[Office Command Context] Kamu berjalan langsung di dalam VPS produksi TH Studio (${os.hostname()}, ${os.platform()}, cwd: ${projectsCwd}). Kamu sudah terhubung ke server ini dan punya tool bash/read/edit/write. Jika user meminta cek server, cek RAM, disk, PM2, systemd, port, atau log langsung di localhost menggunakan tool tanpa bertanya IP atau akses SSH.`;
+        const finalPrompt = [officeContext, specialist.systemHint, prompt].filter(Boolean).join("\n\n");
         const parser = createPiEventParser();
         const args = [
           "--mode", "json",
           "--print", finalPrompt,
+          "--approve",
           "--no-session",
-          "--no-tools",
           "--no-mcp",
           "--no-extensions",
           "--no-skills",
@@ -910,10 +912,10 @@ export function createWebServer() {
         const result = await runProcess({
           command: process.env.PI_BIN || parsed.PI_BIN || "pi",
           args,
-          cwd: os.homedir(),
-          timeoutMs: 55_000,
-          maxTimeoutMs: 55_000,
-          maxOutput: 48_000,
+          cwd: projectsCwd,
+          timeoutMs: 90_000,
+          maxTimeoutMs: 90_000,
+          maxOutput: 64_000,
           env: { ...process.env, CI: "true", NONINTERACTIVE: "1" },
           onStdout: (chunk) => parser.push(chunk),
         });
