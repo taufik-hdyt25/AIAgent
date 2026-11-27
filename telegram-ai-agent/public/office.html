@@ -372,10 +372,10 @@
     board.position.set(-9.8, 2.4, 1.8);
     scene.add(board);
 
-    // Full-Wall Panoramic Command Center LED Board across the front view (back wall)
+    // Full-Wall Floor-to-Ceiling Panoramic Command Center LED Board
     function createActivityWallBoard() {
       const W = 2560;
-      const H = 704;
+      const H = 1200;
       const canvasEl = document.createElement("canvas");
       canvasEl.width = W;
       canvasEl.height = H;
@@ -388,29 +388,23 @@
 
       const group = new THREE.Group();
       const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(14.8, 4.05, 0.14),
+        new THREE.BoxGeometry(15.2, 7.3, 0.16),
         new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.3, metalness: 0.65 })
       );
       const glowTrim = new THREE.Mesh(
-        new THREE.BoxGeometry(15.0, 4.22, 0.06),
+        new THREE.BoxGeometry(15.4, 7.46, 0.06),
         new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45 })
       );
-      glowTrim.position.z = -0.03;
+      glowTrim.position.z = -0.04;
       const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(14.4, 3.76),
+        new THREE.PlaneGeometry(14.8, 6.95),
         new THREE.MeshBasicMaterial({ map: tex })
       );
-      screen.position.z = 0.08;
+      screen.position.z = 0.09;
 
-      const legMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.3 });
-      for (const lx of [-7.0, 7.0]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 12), legMat);
-        leg.position.set(lx, -1.6, 0);
-        group.add(leg);
-      }
       group.add(glowTrim, frame, screen);
-      group.position.set(0, 3.15, -7.12);
-      group.rotation.x = 0.05;
+      group.position.set(0, 3.7, -7.15);
+      group.rotation.x = 0.03;
       scene.add(group);
 
       const roleColor = {
@@ -426,85 +420,90 @@
 
         // Header bar
         ctx.fillStyle = "#0f172a";
-        ctx.fillRect(0, 0, W, 108);
+        ctx.fillRect(0, 0, W, 130);
         ctx.fillStyle = "#38bdf8";
-        ctx.fillRect(0, 104, W, 4);
+        ctx.fillRect(0, 126, W, 5);
 
         ctx.fillStyle = "#34d399";
         ctx.beginPath();
-        ctx.arc(54, 54, 14, 0, Math.PI * 2);
+        ctx.arc(58, 65, 16, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 40px system-ui, sans-serif";
-        ctx.fillText("TH STUDIO — COMMAND CENTER & LIVE ACTIVITY", 90, 68);
+        ctx.font = "bold 46px system-ui, sans-serif";
+        ctx.fillText("TH STUDIO — COMMAND CENTER & LIVE ACTIVITY", 98, 81);
 
         const statsText = `RAM ${meta.ramUsedPct ?? "-"}%   |   LOAD ${meta.loadAvg ?? "-"}   |   UPTIME ${meta.uptimeSec ? Math.floor(meta.uptimeSec / 60) + "m" : "-"}`;
         ctx.fillStyle = "#cbd5e1";
-        ctx.font = "bold 28px monospace";
+        ctx.font = "bold 32px monospace";
         ctx.textAlign = "right";
-        ctx.fillText(statsText, W - 48, 64);
+        ctx.fillText(statsText, W - 52, 77);
         ctx.textAlign = "left";
 
-        // Left Panel: Live Activity Feed (1720px wide)
+        // Left Panel: Live Activity Feed (8 rows)
         const rows = Array.isArray(events) && events.length
-          ? events.slice(0, 5)
+          ? events.slice(0, 8)
           : [{ role: "ceo", text: "Menunggu aktivitas agent..." }];
 
         rows.forEach((ev, idx) => {
-          const y = 136 + idx * 106;
-          ctx.fillStyle = idx === 0 ? "rgba(56, 189, 248, 0.22)" : "rgba(30, 41, 59, 0.72)";
-          ctx.fillRect(42, y, 1680, 88);
+          const y = 166 + idx * 122;
+          ctx.fillStyle = idx === 0 ? "rgba(56, 189, 248, 0.22)" : "rgba(30, 41, 59, 0.74)";
+          ctx.fillRect(46, y, 1676, 102);
 
           const accent = ev.type === "done" ? "#34d399" : (roleColor[ev.role] || "#38bdf8");
           ctx.fillStyle = accent;
-          ctx.fillRect(42, y, 12, 88);
+          ctx.fillRect(46, y, 14, 102);
 
           const badge = (ev.role || "ceo").toUpperCase();
           ctx.fillStyle = accent;
-          ctx.font = "bold 28px monospace";
-          ctx.fillText(badge, 76, y + 54);
+          ctx.font = "bold 30px monospace";
+          ctx.fillText(badge, 82, y + 62);
 
           ctx.fillStyle = "#f8fafc";
-          ctx.font = "600 31px system-ui, sans-serif";
-          const cleanText = String(ev.text || "").slice(0, 84);
-          ctx.fillText(cleanText, 240, y + 55);
+          ctx.font = "600 34px system-ui, sans-serif";
+          const cleanText = String(ev.text || "").slice(0, 82);
+          ctx.fillText(cleanText, 250, y + 63);
         });
 
         // Right Panel: Active Agents & Automations
-        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
-        ctx.fillRect(1756, 136, 762, 512);
+        ctx.fillStyle = "rgba(15, 23, 42, 0.88)";
+        ctx.fillRect(1758, 166, 756, 976);
         ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(1756, 136, 762, 512);
+        ctx.lineWidth = 4;
+        ctx.strokeRect(1758, 166, 756, 976);
 
         ctx.fillStyle = "#38bdf8";
-        ctx.font = "bold 26px system-ui, sans-serif";
-        ctx.fillText("TIM & AUTOMATION AKTIF", 1790, 184);
+        ctx.font = "bold 32px system-ui, sans-serif";
+        ctx.fillText("TIM & AUTOMATION AKTIF", 1796, 224);
 
         const items = [
           ["CEO Router", "Auto-Router Gateway", "#38bdf8"],
           ["Agent Coder", meta.agents?.coder?.model || "gemini-4-hydrogen-xhigh", "#60a5fa"],
           ["Agent Writer", meta.agents?.writer?.model || "gemini-3-flash", "#f472b6"],
           ["Server Sentry", "Monitor 5m + Auto-Diagnose", "#34d399"],
-          ["TH Blog & Promo", "Auto-Post 15m • Release 10m", "#facc15"],
+          ["TH Blog Auto-Post", "Cek Slot 15m (08/13/19 WIB)", "#facc15"],
+          ["Release & Promo", "GitHub Watcher (10m)", "#fb923c"],
+          ["Play Console", "TH Studio App Status (6h)", "#38bdf8"],
           ["Briefing & Backup", "08:00 WIB • Backup 02:00 WIB", "#a78bfa"],
         ];
 
         items.forEach(([title, sub, col], i) => {
-          const iy = 212 + i * 70;
+          const iy = 266 + i * 108;
+          ctx.fillStyle = "rgba(30, 41, 59, 0.55)";
+          ctx.fillRect(1790, iy, 692, 88);
+
           ctx.fillStyle = col;
           ctx.beginPath();
-          ctx.arc(1802, iy + 22, 8, 0, Math.PI * 2);
+          ctx.arc(1822, iy + 44, 10, 0, Math.PI * 2);
           ctx.fill();
 
           ctx.fillStyle = "#f8fafc";
-          ctx.font = "bold 24px system-ui, sans-serif";
-          ctx.fillText(title, 1826, iy + 28);
+          ctx.font = "bold 28px system-ui, sans-serif";
+          ctx.fillText(title, 1852, iy + 38);
 
           ctx.fillStyle = "#94a3b8";
-          ctx.font = "21px monospace";
-          ctx.fillText(String(sub).slice(0, 34), 1826, iy + 54);
+          ctx.font = "23px monospace";
+          ctx.fillText(String(sub).slice(0, 36), 1852, iy + 68);
         });
 
         tex.needsUpdate = true;
