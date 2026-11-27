@@ -842,8 +842,8 @@ export function createWebServer() {
               },
               writer: {
                 name: "Agent Writer",
-                provider: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-antigravity",
-                model: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-2.5-flash",
+                provider: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-codex",
+                model: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-3-flash",
                 status: lastRole === "writer" ? "active" : "standby",
               },
               sentry: {
@@ -882,8 +882,8 @@ export function createWebServer() {
         } else if (target === "writer") {
           specialist = {
             role: "writer",
-            provider: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-antigravity",
-            model: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-2.5-flash",
+            provider: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-codex",
+            model: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-3-flash",
             systemHint: "[Specialist Mode: Content & Marketing Writer] Fokus pada copywriting, SEO, caption, dan komunikasi natural berbahasa Indonesia.",
           };
         }
@@ -959,8 +959,8 @@ export function createWebServer() {
             PI_AUTO_SPECIALIST: parsed.PI_AUTO_SPECIALIST ?? process.env.PI_AUTO_SPECIALIST ?? "true",
             PI_CODER_PROVIDER: parsed.PI_CODER_PROVIDER || process.env.PI_CODER_PROVIDER || "a2-codex",
             PI_CODER_MODEL: parsed.PI_CODER_MODEL || process.env.PI_CODER_MODEL || "gemini-4-hydrogen-xhigh",
-            PI_WRITER_PROVIDER: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-antigravity",
-            PI_WRITER_MODEL: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-2.5-flash",
+            PI_WRITER_PROVIDER: parsed.PI_WRITER_PROVIDER || process.env.PI_WRITER_PROVIDER || "a2-codex",
+            PI_WRITER_MODEL: parsed.PI_WRITER_MODEL || process.env.PI_WRITER_MODEL || "gemini-3-flash",
             CLI_ENGINE: parsed.CLI_ENGINE || process.env.CLI_ENGINE || "pi",
             CMD_MAX_TURNS: parsed.CMD_MAX_TURNS || process.env.CMD_MAX_TURNS || "300",
             TASK_TIMEOUT_MS: parsed.TASK_TIMEOUT_MS || process.env.TASK_TIMEOUT_MS || "900000",
@@ -1628,10 +1628,10 @@ export function createWebServer() {
             updates.PI_CODER_MODEL = String(payload.PI_CODER_MODEL).trim() || "gemini-4-hydrogen-xhigh";
           }
           if (payload.PI_WRITER_PROVIDER !== undefined) {
-            updates.PI_WRITER_PROVIDER = String(payload.PI_WRITER_PROVIDER).trim() || "a2-antigravity";
+            updates.PI_WRITER_PROVIDER = String(payload.PI_WRITER_PROVIDER).trim() || "a2-codex";
           }
           if (payload.PI_WRITER_MODEL !== undefined) {
-            updates.PI_WRITER_MODEL = String(payload.PI_WRITER_MODEL).trim() || "gemini-2.5-flash";
+            updates.PI_WRITER_MODEL = String(payload.PI_WRITER_MODEL).trim() || "gemini-3-flash";
           }
           if (payload.CLI_ENGINE !== undefined) {
             const rawEngine = String(payload.CLI_ENGINE).trim().toLowerCase();

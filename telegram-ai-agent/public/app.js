@@ -44,7 +44,7 @@ function refreshSpecialistBadge() {
   if (!specialistStatusBadge) return;
   const active = piAutoSpecialistCheckbox ? piAutoSpecialistCheckbox.checked : true;
   const c = `${piCoderProviderInput?.value || "a2-codex"}/${piCoderModelInput?.value || "gemini-4-hydrogen-xhigh"}`;
-  const w = `${piWriterProviderInput?.value || "a2-antigravity"}/${piWriterModelInput?.value || "gemini-2.5-flash"}`;
+  const w = `${piWriterProviderInput?.value || "a2-codex"}/${piWriterModelInput?.value || "gemini-3-flash"}`;
   specialistStatusBadge.textContent = active ? `Coder: ${c} | Writer: ${w}` : "Nonaktif (pakai model utama)";
 }
 const piServerUrlInput = document.getElementById("piServerUrl");
@@ -231,8 +231,8 @@ async function loadSettings() {
     if (piAutoSpecialistCheckbox) piAutoSpecialistCheckbox.checked = String(currentSettings.PI_AUTO_SPECIALIST ?? "true") !== "false";
     if (piCoderProviderInput) piCoderProviderInput.value = currentSettings.PI_CODER_PROVIDER || "a2-codex";
     if (piCoderModelInput) piCoderModelInput.value = currentSettings.PI_CODER_MODEL || "gemini-4-hydrogen-xhigh";
-    if (piWriterProviderInput) piWriterProviderInput.value = currentSettings.PI_WRITER_PROVIDER || "a2-antigravity";
-    if (piWriterModelInput) piWriterModelInput.value = currentSettings.PI_WRITER_MODEL || "gemini-2.5-flash";
+    if (piWriterProviderInput) piWriterProviderInput.value = currentSettings.PI_WRITER_PROVIDER || "a2-codex";
+    if (piWriterModelInput) piWriterModelInput.value = currentSettings.PI_WRITER_MODEL || "gemini-3-flash";
     refreshSpecialistBadge();
     allowedIdsInput.value = currentSettings.ALLOWED_TELEGRAM_IDS || "";
     renderIdChips(currentSettings.ALLOWED_TELEGRAM_IDS);
@@ -1350,8 +1350,8 @@ form.addEventListener("submit", async (e) => {
     PI_AUTO_SPECIALIST: piAutoSpecialistCheckbox ? (piAutoSpecialistCheckbox.checked ? "true" : "false") : "true",
     PI_CODER_PROVIDER: piCoderProviderInput ? (piCoderProviderInput.value.trim() || "a2-codex") : "a2-codex",
     PI_CODER_MODEL: piCoderModelInput ? (piCoderModelInput.value.trim() || "gemini-4-hydrogen-xhigh") : "gemini-4-hydrogen-xhigh",
-    PI_WRITER_PROVIDER: piWriterProviderInput ? (piWriterProviderInput.value.trim() || "a2-antigravity") : "a2-antigravity",
-    PI_WRITER_MODEL: piWriterModelInput ? (piWriterModelInput.value.trim() || "gemini-2.5-flash") : "gemini-2.5-flash",
+    PI_WRITER_PROVIDER: piWriterProviderInput ? (piWriterProviderInput.value.trim() || "a2-codex") : "a2-codex",
+    PI_WRITER_MODEL: piWriterModelInput ? (piWriterModelInput.value.trim() || "gemini-3-flash") : "gemini-3-flash",
     PI_SERVER_API_KEY: piServerApiKeyInput ? piServerApiKeyInput.value.trim() : "",
     PI_SERVER_URL: piServerUrlInput ? piServerUrlInput.value.trim() : "",
     scopeRole: scopeRoleCustomRadio?.checked ? "custom" : "auto",

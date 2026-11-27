@@ -10,8 +10,8 @@ export function resolveSpecialist({ userMessage = "", targetProject = null, mode
   const enabled = process.env.PI_AUTO_SPECIALIST !== "false";
   const coderProvider = process.env.PI_CODER_PROVIDER || process.env.PI_PROVIDER || "a2-codex";
   const coderModel = process.env.PI_CODER_MODEL || process.env.PI_MODEL || "gemini-4-hydrogen-xhigh";
-  const writerProvider = process.env.PI_WRITER_PROVIDER || "a2-antigravity";
-  const writerModel = process.env.PI_WRITER_MODEL || "gemini-2.5-flash";
+  const writerProvider = process.env.PI_WRITER_PROVIDER || "a2-codex";
+  const writerModel = process.env.PI_WRITER_MODEL || "gemini-3-flash";
 
   if (!enabled || modelOverride) {
     return {

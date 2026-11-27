@@ -37,8 +37,8 @@ async function runPiOneShot({ provider, model, prompt }) {
 export async function runReleasePromoPipeline({ repoName, commitsText, bot = null }) {
   const coderProvider = process.env.PI_CODER_PROVIDER || "a2-codex";
   const coderModel = process.env.PI_CODER_MODEL || "gemini-4-hydrogen-xhigh";
-  const writerProvider = process.env.PI_WRITER_PROVIDER || "a2-antigravity";
-  const writerModel = process.env.PI_WRITER_MODEL || "gemini-2.5-flash";
+  const writerProvider = process.env.PI_WRITER_PROVIDER || "a2-codex";
+  const writerModel = process.env.PI_WRITER_MODEL || "gemini-3-flash";
 
   console.log(`[SpecialistRouter] role=coder provider=${coderProvider} model=${coderModel}`);
   const summary = await runPiOneShot({

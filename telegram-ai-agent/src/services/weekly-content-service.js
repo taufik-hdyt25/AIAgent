@@ -32,8 +32,8 @@ function getMsUntilNextMonday9AM() {
 }
 
 export async function generateWeeklyContentBrief(bot = null) {
-  const provider = process.env.PI_WRITER_PROVIDER || "a2-antigravity";
-  const model = process.env.PI_WRITER_MODEL || "gemini-2.5-flash";
+  const provider = process.env.PI_WRITER_PROVIDER || "a2-codex";
+  const model = process.env.PI_WRITER_MODEL || "gemini-3-flash";
   console.log(`[SpecialistRouter] role=writer provider=${provider} model=${model}`);
 
   const parser = createPiEventParser();
