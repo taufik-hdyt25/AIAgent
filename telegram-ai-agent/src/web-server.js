@@ -203,6 +203,26 @@ function getClientIp(req) {
   return remote;
 }
 
+async function readBody(req, maxBytes = 1_048_576) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buf.length;
+    if (total > maxBytes) {
+      throw new Error("Payload terlalu besar");
+    }
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function readJsonBody(req, maxBytes = 1_048_576) {
+  const raw = await readBody(req, maxBytes);
+  if (!raw.trim()) return {};
+  return JSON.parse(raw);
+}
+
 function integrationPrompt(task, input) {
   const language = asPlainText(input.language, 20) || "id";
   const app = input.app && typeof input.app === "object" ? input.app : {};
