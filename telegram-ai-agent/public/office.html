@@ -372,10 +372,10 @@
     board.position.set(-9.8, 2.4, 1.8);
     scene.add(board);
 
-    // Large Live Activity Board in front of the back panoramic window
+    // Full-Wall Panoramic Command Center LED Board across the front view (back wall)
     function createActivityWallBoard() {
-      const W = 2048;
-      const H = 800;
+      const W = 2560;
+      const H = 704;
       const canvasEl = document.createElement("canvas");
       canvasEl.width = W;
       canvasEl.height = H;
@@ -388,29 +388,29 @@
 
       const group = new THREE.Group();
       const frame = new THREE.Mesh(
-        new THREE.BoxGeometry(9.0, 3.45, 0.14),
-        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.35, metalness: 0.6 })
+        new THREE.BoxGeometry(14.8, 4.05, 0.14),
+        new THREE.MeshStandardMaterial({ color: 0x0b1220, roughness: 0.3, metalness: 0.65 })
       );
       const glowTrim = new THREE.Mesh(
-        new THREE.BoxGeometry(9.14, 3.58, 0.06),
-        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.42 })
+        new THREE.BoxGeometry(15.0, 4.22, 0.06),
+        new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45 })
       );
-      glowTrim.position.z = -0.02;
+      glowTrim.position.z = -0.03;
       const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(8.7, 3.2),
+        new THREE.PlaneGeometry(14.4, 3.76),
         new THREE.MeshBasicMaterial({ map: tex })
       );
       screen.position.z = 0.08;
 
       const legMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.7, roughness: 0.3 });
-      for (const lx of [-3.9, 3.9]) {
-        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 3.2, 12), legMat);
+      for (const lx of [-7.0, 7.0]) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.2, 12), legMat);
         leg.position.set(lx, -1.6, 0);
         group.add(leg);
       }
       group.add(glowTrim, frame, screen);
-      group.position.set(0, 3.15, -6.55);
-      group.rotation.x = 0.08;
+      group.position.set(0, 3.15, -7.12);
+      group.rotation.x = 0.05;
       scene.add(group);
 
       const roleColor = {
@@ -421,53 +421,90 @@
       };
 
       function draw(events = [], meta = {}) {
-        ctx.fillStyle = "#070d1a";
+        ctx.fillStyle = "#060b16";
         ctx.fillRect(0, 0, W, H);
 
         // Header bar
         ctx.fillStyle = "#0f172a";
-        ctx.fillRect(0, 0, W, 128);
+        ctx.fillRect(0, 0, W, 108);
         ctx.fillStyle = "#38bdf8";
-        ctx.fillRect(0, 124, W, 6);
+        ctx.fillRect(0, 104, W, 4);
 
         ctx.fillStyle = "#34d399";
         ctx.beginPath();
-        ctx.arc(62, 64, 16, 0, Math.PI * 2);
+        ctx.arc(54, 54, 14, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 36px system-ui, sans-serif";
-        ctx.fillText("TH STUDIO — LIVE ACTIVITY BOARD", 104, 80);
+        ctx.font = "bold 40px system-ui, sans-serif";
+        ctx.fillText("TH STUDIO — COMMAND CENTER & LIVE ACTIVITY", 90, 68);
 
-        const statsText = `RAM ${meta.ramUsedPct ?? "-"}%  |  LOAD ${meta.loadAvg ?? "-"}  |  UP ${meta.uptimeSec ? Math.floor(meta.uptimeSec / 60) + "m" : "-"}`;
+        const statsText = `RAM ${meta.ramUsedPct ?? "-"}%   |   LOAD ${meta.loadAvg ?? "-"}   |   UPTIME ${meta.uptimeSec ? Math.floor(meta.uptimeSec / 60) + "m" : "-"}`;
         ctx.fillStyle = "#cbd5e1";
-        ctx.font = "bold 26px monospace";
+        ctx.font = "bold 28px monospace";
         ctx.textAlign = "right";
-        ctx.fillText(statsText, W - 48, 76);
+        ctx.fillText(statsText, W - 48, 64);
         ctx.textAlign = "left";
 
+        // Left Panel: Live Activity Feed (1720px wide)
         const rows = Array.isArray(events) && events.length
           ? events.slice(0, 5)
           : [{ role: "ceo", text: "Menunggu aktivitas agent..." }];
 
         rows.forEach((ev, idx) => {
-          const y = 166 + idx * 120;
-          ctx.fillStyle = idx === 0 ? "rgba(56, 189, 248, 0.20)" : "rgba(30, 41, 59, 0.72)";
-          ctx.fillRect(48, y, W - 96, 98);
+          const y = 136 + idx * 106;
+          ctx.fillStyle = idx === 0 ? "rgba(56, 189, 248, 0.22)" : "rgba(30, 41, 59, 0.72)";
+          ctx.fillRect(42, y, 1680, 88);
 
           const accent = ev.type === "done" ? "#34d399" : (roleColor[ev.role] || "#38bdf8");
           ctx.fillStyle = accent;
-          ctx.fillRect(48, y, 14, 98);
+          ctx.fillRect(42, y, 12, 88);
 
           const badge = (ev.role || "ceo").toUpperCase();
           ctx.fillStyle = accent;
-          ctx.font = "bold 26px monospace";
-          ctx.fillText(badge, 86, y + 60);
+          ctx.font = "bold 28px monospace";
+          ctx.fillText(badge, 76, y + 54);
 
           ctx.fillStyle = "#f8fafc";
-          ctx.font = "600 29px system-ui, sans-serif";
-          const cleanText = String(ev.text || "").slice(0, 68);
-          ctx.fillText(cleanText, 240, y + 58);
+          ctx.font = "600 31px system-ui, sans-serif";
+          const cleanText = String(ev.text || "").slice(0, 84);
+          ctx.fillText(cleanText, 240, y + 55);
+        });
+
+        // Right Panel: Active Agents & Automations
+        ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+        ctx.fillRect(1756, 136, 762, 512);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.35)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(1756, 136, 762, 512);
+
+        ctx.fillStyle = "#38bdf8";
+        ctx.font = "bold 26px system-ui, sans-serif";
+        ctx.fillText("TIM & AUTOMATION AKTIF", 1790, 184);
+
+        const items = [
+          ["CEO Router", "Auto-Router Gateway", "#38bdf8"],
+          ["Agent Coder", meta.agents?.coder?.model || "gemini-4-hydrogen-xhigh", "#60a5fa"],
+          ["Agent Writer", meta.agents?.writer?.model || "gemini-3-flash", "#f472b6"],
+          ["Server Sentry", "Monitor 5m + Auto-Diagnose", "#34d399"],
+          ["TH Blog & Promo", "Auto-Post 15m • Release 10m", "#facc15"],
+          ["Briefing & Backup", "08:00 WIB • Backup 02:00 WIB", "#a78bfa"],
+        ];
+
+        items.forEach(([title, sub, col], i) => {
+          const iy = 212 + i * 70;
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(1802, iy + 22, 8, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = "#f8fafc";
+          ctx.font = "bold 24px system-ui, sans-serif";
+          ctx.fillText(title, 1826, iy + 28);
+
+          ctx.fillStyle = "#94a3b8";
+          ctx.font = "21px monospace";
+          ctx.fillText(String(sub).slice(0, 34), 1826, iy + 54);
         });
 
         tex.needsUpdate = true;
